@@ -1,0 +1,62 @@
+{
+  "goals": [
+    { "label": "Calories", "value": "2,000", "unit": "kcal" },
+    { "label": "Protein", "value": "150", "unit": "g" },
+    { "label": "Carbs", "value": "200", "unit": "g" },
+    { "label": "Fiber", "value": "≥ 30", "unit": "g" },
+    { "label": "Sodium", "value": "≤ 2,300", "unit": "mg" },
+    { "label": "Water", "value": "8", "unit": "cups" }
+  ],
+  "weight": { "start": 180, "startDate": "2026-01-01", "target": "170", "best": 170 },
+  "checklist": [
+    "Weigh in",
+    "Log meals",
+    "Today's workout",
+    "Walk 30 min",
+    "Read or study 1 h",
+    "Drink water"
+  ],
+  "schedule": {
+    "Monday": "routine1",
+    "Tuesday": "walk",
+    "Wednesday": "routine2",
+    "Thursday": "walk",
+    "Friday": "routine3",
+    "Saturday": "outdoor",
+    "Sunday": "rest"
+  },
+  "sessions": {
+    "routine1": {
+      "title": "Routine 1: Push / Pull",
+      "exercises": [
+        ["Push-ups", "3 × max"],
+        ["Pull-ups", "3 × max"],
+        ["Plank", "3 × 45 s"]
+      ]
+    },
+    "routine2": {
+      "title": "Routine 2: Legs",
+      "exercises": [
+        ["Squats", "3 × 10"],
+        ["Lunges", "3 × 10 / leg"],
+        ["Glute bridges", "3 × 15"]
+      ]
+    },
+    "routine3": {
+      "title": "Routine 3: Full body",
+      "exercises": [
+        ["Dips", "3 × 8–12"],
+        ["Inverted rows", "3 × 8–12"],
+        ["Plank", "3 × 45 s"]
+      ]
+    },
+    "walk": { "title": "Walk day", "note": "30 minutes outside." },
+    "outdoor": { "title": "Bike or long walk", "note": "Something active you enjoy." },
+    "rest": { "title": "Rest day", "note": "Easy walk if you feel like it." }
+  },
+  "notes": [
+    "Rest 60–90 s between sets.",
+    "Add a rep or a little weight each week.",
+    "Click Edit on any card to make it yours. Changes save to plan.json."
+  ]
+}

@@ -1,0 +1,7 @@
+# Personal: your plan, checklist history, weigh-ins and Taskwarrior backups
+plan.json
+data/
+
+# GC root symlink created by `nix run`
+.timew-hook
+result

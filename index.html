@@ -1,0 +1,1531 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Daily Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
+<style>
+:root {
+  --bg: #f6f5f2; --panel: #ffffff; --ink: #1d1d1b; --muted: #6b6a66; --line: #e4e2dc;
+  --accent: #2f6f5e; --accent-soft: #e3efe9; --warn: #b4472f; --warn-soft: #f7e6e1; --chip: #efede8;
+  --skip: #8a6d1f; --skip-soft: #f5edd6;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #151614; --panel: #1e1f1c; --ink: #ecebe6; --muted: #9b9a94; --line: #2f302c;
+    --accent: #6fbfa4; --accent-soft: #23332d; --warn: #e5826b; --warn-soft: #3a2621; --chip: #2a2b27;
+    --skip: #d8b45a; --skip-soft: #352e1c;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 16px;
+  max-width: 1180px; margin: 0 auto; padding: 24px 16px 8px; }
+header .left { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+h1 { font-size: 22px; margin: 0; letter-spacing: -0.01em; }
+.date { color: var(--muted); }
+.streak { font-size: 13px; padding: 3px 10px; border-radius: 12px; background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+nav { max-width: 1180px; margin: 0 auto; padding: 0 16px; display: flex; gap: 4px; border-bottom: 1px solid var(--line); }
+nav button { background: none; border: 0; padding: 10px 14px; font: inherit; color: var(--muted); cursor: pointer; border-bottom: 2px solid transparent; }
+nav button.on { color: var(--ink); border-color: var(--accent); font-weight: 600; }
+main { max-width: 1180px; margin: 0 auto; padding: 20px 16px 60px; }
+.grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; align-items: start; }
+.col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+/* Narrow screens: one column, cards ordered by importance */
+@media (max-width: 1000px) { .grid { grid-template-columns: minmax(0, 1fr); } .col { display: contents; } }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; min-width: 0; }
+.card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 12px; }
+.card-head h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 0; font-weight: 600; }
+.card h3 { margin: 0 0 8px; font-size: 18px; }
+.edit-btn { background: none; border: 0; color: var(--muted); font: inherit; font-size: 13px; cursor: pointer; padding: 2px 6px; border-radius: 5px; }
+.edit-btn:hover { color: var(--accent); background: var(--accent-soft); }
+.goals { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.goal { background: var(--chip); border-radius: 8px; padding: 8px 10px; min-width: 0; }
+.goal b { display: block; font-size: 18px; }
+.goal span { font-size: 12px; color: var(--muted); }
+table.ex { width: 100%; border-collapse: collapse; }
+table.ex td { padding: 6px 0; border-bottom: 1px solid var(--line); }
+table.ex td:last-child { text-align: right; color: var(--muted); padding-left: 12px; }
+table.week { table-layout: fixed; }
+table.week td:first-child { width: 100px; vertical-align: top; }
+table.week td:last-child { text-align: left; }
+table.week tr.cur td { color: var(--accent); font-weight: 600; }
+.check { display: flex; align-items: center; gap: 10px; padding: 5px 0; }
+.check label { display: flex; align-items: center; gap: 10px; flex: 1; cursor: pointer; min-width: 0; }
+.check input { width: 18px; height: 18px; accent-color: var(--accent); flex: none; }
+.check.done label span { color: var(--muted); text-decoration: line-through; }
+.check.skip label span { color: var(--skip); }
+.check .skip-btn { font: inherit; font-size: 12px; border: 1px solid var(--line); background: none; color: var(--muted); border-radius: 12px; padding: 1px 9px; cursor: pointer; flex: none; }
+.check .skip-btn:hover { border-color: var(--skip); color: var(--skip); }
+.check.skip .skip-btn { background: var(--skip-soft); border-color: var(--skip-soft); color: var(--skip); }
+.note-line { display: block; background: none; border: 0; padding: 0 0 4px 28px; font: inherit; font-size: 12px; color: var(--skip); cursor: pointer; text-align: left; overflow-wrap: anywhere; }
+.note-line:hover { text-decoration: underline; }
+.note-edit { display: flex; gap: 6px; padding: 2px 0 6px 28px; }
+.note-edit input { flex: 1; font-size: 13px; padding: 4px 8px; }
+.reason { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; width: 100%; }
+.reason input { flex: 1 1 200px; font-size: 13px; padding: 4px 8px; }
+.hist-day { padding: 12px 0; border-bottom: 1px solid var(--line); }
+.hist-day:last-child { border-bottom: 0; }
+.hist-day h3 { font-size: 15px; margin: 0 0 4px; display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.hist-item { font-size: 14px; padding: 3px 0 3px 18px; position: relative; overflow-wrap: anywhere; }
+.hist-item::before { content: "↷"; position: absolute; left: 0; color: var(--skip); }
+.hist-item.dismiss::before { content: "✕"; color: var(--muted); }
+.hist-item .why, .why { color: var(--skip); }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; flex-wrap: wrap; }
+.seg button { font: inherit; font-size: 13px; background: none; border: 0; padding: 4px 11px; color: var(--muted); cursor: pointer; }
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.card-head { flex-wrap: wrap; }
+.task .title[data-open] { cursor: pointer; }
+.task .title[data-open]:hover { color: var(--accent); }
+.badge.pri-H { background: var(--warn-soft); color: var(--warn); }
+.badge.pri-M { background: var(--skip-soft); color: var(--skip); }
+.task-editor { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px 12px; margin-top: 10px; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); }
+.task-editor label > span, .task-editor .wide > span { display: block; font-size: 12px; color: var(--muted); margin-bottom: 3px; }
+.task-editor label input.txt, .task-editor label select.txt { width: 100%; }
+.task-editor .wide { grid-column: 1 / -1; }
+.task-editor .scope label { display: inline-flex; gap: 6px; align-items: center; margin-right: 14px; font-size: 14px; }
+.task-editor .foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+.anno { display: flex; align-items: center; gap: 8px; padding: 3px 0; font-size: 14px; }
+.anno > span:nth-child(2) { flex: 1; overflow-wrap: anywhere; }
+.anno-add { display: flex; gap: 6px; margin-top: 6px; }
+.anno-add input { flex: 1; }
+form.add select.txt { flex: 0 1 150px; }
+form.add input[name=tags] { flex: 0 1 120px; }
+.hist-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; margin-top: 16px; align-items: start; }
+@media (max-width: 900px) { .hist-cols { grid-template-columns: minmax(0, 1fr); } }
+.hm-wrap { overflow-x: auto; padding-bottom: 4px; }
+.hm-months, .hm-grid { display: grid; gap: 3px; width: max-content; }
+.hm-months { font-size: 11px; color: var(--muted); height: 16px; }
+.hm-months span { white-space: nowrap; }
+.hm-grid { grid-template-rows: repeat(7, 11px); grid-auto-flow: column; }
+.hm-cell { width: 11px; height: 11px; border-radius: 2px; border: 0; padding: 0; display: inline-block; background: var(--chip); cursor: pointer; }
+.hm-cell.l1 { background: color-mix(in srgb, var(--accent) 30%, var(--chip)); }
+.hm-cell.l2 { background: color-mix(in srgb, var(--accent) 55%, var(--chip)); }
+.hm-cell.l3 { background: color-mix(in srgb, var(--accent) 78%, var(--chip)); }
+.hm-cell.l4 { background: var(--accent); }
+.hm-cell.sel { outline: 2px solid var(--ink); outline-offset: 1px; }
+.hm-foot { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
+.hm-legend { display: inline-flex; align-items: center; gap: 3px; }
+.hm-legend .hm-cell { cursor: default; }
+.feed-item { display: flex; gap: 8px; font-size: 14px; padding: 3px 0; overflow-wrap: anywhere; }
+.ev-icon { width: 14px; flex: none; text-align: center; color: var(--muted); }
+.ev-done .ev-icon { color: var(--accent); } .ev-skip .ev-icon { color: var(--skip); }
+#toast button { margin-left: 10px; font: inherit; background: none; border: 1px solid currentColor; color: inherit; border-radius: 5px; padding: 0 8px; cursor: pointer; }
+#toast.act { pointer-events: auto; }
+.panel { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 8px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); font-size: 14px; }
+.panel label { display: inline-flex; align-items: center; gap: 6px; }
+.panel .num, .tl-add .num { width: 76px; }
+.panel.catchup { flex-direction: column; align-items: stretch; }
+.cu-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 4px 0; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.cu-btns { display: inline-flex; gap: 6px; align-items: center; }
+.ok { color: var(--accent); font-weight: 600; }
+.weeknav { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.tl-add { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px; }
+.tl-add input[name=tags] { flex: 1 1 220px; }
+.tl-row { display: grid; grid-template-columns: 96px 64px minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 5px 0; font-size: 14px; }
+.tl-time { font-variant-numeric: tabular-nums; } .tl-dur { color: var(--muted); font-variant-numeric: tabular-nums; }
+.tl-tags { display: flex; flex-wrap: wrap; gap: 4px; min-width: 0; }
+.tl-btns { display: inline-flex; gap: 4px; }
+.tl-edit { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 6px 0; }
+.tl-edit input[name=tags] { flex: 1 1 200px; }
+a.link { color: var(--accent); text-decoration: none; } a.link:hover { text-decoration: underline; }
+@media (max-width: 560px) { .tl-row { grid-template-columns: 90px 1fr; } .tl-tags, .tl-btns { grid-column: 1 / -1; } }
+.repeat { border-top: 1px solid var(--line); padding-top: 10px; }
+.rep-summary { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.rep-form { display: flex; flex-direction: column; gap: 10px; margin-top: 4px; }
+.rep-form[hidden], .rep-row[hidden], .rep-summary[hidden] { display: none; }
+.rep-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 14px; }
+.rep-row .num { width: 70px; }
+.daypick { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+.daypick button { font: inherit; font-size: 13px; width: 44px; padding: 5px 0; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--muted); cursor: pointer; }
+.daypick button.on { background: var(--accent); border-color: var(--accent); color: var(--panel); font-weight: 600; }
+.rep-actions { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.rep-preview { color: var(--accent); }
+.copies { margin-top: 8px; border-left: 2px solid var(--line); padding-left: 10px; }
+.copy { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 4px 0; font-size: 14px; flex-wrap: wrap; }
+.toggle { display: flex; align-items: center; gap: 6px; margin: 4px 0 6px; cursor: pointer; }
+.progress { height: 6px; background: var(--chip); border-radius: 3px; overflow: hidden; margin: 4px 0 10px; display: flex; }
+.progress .d { background: var(--accent); } .progress .s { background: var(--skip); opacity: .6; }
+.history { display: flex; gap: 4px; margin-top: 12px; flex-wrap: wrap; }
+.history i { width: 16px; height: 16px; border-radius: 4px; background: var(--chip); display: block; }
+.history i.full { background: var(--accent); } .history i.part { background: var(--accent-soft); outline: 1px solid var(--accent); outline-offset: -1px; }
+.history i.today { outline: 2px solid var(--ink); outline-offset: 1px; }
+.muted { color: var(--muted); } .small { font-size: 13px; }
+ul.notes { margin: 0; padding-left: 18px; } ul.notes li { margin: 4px 0; }
+.task { padding: 10px 0; border-bottom: 1px solid var(--line); }
+.task:last-child { border-bottom: 0; }
+.task .title { font-weight: 500; overflow-wrap: anywhere; }
+.task .meta { font-size: 12px; color: var(--muted); display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 3px; }
+.task .actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.badge { font-size: 11px; padding: 1px 7px; border-radius: 10px; background: var(--chip); color: var(--muted); white-space: nowrap; }
+.badge.warn { background: var(--warn-soft); color: var(--warn); }
+.badge.active { background: var(--accent-soft); color: var(--accent); }
+button.sm { font: inherit; font-size: 13px; padding: 4px 10px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); cursor: pointer; }
+button.sm:hover { border-color: var(--accent); }
+button.sm:disabled { opacity: .5; cursor: default; }
+button.primary { background: var(--accent); color: var(--panel); border-color: var(--accent); }
+button.sm.ghost { border-color: transparent; color: var(--muted); }
+button.sm.ghost:hover { color: var(--warn); border-color: var(--warn); }
+.section-title { font-size: 13px; font-weight: 600; margin: 18px 0 4px; color: var(--muted); }
+.section-title.warn { color: var(--warn); }
+input.txt, select.txt { font: inherit; padding: 6px 9px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--ink); min-width: 0; }
+input.txt:focus, select.txt:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+form.add { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+form.add input[name=description] { flex: 1 1 240px; }
+form.add input[name=project], form.add input[name=due] { flex: 0 1 140px; }
+.filter { width: 100%; margin: 8px 0; }
+.editor .row { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; }
+.editor .row input.txt { flex: 1; }
+.editor .row input.txt.narrow { flex: 0 0 90px; }
+.editor .row button { flex: none; }
+.editor .foot { display: flex; gap: 8px; justify-content: space-between; margin-top: 10px; flex-wrap: wrap; }
+.icon { font: inherit; font-size: 13px; width: 28px; height: 28px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--muted); cursor: pointer; padding: 0; }
+.icon:hover { color: var(--ink); border-color: var(--accent); }
+.icon.del:hover { color: var(--warn); border-color: var(--warn); }
+.editor label.lbl { display: block; font-size: 12px; color: var(--muted); margin: 8px 0 3px; }
+.weight-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.weight-row input { width: 100px; }
+.big { font-size: 28px; font-weight: 600; letter-spacing: -0.02em; }
+.delta-down { color: var(--accent); } .delta-up { color: var(--warn); }
+svg.spark { width: 100%; height: 60px; display: block; margin-top: 10px; }
+.docs { display: grid; grid-template-columns: 200px 1fr; gap: 20px; }
+.doclist button { display: block; width: 100%; text-align: left; background: none; border: 0; padding: 7px 10px; border-radius: 6px; font: inherit; color: var(--ink); cursor: pointer; }
+.doclist button.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.md { overflow-x: auto; }
+.md h1 { font-size: 24px; margin-top: 0; } .md h2 { font-size: 18px; margin-top: 28px; } .md h3 { font-size: 16px; }
+.md table { border-collapse: collapse; margin: 10px 0; font-size: 14px; }
+.md th, .md td { border: 1px solid var(--line); padding: 5px 10px; text-align: left; vertical-align: top; }
+.md th { background: var(--chip); }
+.md code { background: var(--chip); padding: 1px 5px; border-radius: 4px; font-size: 13px; }
+.md a { color: var(--accent); }
+.md li input { accent-color: var(--accent); }
+.err { color: var(--warn); }
+#toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%) translateY(20px); opacity: 0; background: var(--ink); color: var(--bg);
+  padding: 8px 16px; border-radius: 8px; font-size: 14px; transition: .2s; pointer-events: none; max-width: calc(100% - 32px); }
+#toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+#toast.bad { background: var(--warn); color: #fff; }
+@media (max-width: 700px) { .docs { grid-template-columns: 1fr; } .goals { grid-template-columns: repeat(2, 1fr); } }
+</style>
+</head>
+<body>
+<header>
+  <div class="left"><h1>Daily Dashboard</h1><span class="date" id="today"></span></div>
+  <span class="streak" id="streak" hidden></span>
+</header>
+<nav>
+  <button data-tab="today" class="on">Today</button>
+  <button data-tab="tasks">Tasks</button>
+  <button data-tab="history">History</button>
+  <button data-tab="docs">Docs</button>
+</nav>
+<main>
+  <section id="tab-today">
+    <div class="grid">
+      <div class="col">
+        <div class="card" id="card-session" style="order:1"></div>
+        <div class="card" id="card-goals" style="order:5"></div>
+        <div class="card" id="card-notes" style="order:7"></div>
+      </div>
+      <div class="col">
+        <div class="card" id="card-checklist" style="order:2"></div>
+        <div class="card" id="card-tasks" style="order:4"><div class="card-head"><h2>Due &amp; overdue tasks</h2></div><div id="today-tasks" class="muted">Loading…</div></div>
+      </div>
+      <div class="col">
+        <div class="card" id="card-weight" style="order:3"></div>
+        <div class="card" id="card-time" style="order:4"><div class="card-head"><h2>Time tracked</h2></div><div id="time-body" class="muted">Loading…</div></div>
+        <div class="card" id="card-week" style="order:6"></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="tab-tasks" hidden>
+    <div class="card">
+      <div class="card-head"><h2>New task</h2></div>
+      <form class="add" id="add">
+        <input class="txt" name="description" placeholder="What needs doing?" required maxlength="300">
+        <input class="txt" name="project" placeholder="project" list="projects">
+        <input class="txt" name="tags" placeholder="tags">
+        <input class="txt" name="due" placeholder="due (today, fri, 2026-10-20)">
+        <select class="txt" name="priority"><option value="">priority</option><option value="H">High</option><option value="M">Medium</option><option value="L">Low</option></select>
+        <select class="txt" name="recur"><option value="">doesn't repeat</option><option value="daily">daily</option><option value="2d">every 2 days</option><option value="weekly">weekly</option><option value="biweekly">every 2 weeks</option><option value="monthly">monthly</option></select>
+        <button class="sm primary">Add</button>
+      </form>
+      <datalist id="projects"></datalist>
+    </div>
+    <div class="card" style="margin-top:16px">
+      <div class="card-head">
+        <div class="seg" id="task-views"><button data-view="pending" class="on">Pending</button><button data-view="repeating">Repeating</button><button data-view="completed">Completed</button><button data-view="deleted">Deleted</button></div>
+        <button class="edit-btn" id="undo" title="Undo the last Taskwarrior change (task undo)">↶ Undo last change</button>
+      </div>
+      <input class="txt filter" id="filter" placeholder="Filter by name, project, tag or note…">
+      <div id="all-tasks" class="muted">Loading…</div>
+    </div>
+  </section>
+
+  <section id="tab-history" hidden>
+    <div class="card">
+      <div class="card-head"><h2>Activity</h2>
+        <div class="seg" id="hm-mode"><button data-mode="tasks">Tasks done</button><button data-mode="hours">Hours tracked</button><button data-mode="checklist">Checklist</button></div></div>
+      <div id="heatmap" class="muted">Loading…</div>
+    </div>
+    <div class="card" id="card-timelog" style="margin-top:16px">
+      <div class="card-head"><h2>Time log</h2>
+        <div class="weeknav"><button class="icon" data-wk="-1" title="Previous week">◀</button><span id="wk-label" class="small"></span><button class="icon" data-wk="1" title="Next week">▶</button><button class="edit-btn" data-wk="0">This week</button></div></div>
+      <form class="tl-add" id="tl-add">
+        <input class="txt" type="date" name="day" required>
+        <input class="txt" type="time" name="start" required> – <input class="txt" type="time" name="end" required>
+        <input class="txt" name="tags" list="tl-tags" placeholder="what (task name, extra tags after commas)" required>
+        <button class="sm primary">Log time</button>
+      </form>
+      <datalist id="tl-tags"></datalist>
+      <div id="timelog" class="muted">Loading…</div>
+    </div>
+    <div class="hist-cols">
+      <div class="card"><div class="card-head"><h2 id="feed-title">Recent activity</h2><button class="edit-btn" id="feed-clear" hidden>Show all days</button></div><div id="feed"></div></div>
+      <div class="card"><div class="card-head"><h2>Skipped &amp; why</h2></div><div id="history" class="muted">Loading…</div></div>
+    </div>
+  </section>
+
+  <section id="tab-docs" hidden>
+    <div class="docs">
+      <div class="doclist" id="doclist"></div>
+      <div class="card md" id="doc"></div>
+    </div>
+  </section>
+</main>
+<div id="toast"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+const WEEK_ORDER = [1, 2, 3, 4, 5, 6, 0];
+const dayKey = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+let now = new Date(), todayKey = dayKey(now);
+let plan, tasks = [], checklist = {}, weights = [];
+const editing = new Set();   // which cards are in edit mode
+
+// ---------- helpers ----------
+let toastTimer;
+// `undo`: show an Undo button that runs `task undo` (for Taskwarrior changes).
+function toast(msg, bad = false, undo = false) {
+  const t = $("#toast");
+  t.textContent = msg; t.className = "show" + (bad ? " bad" : "") + (undo ? " act" : "");
+  if (undo) {
+    const b = document.createElement("button");
+    b.textContent = "Undo"; b.onclick = () => { t.className = ""; undoLast(); };
+    t.append(b);
+  }
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.className = "", bad ? 4000 : undo ? 5000 : 1600);
+}
+async function post(url, body) {
+  const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json", "X-Dashboard": "1" }, body: JSON.stringify(body) });
+  const j = await r.json().catch(() => ({}));
+  if (r.status === 404) throw new Error(`${j.error || "endpoint missing"}. Restart ./run.sh once to pick up the new server.`);
+  if (!r.ok || j.ok === false) throw new Error(j.error || r.statusText);
+  return j;
+}
+async function savePlan(msg = "Saved") {
+  try { await post("/api/plan", { plan }); toast(msg); }
+  catch (e) { toast("Couldn't save: " + e.message, true); }
+}
+function cardHead(title, key) {
+  return `<div class="card-head"><h2>${esc(title)}</h2>${key ? `<button class="edit-btn" data-edit="${key}">${editing.has(key) ? "Close" : "Edit"}</button>` : ""}</div>`;
+}
+function wireEditBtn(el) {
+  el.querySelectorAll("[data-edit]").forEach(b => b.onclick = () => {
+    const k = b.dataset.edit;
+    editing.has(k) ? editing.delete(k) : editing.add(k);
+    renderToday();
+  });
+}
+
+// A reusable editor for a list of rows. `fields` describes the inputs in each row.
+function rowEditor(el, rows, fields, onSave, addLabel = "Add") {
+  let data = rows.map(r => (Array.isArray(r) ? r : typeof r === "object" ? fields.map(f => r[f.key]) : [r]).map(v => String(v ?? "")));
+  const draw = () => {
+    el.innerHTML = `<div class="editor">${data.map((r, i) => `<div class="row">
+        ${fields.map((f, j) => `<input class="txt${f.narrow ? " narrow" : ""}" data-i="${i}" data-j="${j}" value="${esc(r[j])}" placeholder="${esc(f.placeholder || "")}">`).join("")}
+        <button class="icon" data-up="${i}" title="Move up"${i === 0 ? " disabled" : ""}>↑</button>
+        <button class="icon" data-down="${i}" title="Move down"${i === data.length - 1 ? " disabled" : ""}>↓</button>
+        <button class="icon del" data-del="${i}" title="Remove">✕</button>
+      </div>`).join("")}
+      <div class="foot"><button class="sm" data-add>+ ${esc(addLabel)}</button>
+        <span><button class="sm" data-cancel>Cancel</button> <button class="sm primary" data-save>Save</button></span></div></div>`;
+    el.querySelectorAll("input[data-i]").forEach(inp => inp.oninput = () => data[inp.dataset.i][inp.dataset.j] = inp.value);
+    el.querySelectorAll("[data-up]").forEach(b => b.onclick = () => { const i = +b.dataset.up; [data[i - 1], data[i]] = [data[i], data[i - 1]]; draw(); });
+    el.querySelectorAll("[data-down]").forEach(b => b.onclick = () => { const i = +b.dataset.down; [data[i + 1], data[i]] = [data[i], data[i + 1]]; draw(); });
+    el.querySelectorAll("[data-del]").forEach(b => b.onclick = () => { data.splice(+b.dataset.del, 1); draw(); });
+    el.querySelector("[data-add]").onclick = () => { data.push(fields.map(() => "")); draw(); el.querySelector(`input[data-i="${data.length - 1}"]`)?.focus(); };
+    el.querySelector("[data-cancel]").onclick = () => onSave(null);
+    el.querySelector("[data-save]").onclick = () => onSave(data.map(r => r.map(v => v.trim())).filter(r => r[0]));
+    el.querySelectorAll("input").forEach(inp => inp.onkeydown = e => { if (e.key === "Enter") el.querySelector("[data-save]").click(); });
+  };
+  draw();
+}
+
+// ---------- tabs ----------
+document.querySelectorAll("nav button").forEach(b => b.onclick = () => showTab(b.dataset.tab));
+function showTab(t) {
+  document.querySelectorAll("nav button").forEach(b => b.classList.toggle("on", b.dataset.tab === t));
+  ["today", "tasks", "history", "docs"].forEach(x => $("#tab-" + x).hidden = x !== t);
+  try { localStorage.setItem("tab", t); } catch {}
+  history.replaceState(null, "", "#" + t);
+}
+
+addEventListener("hashchange", () => { const t = location.hash.slice(1); if (["today", "tasks", "history", "docs"].includes(t)) showTab(t); });
+
+// ---------- today ----------
+function renderToday() {
+  $("#today").textContent = now.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric", year: "numeric" });
+  renderSession(); renderChecklist(); renderWeight(); renderGoals(); renderWeek(); renderNotes();
+}
+
+function renderSession() {
+  const el = $("#card-session");
+  const key = plan.schedule[DAYS[now.getDay()]];
+  const s = plan.sessions[key] || { title: "Nothing scheduled" };
+  el.innerHTML = cardHead("Today's training", "session") + `<div id="session-body"></div>`;
+  wireEditBtn(el);
+  const body = $("#session-body");
+  if (!editing.has("session")) {
+    body.innerHTML = `<h3>${esc(s.title)}</h3>` +
+      (s.exercises?.length ? `<table class="ex">${s.exercises.map(([n, r]) => `<tr><td>${esc(n)}</td><td>${esc(r)}</td></tr>`).join("")}</table>` : "") +
+      (s.note ? `<p class="muted" style="margin:8px 0 0">${esc(s.note)}</p>` : "");
+    return;
+  }
+  body.innerHTML = `<div class="editor"><label class="lbl">Title</label><input class="txt" id="s-title" style="width:100%" value="${esc(s.title)}">
+    <label class="lbl">Note</label><input class="txt" id="s-note" style="width:100%" value="${esc(s.note || "")}">
+    <label class="lbl">Exercises</label></div><div id="s-ex"></div>
+    <p class="small muted">Editing “${esc(key)}”. It's used every ${esc(DAYS.filter(d => plan.schedule[d] === key).join(", "))}.</p>`;
+  rowEditor($("#s-ex"), s.exercises || [], [{ placeholder: "Exercise" }, { placeholder: "Sets × reps", narrow: true }], rows => {
+    if (rows) {
+      plan.sessions[key] = { ...s, title: $("#s-title").value.trim() || s.title, note: $("#s-note").value.trim() || undefined, exercises: rows.length ? rows : undefined };
+      savePlan("Workout saved");
+    }
+    editing.delete("session"); renderToday();
+  }, "Add exercise");
+}
+
+// Stored values: "done", "skip", or { state: "skip", note }.
+const cellState = v => typeof v === "object" && v ? v.state : v;
+const cellNote = v => typeof v === "object" && v ? v.note || "" : "";
+function checkState(item) { return cellState((checklist[todayKey] || {})[item]); }
+function checkNote(item) { return cellNote((checklist[todayKey] || {})[item]); }
+let noteOpen = null;   // checklist item whose skip-reason box is open
+async function setCheck(item, state, note = "") {
+  const st = { ...(checklist[todayKey] || {}) };
+  if (!state) delete st[item];
+  else st[item] = state === "skip" && note.trim() ? { state: "skip", note: note.trim() } : state;
+  checklist[todayKey] = st;
+  renderChecklist(); renderStreak(); renderHistory(); renderActivity();
+  try { await post("/api/checklist", { date: todayKey, items: st }); }
+  catch (e) { toast("Couldn't save: " + e.message, true); }
+}
+
+// A day counts as complete when every item is done or skipped.
+function dayRatio(key) {
+  const st = checklist[key] || {}, items = plan.checklist;
+  if (!items.length) return 0;
+  return items.filter(i => st[i]).length / items.length;
+}
+
+function renderChecklist() {
+  const el = $("#card-checklist");
+  el.innerHTML = cardHead("Daily checklist", "checklist") + `<div id="cl-body"></div>`;
+  wireEditBtn(el);
+  const body = $("#cl-body");
+  if (editing.has("checklist")) {
+    rowEditor(body, plan.checklist, [{ placeholder: "Checklist item" }], rows => {
+      if (rows) { plan.checklist = rows.map(r => r[0]); savePlan("Checklist saved"); }
+      editing.delete("checklist"); renderToday(); renderStreak();
+    }, "Add item");
+    return;
+  }
+  const items = plan.checklist;
+  const done = items.filter(i => checkState(i) === "done").length;
+  const skipped = items.filter(i => checkState(i) === "skip").length;
+  const pct = n => items.length ? (n / items.length) * 100 : 0;
+  const history = [];
+  for (let i = 13; i >= 0; i--) {
+    const d = new Date(now); d.setDate(d.getDate() - i);
+    const k = dayKey(d), r = dayRatio(k);
+    history.push(`<i class="${r >= 1 ? "full" : r > 0 ? "part" : ""}${i === 0 ? " today" : ""}" title="${d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}: ${Math.round(r * 100)}%"></i>`);
+  }
+  body.innerHTML =
+    `<div class="small muted">${done + skipped} of ${items.length} done${skipped ? ` (${skipped} skipped)` : ""}${done + skipped === items.length && items.length ? " · day complete ✓" : ""}</div>` +
+    `<div class="progress"><div class="d" style="width:${pct(done)}%"></div><div class="s" style="width:${pct(skipped)}%"></div></div>` +
+    items.map((item, i) => {
+      const s = checkState(item), note = checkNote(item);
+      const noteLine = s !== "skip" ? "" : noteOpen === item
+        ? `<div class="note-edit"><input class="txt" data-note="${i}" maxlength="300" placeholder="Why are you skipping? (optional)" value="${esc(note)}">
+             <button class="sm primary" data-note-save="${i}">Save</button></div>`
+        : `<button class="note-line" data-note-open="${i}" title="Edit reason">${note ? "↳ " + esc(note) : "+ add a reason"}</button>`;
+      return `<div class="check-wrap"><div class="check${s ? " " + s : ""}">
+        <label><input type="checkbox" data-i="${i}"${s === "done" ? " checked" : ""}><span>${esc(item)}</span></label>
+        <button class="skip-btn" data-skip="${i}" title="${s === "skip" ? "Un-skip" : "Skip today. Still counts toward the day."}">${s === "skip" ? "skipped" : "skip"}</button></div>${noteLine}</div>`;
+    }).join("") +
+    `<div class="history" title="Last 14 days">${history.join("")}</div>`;
+  body.querySelectorAll("input[data-i]").forEach(cb => cb.onchange = () => setCheck(items[cb.dataset.i], cb.checked ? "done" : null));
+  body.querySelectorAll("[data-skip]").forEach(b => b.onclick = () => {
+    const it = items[b.dataset.skip];
+    if (checkState(it) === "skip") { noteOpen = null; setCheck(it, null); }
+    else { noteOpen = it; setCheck(it, "skip"); }
+  });
+  body.querySelectorAll("[data-note-open]").forEach(b => b.onclick = () => { noteOpen = items[b.dataset.noteOpen]; renderChecklist(); });
+  const saveNote = i => { const it = items[i]; noteOpen = null; setCheck(it, "skip", body.querySelector(`[data-note="${i}"]`).value); toast("Reason saved"); };
+  body.querySelectorAll("[data-note-save]").forEach(b => b.onclick = () => saveNote(b.dataset.noteSave));
+  body.querySelectorAll("input[data-note]").forEach(inp => {
+    inp.onkeydown = e => { if (e.key === "Enter") saveNote(inp.dataset.note); if (e.key === "Escape") { noteOpen = null; renderChecklist(); } };
+    if (noteOpen === items[inp.dataset.note]) setTimeout(() => inp.focus(), 0);
+  });
+}
+
+function renderStreak() {
+  let streak = 0;
+  const d = new Date(now);
+  if (dayRatio(dayKey(d)) < 1) d.setDate(d.getDate() - 1);  // today still in progress
+  while (dayRatio(dayKey(d)) >= 1) { streak++; d.setDate(d.getDate() - 1); }
+  const el = $("#streak");
+  el.hidden = streak === 0;
+  el.textContent = `🔥 ${streak}-day streak`;
+}
+
+function renderWeight() {
+  const el = $("#card-weight"), w = plan.weight;
+  el.innerHTML = cardHead("Weight", "weight") + `<div id="w-body"></div>`;
+  wireEditBtn(el);
+  const body = $("#w-body");
+  if (editing.has("weight")) {
+    body.innerHTML = `<div class="editor">
+      <label class="lbl">Starting weight (lb)</label><input class="txt" id="w-start" value="${esc(w.start)}">
+      <label class="lbl">Start date</label><input class="txt" id="w-date" type="date" value="${esc(w.startDate)}">
+      <label class="lbl">Target</label><input class="txt" id="w-target" value="${esc(w.target)}">
+      <label class="lbl">Lowest ever (lb)</label><input class="txt" id="w-best" value="${esc(w.best)}">
+      <div class="foot"><span></span><span><button class="sm" id="w-cancel">Cancel</button> <button class="sm primary" id="w-save">Save</button></span></div></div>`;
+    $("#w-cancel").onclick = () => { editing.delete("weight"); renderWeight(); };
+    $("#w-save").onclick = () => {
+      plan.weight = { start: parseFloat($("#w-start").value) || w.start, startDate: $("#w-date").value || w.startDate, target: $("#w-target").value.trim(), best: parseFloat($("#w-best").value) || w.best };
+      savePlan("Weight settings saved"); editing.delete("weight"); renderWeight();
+    };
+    return;
+  }
+  const last = weights.at(-1);
+  const todayEntry = weights.find(x => x.date === todayKey);
+  const cur = last ? last.lb : w.start;
+  const delta = +(cur - w.start).toFixed(1);
+  body.innerHTML = `
+    <div class="big">${esc(cur)} lb</div>
+    <div class="small ${delta < 0 ? "delta-down" : delta > 0 ? "delta-up" : "muted"}">${delta === 0 ? "No change" : (delta < 0 ? "▼ " : "▲ ") + Math.abs(delta) + " lb"} since ${esc(w.startDate)}${last ? ` · last logged ${esc(last.date)}` : ""}</div>
+    ${spark()}
+    <div class="weight-row" style="margin-top:10px">
+      <input class="txt" id="w-in" type="number" step="0.1" placeholder="Today's lb" value="${todayEntry ? todayEntry.lb : ""}">
+      <button class="sm primary" id="w-log">${todayEntry ? "Update" : "Log"}</button>
+      ${todayEntry ? `<button class="sm ghost" id="w-del">Remove today</button>` : ""}
+    </div>
+    <p class="small muted" style="margin:10px 0 0">Target ${esc(w.target)} lb · lowest ever ${esc(w.best)} lb. Also log it in MyFitnessPal.</p>`;
+  const log = async () => {
+    const lb = parseFloat($("#w-in").value);
+    if (!(lb > 50 && lb < 700)) return toast("Enter a weight in lb", true);
+    try {
+      await post("/api/weights", { date: todayKey, lb });
+      weights = weights.filter(x => x.date !== todayKey).concat({ date: todayKey, lb: Math.round(lb * 10) / 10 }).sort((a, b) => a.date.localeCompare(b.date));
+      toast("Weight logged");
+      const weighIn = plan.checklist.find(i => /weigh/i.test(i));
+      if (weighIn && !checkState(weighIn)) setCheck(weighIn, "done");
+      renderWeight();
+    } catch (e) { toast(e.message, true); }
+  };
+  $("#w-log").onclick = log;
+  $("#w-in").onkeydown = e => { if (e.key === "Enter") log(); };
+  const del = $("#w-del");
+  if (del) del.onclick = async () => {
+    try { await post("/api/weights", { date: todayKey, lb: null }); weights = weights.filter(x => x.date !== todayKey); renderWeight(); }
+    catch (e) { toast(e.message, true); }
+  };
+}
+
+function spark() {
+  const pts = [{ date: plan.weight.startDate, lb: plan.weight.start }, ...weights.filter(x => x.date > plan.weight.startDate)].slice(-60);
+  if (pts.length < 2) return `<p class="small muted" style="margin:8px 0 0">Log a few weigh-ins to see your trend.</p>`;
+  const lbs = pts.map(p => p.lb), min = Math.min(...lbs) - 1, max = Math.max(...lbs) + 1;
+  const W = 300, H = 60, x = i => (i / (pts.length - 1)) * W, y = v => H - ((v - min) / (max - min)) * H;
+  const d = pts.map((p, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(p.lb).toFixed(1)}`).join(" ");
+  return `<svg class="spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none"><path d="${d}" fill="none" stroke="var(--accent)" stroke-width="2" vector-effect="non-scaling-stroke"/></svg>`;
+}
+
+function renderGoals() {
+  const el = $("#card-goals");
+  el.innerHTML = cardHead("Daily goals", "goals") + `<div id="g-body"></div>`;
+  wireEditBtn(el);
+  const body = $("#g-body");
+  if (editing.has("goals")) {
+    rowEditor(body, plan.goals, [{ key: "label", placeholder: "Nutrient" }, { key: "value", placeholder: "Value", narrow: true }, { key: "unit", placeholder: "Unit", narrow: true }], rows => {
+      if (rows) { plan.goals = rows.map(([label, value, unit]) => ({ label, value, unit })); savePlan("Goals saved"); }
+      editing.delete("goals"); renderGoals();
+    }, "Add goal");
+    return;
+  }
+  body.innerHTML = `<div class="goals">${plan.goals.map(g => `<div class="goal"><b>${esc(g.value)}</b><span>${esc(g.label)}${g.unit ? " · " + esc(g.unit) : ""}</span></div>`).join("")}</div>
+    <p class="small muted" style="margin:10px 0 0">Change the calorie and macro goals in MyFitnessPal too.</p>`;
+}
+
+function renderWeek() {
+  const el = $("#card-week");
+  el.innerHTML = cardHead("This week", "week") + `<div id="wk-body"></div>`;
+  wireEditBtn(el);
+  const body = $("#wk-body");
+  const keys = Object.keys(plan.sessions);
+  if (editing.has("week")) {
+    body.innerHTML = `<div class="editor">${WEEK_ORDER.map(i => `<div class="row"><span style="flex:0 0 96px">${DAYS[i]}</span>
+        <select class="txt" data-day="${DAYS[i]}" style="flex:1">${keys.map(k => `<option value="${esc(k)}"${plan.schedule[DAYS[i]] === k ? " selected" : ""}>${esc(plan.sessions[k].title)}</option>`).join("")}</select></div>`).join("")}
+      <div class="row" style="margin-top:12px"><input class="txt" id="new-session" placeholder="New session name (e.g. Mountain bike)"><button class="sm" id="add-session">Add</button></div>
+      <div class="foot"><span class="small muted">Edit a session's exercises from “Today's training” on its day.</span>
+        <span><button class="sm" id="wk-cancel">Cancel</button> <button class="sm primary" id="wk-save">Save</button></span></div></div>`;
+    $("#add-session").onclick = () => {
+      const title = $("#new-session").value.trim();
+      if (!title) return;
+      let k = title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "session";
+      while (plan.sessions[k]) k += "-2";
+      plan.sessions[k] = { title };
+      body.querySelectorAll("select").forEach(s => s.add(new Option(title, k)));
+      $("#new-session").value = "";
+      toast(`Added “${title}”. Pick it for a day, then Save.`);
+    };
+    $("#wk-cancel").onclick = () => { editing.delete("week"); renderToday(); };
+    $("#wk-save").onclick = () => {
+      body.querySelectorAll("select").forEach(s => plan.schedule[s.dataset.day] = s.value);
+      savePlan("Schedule saved"); editing.delete("week"); renderToday();
+    };
+    return;
+  }
+  body.innerHTML = `<table class="ex week">${WEEK_ORDER.map(i => {
+    const sess = plan.sessions[plan.schedule[DAYS[i]]];
+    return `<tr${i === now.getDay() ? ' class="cur"' : ""}><td>${DAYS[i]}</td><td>${esc(sess ? sess.title : "—")}</td></tr>`;
+  }).join("")}</table>`;
+}
+
+function renderNotes() {
+  const el = $("#card-notes");
+  el.innerHTML = cardHead("Reminders", "notes") + `<div id="n-body"></div>`;
+  wireEditBtn(el);
+  const body = $("#n-body");
+  if (editing.has("notes")) {
+    rowEditor(body, plan.notes, [{ placeholder: "Reminder" }], rows => {
+      if (rows) { plan.notes = rows.map(r => r[0]); savePlan("Reminders saved"); }
+      editing.delete("notes"); renderNotes();
+    }, "Add reminder");
+    return;
+  }
+  body.innerHTML = plan.notes.length ? `<ul class="notes">${plan.notes.map(n => `<li>${esc(n)}</li>`).join("")}</ul>` : `<p class="muted">No reminders yet.</p>`;
+}
+
+// ---------- tasks ----------
+function twDate(s) { return s ? new Date(s.replace(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z$/, "$1-$2-$3T$4:$5:$6Z")) : null; }
+function startOfDay(d) { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; }
+// Taskwarrior date -> what goes in an edit box: "2026-10-21", or "2026-10-21T14:30" when it has a real time.
+function twInput(s) {
+  const d = twDate(s); if (!d) return "";
+  const pad = n => String(n).padStart(2, "0");
+  const day = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const hm = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return hm === "00:00" || hm === "23:59" ? day : `${day}T${hm}`;
+}
+const fmtDay = d => d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+
+let allTasks = null;          // every task (any status), for Completed/Deleted views and History
+let taskView = "pending";     // pending | completed | deleted
+let openEditor = null;        // uuid of the task whose editor is open
+let doneLimit = 50;
+
+// Recurring tasks pile up one pending copy per missed occurrence; show each series once.
+function groupTasks(list) {
+  const groups = new Map();
+  for (const t of list) {
+    const key = t.parent || t.uuid;
+    const g = groups.get(key);
+    const due = twDate(t.due);
+    if (!g) groups.set(key, { ...t, dueDate: due, copies: 1, overdueCopies: 0 });
+    else {
+      g.copies++;
+      if (due && (!g.dueDate || due < g.dueDate)) Object.assign(g, { ...t, dueDate: due, copies: g.copies, overdueCopies: g.overdueCopies });
+    }
+  }
+  const today = startOfDay(now);
+  for (const g of groups.values()) g.overdueUuids = [];
+  for (const t of list) {
+    const d = twDate(t.due);
+    if (d && d < today) {
+      const g = groups.get(t.parent || t.uuid);
+      g.overdueCopies++;
+      g.overdueUuids.push(t.uuid);
+    }
+  }
+  return [...groups.values()];
+}
+
+function bucket(t) {
+  if (!t.dueDate) return "none";
+  const today = startOfDay(now), tomorrow = new Date(today); tomorrow.setDate(today.getDate() + 1);
+  const week = new Date(today); week.setDate(today.getDate() + 7);
+  if (t.dueDate < today) return "overdue";
+  if (t.dueDate < tomorrow) return "today";
+  if (t.dueDate < week) return "week";
+  return "later";
+}
+
+function badgesFor(t) {
+  return [
+    t.priority ? `<span class="badge pri-${esc(t.priority)}">${{ H: "high", M: "medium", L: "low" }[t.priority] || esc(t.priority)}</span>` : "",
+    t.project ? `<span class="badge">${esc(t.project)}</span>` : "",
+    t.recur ? `<span class="badge">↻ ${esc(t.recur)}</span>` : "",
+    t.overdueCopies > 1 ? `<span class="badge warn">${t.overdueCopies} missed</span>` : "",
+    t.start && t.status === "pending" ? `<span class="badge active">active</span>` : "",
+    t.annotations?.length ? `<span class="badge" title="${esc(t.annotations.map(a => a.description).join("\n"))}">✎ ${t.annotations.length}</span>` : "",
+    ...(t.tags || []).map(x => `<span class="badge">+${esc(x)}</span>`),
+  ].join("");
+}
+
+function taskRow(t) {
+  const b = bucket(t);
+  const dueText = t.dueDate ? (b === "overdue" ? "was due " : "due ") + esc(fmtDay(t.dueDate)) : "no due date";
+  // Recurring series: skip every missed copy (or today's copy) so only the next one is left.
+  // One-off task: dismiss it. Both ask for an optional reason, saved as a Taskwarrior annotation.
+  const skipBtn = (uuids, label) => `<button class="sm ghost" data-act="skip" data-uuids="${uuids.join(",")}" data-name="${esc(t.description)}">${label}</button>`;
+  const dismiss = t.recur
+    ? (t.overdueCopies ? skipBtn(t.overdueUuids, `Skip ${t.overdueCopies} missed`) : b === "today" ? skipBtn([t.uuid], "Skip today") : "")
+    : `<button class="sm ghost" data-act="dismiss" data-uuids="${t.uuid}" data-name="${esc(t.description)}">Dismiss</button>`;
+  return `<div class="task" data-task="${t.uuid}">
+    <div class="title" data-open="${t.uuid}" title="Click to edit">${esc(t.description)}</div>
+    <div class="meta"><span>${dueText}</span>${badgesFor(t)}</div>
+    <div class="actions">
+      <button class="sm primary" data-act="done" data-uuid="${t.uuid}" title="${t.copies > 1 ? "Completes the oldest copy" : ""}">Done</button>
+      <button class="sm" data-act="done-on" data-uuid="${t.uuid}" data-due="${t.dueDate ? dayKey(t.dueDate) : ""}" title="Mark done on an earlier day">Done on…</button>
+      ${t.recur && t.overdueCopies ? `<button class="sm" data-act="catchup" data-parent="${t.parent}">Catch up</button>` : ""}
+      <button class="sm" data-act="${t.start ? "stop" : "start"}" data-uuid="${t.uuid}">${t.start ? "Stop" : "Start"}</button>
+      <button class="sm" data-open="${t.uuid}">Edit</button>
+      ${dismiss}
+    </div>
+    ${openEditor === t.uuid ? editorHtml(t) : ""}
+  </div>`;
+}
+
+function closedRow(t) {
+  const end = twDate(t.end);
+  const why = (t.annotations || []).map(a => a.description).find(a => /^(Skipped|Dismissed)/.test(a));
+  return `<div class="task" data-task="${t.uuid}">
+    <div class="title" data-open="${t.uuid}" title="Click to edit">${esc(t.description)}</div>
+    <div class="meta"><span>${t.status === "completed" ? "completed" : "deleted"} ${end ? esc(fmtDay(end)) : ""}</span>${badgesFor(t)}${why ? `<span class="why small">${esc(why)}</span>` : ""}</div>
+    <div class="actions">
+      <button class="sm" data-act="reopen" data-uuid="${t.uuid}">${t.status === "completed" ? "Reopen" : "Restore"}</button>
+      <button class="sm" data-open="${t.uuid}">Edit</button>
+    </div>
+    ${openEditor === t.uuid ? editorHtml(t) : ""}
+  </div>`;
+}
+
+function editorHtml(t) {
+  const field = (name, label, value, ph = "") => `<label><span>${label}</span><input class="txt" name="${name}" value="${esc(value)}" placeholder="${esc(ph)}"></label>`;
+  return `<form class="task-editor" data-editor="${t.uuid}">
+    <label class="wide"><span>Description</span><input class="txt" name="description" value="${esc(t.description)}" maxlength="300" required></label>
+    ${field("project", "Project", t.project || "", "e.g. study")}
+    ${field("tags", "Tags", (t.tags || []).join(" "), "space separated")}
+    <label><span>Priority</span><select class="txt" name="priority">${[["", "None"], ["H", "High"], ["M", "Medium"], ["L", "Low"]].map(([v, l]) => `<option value="${v}"${(t.priority || "") === v ? " selected" : ""}>${l}</option>`).join("")}</select></label>
+    ${t.status === "completed" || t.status === "deleted" ? field("end", t.status === "completed" ? "Completed on" : "Deleted on", twInput(t.end) || "", "2026-10-12T20:00") : ""}
+    ${t.status === "recurring" ? "" : `${field("due", t.parent ? "Due (this copy)" : "Due", twInput(t.due), "today, fri, 2026-10-20")}
+    ${field("scheduled", "Scheduled", twInput(t.scheduled), "when to start")}
+    ${field("wait", "Hide until", twInput(t.wait), "hidden until this date")}`}
+    ${t.status === "pending" || t.status === "recurring" || t.status === "waiting" ? repeatHtml(t) : ""}
+    ${t.parent ? `<div class="wide scope"><span>Apply name, project, tags and priority to</span>
+      <label><input type="radio" name="scope" value="all" checked> every repeat of this task</label>
+      <label><input type="radio" name="scope" value="one"> just this copy</label></div>`
+      : t.status === "recurring" ? `<input type="hidden" name="scope" value="all">` : ""}
+    <div class="wide notes-edit"><span>Notes</span>
+      ${(t.annotations || []).map((a, i) => `<div class="anno"><span class="small muted">${esc(fmtDay(twDate(a.entry)))}</span> <span>${esc(a.description)}</span>
+        <button type="button" class="icon del" data-denotate="${i}" title="Remove note">✕</button></div>`).join("") || `<div class="small muted">No notes yet.</div>`}
+      <div class="anno-add"><input class="txt" name="note" placeholder="Add a note…" maxlength="500"><button type="button" class="sm" data-annotate>Add note</button></div>
+    </div>
+    <div class="wide foot"><span class="small muted">${t.entry ? `added ${esc(fmtDay(twDate(t.entry)))}` : ""} · <code>${esc(t.uuid.slice(0, 8))}</code></span>
+      <span><button type="button" class="sm" data-cancel>Cancel</button> <button class="sm primary">Save</button></span></div>
+  </form>`;
+}
+
+function findTask(uuid) { return tasks.find(t => t.uuid === uuid) || allTasks?.find(t => t.uuid === uuid); }
+
+// ---------- repeat schedules ----------
+// Taskwarrior keeps one hidden "template" per repeating series; "Mon, Wed, Fri" is three series
+// with the same name. A "group" is all templates sharing a name + project.
+const SHORT_DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+function recurInfo(r) {
+  r = String(r || "").toLowerCase();
+  const named = { daily: [1, "d"], day: [1, "d"], weekly: [1, "w"], week: [1, "w"], biweekly: [2, "w"], fortnight: [2, "w"],
+    monthly: [1, "m"], month: [1, "m"], quarterly: [3, "m"], yearly: [1, "y"], annual: [1, "y"], weekdays: [1, "weekdays"] };
+  if (named[r]) return { n: named[r][0], unit: named[r][1] };
+  let m = r.match(/^p(\d+)([dwmy])$/);
+  if (m) { const n = +m[1], u = m[2]; return u === "d" && n % 7 === 0 ? { n: n / 7, unit: "w" } : { n, unit: u }; }
+  m = r.match(/^(\d+)\s*(d|days?|w|wks?|weeks?|mo|mths?|months?|y|yrs?|years?)$/);
+  if (m) { const u = m[2][0] === "m" ? "m" : m[2][0]; return u === "d" && +m[1] % 7 === 0 ? { n: +m[1] / 7, unit: "w" } : { n: +m[1], unit: u }; }
+  return { n: 0, unit: r };
+}
+function templateOf(t) { return !t ? null : t.status === "recurring" ? t : t.parent ? allTasks?.find(x => x.uuid === t.parent) : null; }
+function groupOf(t) {
+  const tpl = templateOf(t);
+  if (!tpl || !allTasks) return [];
+  return allTasks.filter(x => x.status === "recurring" && x.description === tpl.description && (x.project || "") === (tpl.project || ""));
+}
+function scheduleSummary(group) {
+  if (!group.length) return "Doesn't repeat";
+  const infos = group.map(g => ({ ...recurInfo(g.recur), day: twDate(g.due)?.getDay(), due: twDate(g.due) }));
+  if (infos.every(i => i.unit === "w" && i.n === infos[0].n)) {
+    const days = [...new Set(infos.map(i => i.day))].sort().map(d => SHORT_DAYS[d]).join(", ");
+    return `${infos[0].n === 1 ? "Every week" : `Every ${infos[0].n} weeks`} on ${days}`;
+  }
+  return infos.map(i => i.unit === "d" ? (i.n === 1 ? "Every day" : `Every ${i.n} days`)
+    : i.unit === "m" ? `${i.n === 1 ? "Monthly" : `Every ${i.n} months`} on the ${i.due ? ordinal(i.due.getDate()) : "same day"}`
+    : i.unit === "w" ? `Every ${i.n === 1 ? "week" : i.n + " weeks"} on ${SHORT_DAYS[i.day]}`
+    : i.unit === "y" ? "Yearly" : i.unit === "weekdays" ? "Every weekday" : `Repeats (${esc(i.unit)})`).join(" + ");
+}
+const ordinal = n => n + (n % 10 === 1 && n !== 11 ? "st" : n % 10 === 2 && n !== 12 ? "nd" : n % 10 === 3 && n !== 13 ? "rd" : "th");
+function nextDueOf(group) {
+  const ids = new Set(group.map(g => g.uuid));
+  return tasks.filter(t => ids.has(t.parent)).map(t => twDate(t.due)).filter(Boolean).sort((a, b) => a - b)[0] || null;
+}
+// Starting values for the schedule form, from the current schedule.
+function ruleFrom(group, t) {
+  const next = nextDueOf(group) || twDate(t.due) || new Date();
+  const info = group.length ? recurInfo(group[0].recur) : { n: 1, unit: "w" };
+  const type = info.unit === "d" ? "days" : info.unit === "m" ? "monthly" : "weekly";
+  const days = group.length && info.unit === "w" ? [...new Set(group.map(g => twDate(g.due).getDay()))] : [next.getDay()];
+  return { type, every: info.n || 1, days, start: dayKey(next) };
+}
+// Next few dates a rule would produce (for the preview line); mirrors the server's series_plan.
+function previewRule(r) {
+  const today = startOfDay(now), out = [];
+  let start = new Date(r.start + "T12:00:00"); if (isNaN(start)) start = new Date(today);
+  if (r.type === "days") { while (start < today) start.setDate(start.getDate() + r.every); for (let i = 0; i < 4; i++) { out.push(new Date(start)); start.setDate(start.getDate() + r.every); } }
+  else if (r.type === "weekly") {
+    for (const d of r.days) {
+      const f = new Date(start); f.setDate(f.getDate() + ((d - f.getDay() + 7) % 7));
+      while (f < today) f.setDate(f.getDate() + 7 * r.every);
+      for (let i = 0; i < 4; i++) { out.push(new Date(f)); f.setDate(f.getDate() + 7 * r.every); }
+    }
+    out.sort((a, b) => a - b); out.length = Math.min(out.length, 5);
+  } else { const f = new Date(start); f.setDate(Math.min(f.getDate(), 28)); while (f < today) f.setMonth(f.getMonth() + 1); for (let i = 0; i < 3; i++) { out.push(new Date(f)); f.setMonth(f.getMonth() + 1); } }
+  return out;
+}
+
+function repeatHtml(t) {
+  const group = groupOf(t), r = ruleFrom(group, t);
+  return `<div class="wide repeat" data-rule='${esc(JSON.stringify(r))}'>
+    <span>Repeat</span>
+    <div class="rep-summary"><b>${esc(scheduleSummary(group))}</b>${group.length ? ` <span class="small muted">· next ${esc(fmtDay(nextDueOf(group) || twDate(t.due) || now))}</span>` : ""}
+      <button type="button" class="sm" data-rep-open>${group.length ? "Change schedule" : "Make it repeat"}</button></div>
+    <div class="rep-form" hidden>
+      <div class="seg rep-type"><button type="button" data-rtype="days">Every N days</button><button type="button" data-rtype="weekly">On weekdays</button><button type="button" data-rtype="monthly">Monthly</button></div>
+      <div class="rep-row" data-show="days">Every <input class="txt num" type="number" min="1" max="60" data-every-days> day(s)</div>
+      <div class="rep-row" data-show="weekly"><span class="daypick">${SHORT_DAYS.map((d, i) => `<button type="button" data-wd="${i}">${d}</button>`).join("")}</span>
+        every <select class="txt" data-every-weeks>${[1, 2, 3, 4].map(n => `<option value="${n}">${n === 1 ? "week" : n === 2 ? "2 weeks (every other)" : n + " weeks"}</option>`).join("")}</select></div>
+      <div class="rep-row" data-show="monthly">On the same day each month as the start date.</div>
+      <div class="rep-row">Starting <input class="txt" type="date" data-start></div>
+      <div class="rep-preview small muted"></div>
+      <div class="rep-actions">${group.length ? `<button type="button" class="sm ghost" data-rep-stop>Stop repeating</button>` : "<span></span>"}
+        <span><button type="button" class="sm" data-rep-cancel>Cancel</button> <button type="button" class="sm primary" data-rep-save>Save schedule</button></span></div>
+      <div class="small muted">Saving rebuilds the repeating series in Taskwarrior; missed copies of the old schedule are removed.</div>
+    </div>
+  </div>`;
+}
+
+function wireRepeat(form, t) {
+  const box = form.querySelector(".repeat");
+  if (!box) return;
+  const rule = JSON.parse(box.dataset.rule), group = groupOf(t);
+  const q = s => box.querySelector(s);
+  const draw = () => {
+    box.querySelectorAll("[data-rtype]").forEach(b => b.classList.toggle("on", b.dataset.rtype === rule.type));
+    box.querySelectorAll("[data-show]").forEach(row => row.hidden = row.dataset.show !== rule.type);
+    box.querySelectorAll("[data-wd]").forEach(b => b.classList.toggle("on", rule.days.includes(+b.dataset.wd)));
+    const dates = previewRule(rule);
+    q(".rep-preview").textContent = dates.length ? "Next: " + dates.map(fmtDay).join(", ") + "…" : "";
+  };
+  q("[data-every-days]").value = rule.type === "days" ? rule.every : 1;
+  q("[data-every-weeks]").value = rule.type === "weekly" ? Math.min(rule.every, 4) : 1;
+  q("[data-start]").value = rule.start;
+  q("[data-rep-open]").onclick = () => { q(".rep-form").hidden = false; q(".rep-summary").hidden = true; draw(); };
+  q("[data-rep-cancel]").onclick = () => { q(".rep-form").hidden = true; q(".rep-summary").hidden = false; };
+  box.querySelectorAll("[data-rtype]").forEach(b => b.onclick = () => {
+    rule.type = b.dataset.rtype;
+    rule.every = rule.type === "days" ? +q("[data-every-days]").value || 1 : rule.type === "weekly" ? +q("[data-every-weeks]").value : 1;
+    draw();
+  });
+  box.querySelectorAll("[data-wd]").forEach(b => b.onclick = () => {
+    const d = +b.dataset.wd;
+    rule.days = rule.days.includes(d) ? rule.days.filter(x => x !== d) : [...rule.days, d];
+    draw();
+  });
+  q("[data-every-days]").oninput = e => { rule.every = Math.max(1, Math.min(60, +e.target.value || 1)); draw(); };
+  q("[data-every-weeks]").onchange = e => { rule.every = +e.target.value; draw(); };
+  q("[data-start]").onchange = e => { rule.start = e.target.value; draw(); };
+  q("[data-rep-save]").onclick = async () => {
+    if (rule.type === "weekly" && !rule.days.length) return toast("Pick at least one day", true);
+    try {
+      const r = await post("/api/series/schedule", { source: t.uuid, templates: group.map(g => g.uuid), rule: { ...rule, every: rule.type === "monthly" ? 1 : rule.every } });
+      openEditor = null; toast(`Schedule saved${r.series > 1 ? ` (${r.series} weekly series)` : ""}`, false, true); await refreshTasks();
+    } catch (e) { toast(e.message, true); }
+  };
+  const stop = q("[data-rep-stop]");
+  if (stop) stop.onclick = async () => {
+    if (!confirm(`Stop repeating “${t.description}”? Its pending copies are removed too.`)) return;
+    try { await post("/api/series/stop", { templates: group.map(g => g.uuid) }); openEditor = null; toast("No longer repeats", false, true); await refreshTasks(); }
+    catch (e) { toast(e.message, true); }
+  };
+}
+
+function wireEditor(el) {
+  el.querySelectorAll("form[data-editor]").forEach(form => {
+    const t = findTask(form.dataset.editor);
+    if (!t) return;
+    form.querySelector("[data-cancel]").onclick = () => { openEditor = null; renderAllTaskViews(); };
+    wireRepeat(form, t);
+    form.querySelectorAll("[data-denotate]").forEach(b => b.onclick = async () => {
+      const a = t.annotations[+b.dataset.denotate];
+      try { await post("/api/tasks/denotate", { uuid: t.uuid, text: a.description }); toast("Note removed", false, true); await refreshTasks(); }
+      catch (e) { toast(e.message, true); }
+    });
+    const addNote = async () => {
+      const text = form.note.value.trim(); if (!text) return;
+      try { await post("/api/tasks/annotate", { uuid: t.uuid, text }); toast("Note added", false, true); await refreshTasks(); }
+      catch (e) { toast(e.message, true); }
+    };
+    form.querySelector("[data-annotate]").onclick = addNote;
+    form.note.onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); addNote(); } };
+    form.onsubmit = async e => {
+      e.preventDefault();
+      // Send only what changed.
+      const f = {}, v = n => form[n].value.trim();
+      if (v("description") !== t.description) f.description = v("description");
+      if (v("project") !== (t.project || "")) f.project = v("project");
+      if (v("priority") !== (t.priority || "")) f.priority = v("priority");
+      for (const k of ["due", "scheduled", "wait", "end"]) if (form[k] && v(k) !== twInput(t[k])) f[k] = v(k);
+      const oldTags = new Set(t.tags || []), newTags = new Set(v("tags").split(/[\s,]+/).map(s => s.replace(/^\+/, "")).filter(Boolean));
+      const add = [...newTags].filter(x => !oldTags.has(x)), rem = [...oldTags].filter(x => !newTags.has(x));
+      if (add.length) f.tags_add = add;
+      if (rem.length) f.tags_remove = rem;
+      if (!Object.keys(f).length) { openEditor = null; renderAllTaskViews(); return; }
+      try {
+        await post("/api/tasks/modify", { uuid: t.uuid, fields: f, scope: form.scope?.value || "one", templates: groupOf(t).map(g => g.uuid) });
+        openEditor = null; toast("Saved", false, true); await refreshTasks();
+      } catch (err) { toast(err.message, true); }
+    };
+  });
+}
+
+function wire(el) {
+  el.querySelectorAll("[data-open]").forEach(x => x.onclick = () => {
+    openEditor = openEditor === x.dataset.open ? null : x.dataset.open;
+    renderAllTaskViews();
+    if (openEditor) el.querySelector(`form[data-editor="${openEditor}"] input[name=description]`)?.focus();
+  });
+  el.querySelectorAll("button[data-act]").forEach(btn => btn.onclick = async () => {
+    const act = btn.dataset.act;
+    if (act === "skip" || act === "dismiss") return askReason(btn, act);
+    if (act === "done-on") return askDoneOn(btn);
+    if (act === "catchup") return askCatchUp(btn);
+    btn.disabled = true;
+    try {
+      await post("/api/tasks/" + act, { uuid: btn.dataset.uuid });
+      toast({ done: "Done ✓", start: "Started", stop: "Stopped", reopen: "Reopened" }[act], false, true);
+      await refreshTasks(); loadTime();
+    } catch (e) { toast("Taskwarrior: " + e.message, true); btn.disabled = false; }
+  });
+  wireEditor(el);
+}
+
+// Panels that open under a task's buttons (one at a time per task).
+function openPanel(btn, cls, html) {
+  const actions = btn.closest(".actions");
+  actions.parentElement.querySelectorAll(".reason, .panel").forEach(x => x.remove());
+  const box = document.createElement("div");
+  box.className = "panel " + cls;
+  box.innerHTML = html;
+  actions.after(box);
+  return box;
+}
+const hhmm = d => `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+
+// "Done on…": complete as of an earlier day/time, optionally logging how long it took.
+function askDoneOn(btn) {
+  const due = btn.dataset.due, past = due && due < todayKey;
+  const day = past ? due : todayKey;
+  const box = openPanel(btn, "done-on", `
+    <label>Done on <input class="txt" type="date" data-d value="${day}" max="${todayKey}"></label>
+    <label>at <input class="txt" type="time" data-t value="${day === todayKey ? hhmm(new Date()) : "20:00"}"></label>
+    <label>took <input class="txt num" type="number" min="1" max="1440" data-m placeholder="min"> min <span class="small muted">(optional, logs time)</span></label>
+    <span><button class="sm primary" data-ok>Mark done</button> <button class="sm" data-x>Cancel</button></span>`);
+  const q = s => box.querySelector(s);
+  q("[data-d]").onchange = e => { if (e.target.value !== todayKey && q("[data-t]").value === hhmm(new Date())) q("[data-t]").value = "20:00"; };
+  q("[data-x]").onclick = () => box.remove();
+  q("[data-ok]").onclick = async () => {
+    const d = q("[data-d]").value, t = q("[data-t]").value || "20:00", m = parseInt(q("[data-m]").value) || null;
+    if (!d) return toast("Pick a date", true);
+    if (d > todayKey) return toast("That's in the future", true);
+    q("[data-ok]").disabled = true;
+    try {
+      const r = await post("/api/tasks/done_at", { uuid: btn.dataset.uuid, end: `${d}T${t}`, minutes: m });
+      r.warning ? toast(r.warning, true) : toast(`Marked done on ${fmtDay(new Date(d + "T12:00:00"))}${m ? ` · ${m} min logged` : ""}`, false, true);
+      await refreshTasks(); loadTime(); loadTimeLog();
+    } catch (e) { toast(e.message, true); q("[data-ok]").disabled = false; }
+  };
+}
+
+// "Catch up": go through each missed copy of a repeating task and mark it done that day or skip it.
+function askCatchUp(btn) {
+  const today = startOfDay(now);
+  const missed = tasks.filter(t => t.parent === btn.dataset.parent && twDate(t.due) < today).sort((a, b) => a.due.localeCompare(b.due));
+  const box = openPanel(btn, "catchup", `
+    <div class="small muted">Mark each missed day as done (on that day) or skip it.
+      Minutes per session <input class="txt num" type="number" min="1" max="1440" data-m placeholder="min"> <span>(optional, logs time)</span></div>
+    ${missed.map(t => `<div class="cu-row" data-u="${t.uuid}" data-day="${dayKey(twDate(t.due))}"><span>${esc(fmtDay(twDate(t.due)))}</span>
+      <span class="cu-btns"><button class="sm primary" data-cu="done">Done that day</button><button class="sm ghost" data-cu="skip">Skip</button></span></div>`).join("")}
+    <div class="rep-actions"><button class="sm ghost" data-skip-rest>Skip all remaining</button><button class="sm" data-close>Close</button></div>`);
+  let changed = false;
+  const finish = async () => { box.remove(); if (changed) { await refreshTasks(); loadTime(); loadTimeLog(); } };
+  const act = async (row, kind) => {
+    row.querySelectorAll("button").forEach(b => b.disabled = true);
+    const m = parseInt(box.querySelector("[data-m]").value) || null;
+    try {
+      if (kind === "done") {
+        const r = await post("/api/tasks/done_at", { uuid: row.dataset.u, end: `${row.dataset.day}T20:00`, minutes: m });
+        row.querySelector(".cu-btns").innerHTML = `<span class="ok">✓ done${m ? ` · ${m} min` : ""}</span>${r.warning ? ` <span class="err small">${esc(r.warning)}</span>` : ""}`;
+      } else {
+        await post("/api/tasks/skip", { uuids: [row.dataset.u], note: "", kind: "skip" });
+        row.querySelector(".cu-btns").innerHTML = `<span class="why">↷ skipped</span>`;
+      }
+      row.classList.add("handled"); changed = true;
+    } catch (e) { toast(e.message, true); row.querySelectorAll("button").forEach(b => b.disabled = false); }
+  };
+  box.querySelectorAll("[data-cu]").forEach(b => b.onclick = () => act(b.closest(".cu-row"), b.dataset.cu));
+  box.querySelector("[data-skip-rest]").onclick = async () => {
+    const rest = [...box.querySelectorAll(".cu-row:not(.handled)")];
+    if (!rest.length) return finish();
+    try { await post("/api/tasks/skip", { uuids: rest.map(r => r.dataset.u), note: "", kind: "skip" }); changed = true; toast(`Skipped ${rest.length}`, false, true); }
+    catch (e) { return toast(e.message, true); }
+    finish();
+  };
+  box.querySelector("[data-close]").onclick = finish;
+}
+
+// Inline "why?" box under the task's buttons. The reason is optional.
+function askReason(btn, act) {
+  const actions = btn.closest(".actions");
+  actions.parentElement.querySelectorAll(".reason, .panel").forEach(x => x.remove());
+  const uuids = btn.dataset.uuids.split(",");
+  const what = act === "dismiss" ? "Dismiss" : uuids.length > 1 ? `Skip ${uuids.length}` : "Skip";
+  const box = document.createElement("div");
+  box.className = "reason";
+  box.innerHTML = `<input class="txt" maxlength="300" placeholder="Why? e.g. sick, worked late, rest day (optional)">
+    <button class="sm primary">${what}</button><button class="sm">Cancel</button>`;
+  actions.after(box);
+  const [input, ok, cancel] = box.children;
+  input.focus();
+  cancel.onclick = () => box.remove();
+  const go = async () => {
+    ok.disabled = true;
+    try {
+      await post("/api/tasks/skip", { uuids, note: input.value, kind: act });
+      toast(act === "dismiss" ? "Dismissed" : `Skipped${uuids.length > 1 ? " " + uuids.length : ""}${input.value.trim() ? " · reason saved" : ""}`, false, true);
+      await refreshTasks();
+    } catch (e) { toast("Taskwarrior: " + e.message, true); ok.disabled = false; }
+  };
+  ok.onclick = go;
+  input.onkeydown = e => { if (e.key === "Enter") go(); if (e.key === "Escape") box.remove(); };
+}
+
+function matches(t, q) { return !q || `${t.description} ${t.project || ""} ${(t.tags || []).join(" ")} ${(t.annotations || []).map(a => a.description).join(" ")}`.toLowerCase().includes(q); }
+
+function renderTasks() {
+  const grouped = groupTasks(tasks).sort((a, b) => (a.dueDate || Infinity) - (b.dueDate || Infinity) || b.urgency - a.urgency);
+  const q = $("#filter").value.toLowerCase();
+  const el = $("#all-tasks");
+  el.classList.remove("muted");
+  document.querySelectorAll("#task-views button").forEach(b => b.classList.toggle("on", b.dataset.view === taskView));
+  if (taskView === "pending") {
+    const shown = grouped.filter(t => matches(t, q));
+    const sections = [["overdue", "Overdue"], ["today", "Due today"], ["week", "Next 7 days"], ["later", "Later"], ["none", "No due date"]];
+    el.innerHTML = shown.length ? sections.map(([k, label]) => {
+      const items = shown.filter(t => bucket(t) === k);
+      return items.length ? `<div class="section-title${k === "overdue" ? " warn" : ""}">${label} · ${items.length}</div>` + items.map(taskRow).join("") : "";
+    }).join("") : `<p class="muted">No pending tasks${q ? " match" : ""}.</p>`;
+  } else if (!allTasks) {
+    el.innerHTML = `<p class="muted">Loading…</p>`;
+  } else if (taskView === "repeating") {
+    el.innerHTML = renderRepeating(q);
+  } else {
+    // Copies of a repeating task are one row (expandable). In Deleted, copies Taskwarrior or a
+    // reschedule removed without a reason are hidden unless asked for.
+    const why = t => (t.annotations || []).some(a => /^(Skipped|Dismissed)/.test(a.description));
+    let list = allTasks.filter(t => t.status === taskView && matches(t, q));
+    let hidden = 0;
+    if (taskView === "deleted" && !showAutoDeleted) {
+      const keep = list.filter(t => !((t.parent || t.recur) && !why(t)));
+      hidden = list.length - keep.length; list = keep;
+    }
+    const groups = new Map();
+    for (const t of list) {
+      const key = t.parent || t.recur ? "r|" + t.description + "|" + (t.project || "") : t.uuid;
+      if (!groups.has(key)) groups.set(key, { key, items: [] });
+      groups.get(key).items.push(t);
+    }
+    const rows = [...groups.values()].map(g => (g.items.sort((a, b) => (b.end || "").localeCompare(a.end || "")), g))
+      .sort((a, b) => (b.items[0].end || "").localeCompare(a.items[0].end || ""));
+    el.innerHTML = (taskView === "deleted" ? `<label class="small muted toggle"><input type="checkbox" id="show-auto"${showAutoDeleted ? " checked" : ""}> Show repeat copies removed without a reason${hidden ? ` (${hidden} hidden)` : ""}</label>` : "") +
+      (rows.length
+        ? `<div class="section-title">${list.length} ${taskView}${rows.length !== list.length ? ` · ${rows.length} tasks` : ""}</div>` + rows.slice(0, doneLimit).map(groupRow).join("") +
+          (rows.length > doneLimit ? `<button class="sm" id="more-done" style="margin-top:10px">Show ${Math.min(50, rows.length - doneLimit)} more</button>` : "")
+        : `<p class="muted">No ${taskView} tasks${q ? " match" : ""}.</p>`);
+    const more = $("#more-done"); if (more) more.onclick = () => { doneLimit += 50; renderTasks(); };
+    const auto = $("#show-auto"); if (auto) auto.onchange = () => { showAutoDeleted = auto.checked; renderTasks(); };
+    el.querySelectorAll("[data-expand]").forEach(b => b.onclick = () => { const k = b.dataset.expand; expanded.has(k) ? expanded.delete(k) : expanded.add(k); renderTasks(); });
+  }
+  wire(el);
+}
+
+let showAutoDeleted = false;
+const expanded = new Set();
+function groupRow(g) {
+  if (g.items.length === 1) return closedRow(g.items[0]);
+  const last = g.items[0], first = g.items.at(-1), verb = last.status === "completed" ? "completed" : "deleted";
+  const open = expanded.has(g.key);
+  return `<div class="task">
+    <div class="title">${esc(last.description)} <span class="badge">×${g.items.length}</span></div>
+    <div class="meta"><span>${verb} ${g.items.length} times · last ${esc(fmtDay(twDate(last.end)))}${first.end ? `, first ${esc(fmtDay(twDate(first.end)))}` : ""}</span>${last.project ? `<span class="badge">${esc(last.project)}</span>` : ""}</div>
+    <div class="actions"><button class="sm" data-expand="${esc(g.key)}">${open ? "Hide copies" : "Show copies"}</button></div>
+    ${open ? `<div class="copies">${g.items.map(t => {
+      const note = (t.annotations || []).map(a => a.description).find(a => /^(Skipped|Dismissed)/.test(a));
+      return `<div class="copy"><span>${esc(fmtDay(twDate(t.end)))}${t.due ? ` <span class="muted small">(was due ${esc(fmtDay(twDate(t.due)))})</span>` : ""}${note ? ` · <span class="why">${esc(note)}</span>` : ""}</span>
+        <button class="sm" data-act="reopen" data-uuid="${t.uuid}">${verb === "completed" ? "Reopen" : "Restore"}</button></div>`;
+    }).join("")}</div>` : ""}
+  </div>`;
+}
+
+// One row per repeating task (all its series together), so you edit the task, not a copy.
+function renderRepeating(q) {
+  const groups = new Map();
+  for (const t of allTasks.filter(t => t.status === "recurring")) {
+    const k = t.description + "|" + (t.project || "");
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(t);
+  }
+  const rows = [...groups.values()].filter(g => matches(g[0], q))
+    .map(g => ({ g, next: nextDueOf(g) })).sort((a, b) => (a.next || Infinity) - (b.next || Infinity));
+  if (!rows.length) return `<p class="muted">No repeating tasks${q ? " match" : ""}. Use “Make it repeat” when editing a task, or pick a repeat when adding one.</p>`;
+  return `<div class="section-title">${rows.length} repeating</div>` + rows.map(({ g, next }) => {
+    const ids = new Set(g.map(x => x.uuid));
+    const rep = tasks.filter(t => ids.has(t.parent)).sort((a, b) => (a.due || "").localeCompare(b.due || ""))[0] || g[0];
+    const missed = tasks.filter(t => ids.has(t.parent) && twDate(t.due) < startOfDay(now)).length;
+    return `<div class="task">
+      <div class="title" data-open="${rep.uuid}" title="Click to edit">${esc(g[0].description)}</div>
+      <div class="meta"><span>${esc(scheduleSummary(g))}${next ? ` · next ${esc(fmtDay(next))}` : ""}</span>${g[0].project ? `<span class="badge">${esc(g[0].project)}</span>` : ""}${missed ? `<span class="badge warn">${missed} missed</span>` : ""}${(g[0].tags || []).map(x => `<span class="badge">+${esc(x)}</span>`).join("")}</div>
+      <div class="actions"><button class="sm" data-open="${rep.uuid}">Edit schedule &amp; details</button></div>
+      ${openEditor === rep.uuid ? editorHtml(rep) : ""}
+    </div>`;
+  }).join("");
+}
+
+function renderTodayTasks() {
+  const urgent = groupTasks(tasks).sort((a, b) => (a.dueDate || Infinity) - (b.dueDate || Infinity)).filter(t => ["overdue", "today"].includes(bucket(t)));
+  const el = $("#today-tasks");
+  el.classList.remove("muted");
+  el.innerHTML = urgent.length ? urgent.map(taskRow).join("") : `<p class="muted">Nothing due today. 🎉</p>`;
+  wire(el);
+}
+
+function renderAllTaskViews() { renderTasks(); renderTodayTasks(); }
+
+async function loadTasks() {
+  try {
+    const r = await fetch("/api/tasks");
+    if (!r.ok) throw new Error((await r.json()).error);
+    tasks = await r.json();
+    renderAllTaskViews();
+  } catch (e) {
+    $("#all-tasks").innerHTML = $("#today-tasks").innerHTML = `<p class="err">Couldn't load Taskwarrior: ${esc(e.message)}</p>`;
+  }
+}
+
+async function loadAllTasks() {
+  try {
+    const r = await fetch("/api/tasks/all");
+    if (!r.ok) throw new Error((await r.json()).error);
+    allTasks = await r.json();
+  } catch (e) { toast("Couldn't load task history: " + e.message, true); return; }
+  $("#projects").innerHTML = [...new Set(allTasks.map(t => t.project).filter(Boolean))].sort().map(p => `<option value="${esc(p)}">`).join("");
+  if (taskView !== "pending") renderTasks();
+  renderHistory(); renderActivity();
+}
+
+async function refreshTasks() { await loadTasks(); loadAllTasks(); }
+
+async function undoLast() {
+  try { await post("/api/tasks/undo", {}); toast("Undone"); await refreshTasks(); loadTime(); }
+  catch (e) { toast("Couldn't undo: " + e.message, true); }
+}
+
+$("#filter").oninput = () => { doneLimit = 50; renderTasks(); };
+document.querySelectorAll("#task-views button").forEach(b => b.onclick = () => { taskView = b.dataset.view; openEditor = null; doneLimit = 50; renderTasks(); });
+$("#undo").onclick = undoLast;
+$("#add").onsubmit = async e => {
+  e.preventDefault();
+  const f = new FormData(e.target);
+  const tags = String(f.get("tags") || "").split(/[\s,]+/).map(s => s.replace(/^\+/, "")).filter(Boolean);
+  try {
+    await post("/api/tasks/add", { description: f.get("description"), project: f.get("project"), due: f.get("due"), priority: f.get("priority"), recur: f.get("recur"), tags });
+    e.target.reset(); toast("Task added", false, true); await refreshTasks();
+  } catch (err) { toast(err.message, true); }
+};
+
+// ---------- history ----------
+// Why things were skipped: checklist skips + tasks deleted with a "Skipped:"/"Dismissed:" note.
+function taskSkips() {
+  const out = [];
+  for (const t of allTasks || []) {
+    if (t.status !== "deleted") continue;
+    for (const a of t.annotations || []) {
+      const text = a.description || "";
+      if (/^(Skipped|Dismissed)/.test(text))
+        out.push({ description: t.description, due: t.due, kind: text.startsWith("Dismissed") ? "dismiss" : "skip", note: text.includes(":") ? text.split(":").slice(1).join(":").trim() : "", at: a.entry });
+    }
+  }
+  return out;
+}
+function loadHistory() { renderHistory(); }
+
+function renderHistory() {
+  const days = new Map();
+  const day = k => { if (!days.has(k)) days.set(k, { checks: [], tasks: new Map() }); return days.get(k); };
+  for (const [k, items] of Object.entries(checklist))
+    for (const [item, v] of Object.entries(items))
+      if (cellState(v) === "skip") day(k).checks.push({ item, note: cellNote(v) });
+  // Task skips, by the day you skipped them. Copies skipped together are one entry.
+  for (const s of taskSkips()) {
+    const k = dayKey(twDate(s.at));
+    const g = day(k).tasks, key = `${s.description}|${s.kind}|${s.note}|${s.at}`;
+    if (!g.has(key)) g.set(key, { ...s, count: 0, dues: [] });
+    const e = g.get(key); e.count++; if (s.due) e.dues.push(twDate(s.due));
+  }
+  const el = $("#history");
+  el.classList.remove("muted");
+  const fmt = d => d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  const keys = [...days.keys()].filter(k => days.get(k).checks.length || days.get(k).tasks.size).sort().reverse();
+  el.innerHTML = keys.length ? keys.map(k => {
+    const d = days.get(k), date = new Date(k + "T12:00:00");
+    const r = dayRatio(k), st = checklist[k] || {};
+    const doneN = plan.checklist.filter(i => cellState(st[i]) === "done").length, skipN = plan.checklist.filter(i => cellState(st[i]) === "skip").length;
+    return `<div class="hist-day"><h3><span>${date.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric", year: "numeric" })}</span>
+        <span class="small muted">${checklist[k] ? `checklist ${doneN} done · ${skipN} skipped${r >= 1 ? " · complete ✓" : ""}` : ""}</span></h3>
+      ${d.checks.map(c => `<div class="hist-item">${esc(c.item)}${c.note ? ` · <span class="why">${esc(c.note)}</span>` : ` <span class="muted small">(no reason)</span>`}</div>`).join("")}
+      ${[...d.tasks.values()].map(t => {
+        const dues = t.dues.sort((a, b) => a - b);
+        const span = t.count > 1 && dues.length ? ` <span class="muted small">${t.count} copies, ${fmt(dues[0])}–${fmt(dues.at(-1))}</span>` : "";
+        return `<div class="hist-item${t.kind === "dismiss" ? " dismiss" : ""}"><b>${esc(t.description)}</b> <span class="badge">task</span>${span}${t.note ? ` · <span class="why">${esc(t.note)}</span>` : ` <span class="muted small">(no reason)</span>`}</div>`;
+      }).join("")}</div>`;
+  }).join("") : `<p class="muted">Nothing skipped yet. When you skip a checklist item or a task, the day and your reason show up here.</p>`;
+}
+
+// ---------- activity: heatmap + feed ----------
+let hmMode = "tasks", selectedDay = null, feedDays = 10, yearIntervals = null;
+try { hmMode = localStorage.getItem("hmMode") || "tasks"; } catch {}
+
+async function loadYearTime() {
+  try { const j = await (await fetch("/api/time?range=year")).json(); yearIntervals = j.available ? j.intervals : []; }
+  catch { yearIntervals = []; }
+  renderActivity();
+}
+
+function hoursByDay() {
+  const m = new Map();
+  for (const iv of yearIntervals || []) {
+    const s = twDate(iv.start), e = iv.end ? twDate(iv.end) : new Date();
+    const k = dayKey(s); m.set(k, (m.get(k) || 0) + (e - s) / 3.6e6);
+  }
+  return m;
+}
+
+// One entry per thing that happened, by local day.
+function taskEvents() {
+  const ev = [];
+  for (const t of allTasks || []) {
+    if (t.status === "completed" && t.end) ev.push({ day: dayKey(twDate(t.end)), type: "done", t });
+    if (t.status === "deleted" && t.end) {
+      const why = (t.annotations || []).map(a => a.description).find(a => /^(Skipped|Dismissed)/.test(a));
+      ev.push({ day: dayKey(twDate(t.end)), type: why?.startsWith("Dismissed") ? "dismiss" : why ? "skip" : "deleted", t, note: why && why.includes(":") ? why.split(":").slice(1).join(":").trim() : "" });
+    }
+    if (!t.parent && t.entry) ev.push({ day: dayKey(twDate(t.entry)), type: t.status === "recurring" ? "repeat" : "added", t });
+    if (t.start && t.status === "pending") ev.push({ day: dayKey(twDate(t.start)), type: "started", t });
+  }
+  return ev;
+}
+
+function heatValues() {
+  const m = new Map();
+  if (hmMode === "tasks") for (const e of taskEvents()) { if (e.type === "done") m.set(e.day, (m.get(e.day) || 0) + 1); }
+  else if (hmMode === "hours") for (const [k, h] of hoursByDay()) m.set(k, h);
+  else for (const k of Object.keys(checklist)) { const r = dayRatio(k); if (r > 0) m.set(k, r); }
+  return m;
+}
+
+function renderActivity() {
+  const hm = $("#heatmap");
+  if (!hm) return;
+  document.querySelectorAll("#hm-mode button").forEach(b => b.classList.toggle("on", b.dataset.mode === hmMode));
+  if (!allTasks) { hm.innerHTML = `<p class="muted">Loading…</p>`; return; }
+  if (hmMode === "hours" && !yearIntervals) { hm.innerHTML = `<p class="muted">Loading Timewarrior…</p>`; loadYearTime(); return; }
+  // 53 weeks ending this week, Sunday-first columns like GitHub.
+  const end = startOfDay(now), start = new Date(end);
+  start.setDate(start.getDate() - 364 - start.getDay());
+  const startKey = dayKey(start);
+  const vals = new Map([...heatValues()].filter(([k]) => k >= startKey && k <= todayKey));
+  // Shade by quartiles of the active days, so one huge day doesn't wash out the rest.
+  const sorted = [...vals.values()].filter(Boolean).sort((a, b) => a - b);
+  const q = f => sorted[Math.min(sorted.length - 1, Math.floor(f * sorted.length))] ?? 0;
+  const [q1, q2, q3] = [q(.25), q(.5), q(.75)];
+  const level = v => !v ? 0 : hmMode === "checklist" ? (v >= 1 ? 4 : v >= .66 ? 3 : v >= .33 ? 2 : 1) : v > q3 ? 4 : v > q2 ? 3 : v > q1 ? 2 : 1;
+  const cells = [], months = [];
+  let col = 0, lastMonth = -1;
+  for (const d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+    if (d.getDay() === 0) {
+      if (d.getMonth() !== lastMonth) { months.push(`<span style="grid-column:${col + 1}">${d.toLocaleDateString(undefined, { month: "short" })}</span>`); lastMonth = d.getMonth(); }
+      col++;
+    }
+    const k = dayKey(d), v = vals.get(k) || 0;
+    const label = hmMode === "tasks" ? `${v} task${v === 1 ? "" : "s"} done` : hmMode === "hours" ? `${fmtDur(v * 3.6e6)} tracked` : `checklist ${Math.round(v * 100)}%`;
+    cells.push(`<button class="hm-cell l${level(v)}${k === selectedDay ? " sel" : ""}" data-day="${k}" style="grid-row:${d.getDay() + 1}" title="${esc(fmtDay(d))}: ${label}"></button>`);
+  }
+  // Summary line + streak of active days.
+  const total = [...vals.values()].reduce((a, b) => a + b, 0);
+  let streak = 0; const s = new Date(end);
+  if (!vals.get(dayKey(s))) s.setDate(s.getDate() - 1);
+  while (vals.get(dayKey(s))) { streak++; s.setDate(s.getDate() - 1); }
+  const activeDays = [...vals.values()].filter(Boolean).length;
+  const summary = hmMode === "tasks" ? `${total} task${total === 1 ? "" : "s"} completed in the last year · ${activeDays} active day${activeDays === 1 ? "" : "s"}`
+    : hmMode === "hours" ? `${fmtDur(total * 3.6e6)} tracked in the last year · ${activeDays} day${activeDays === 1 ? "" : "s"}`
+    : `${[...vals.values()].filter(v => v >= 1).length} complete checklist days · ${activeDays} days with progress`;
+  hm.innerHTML = `<div class="hm-wrap"><div class="hm-months" style="grid-template-columns:repeat(${col},11px)">${months.join("")}</div>
+      <div class="hm-grid" style="grid-template-columns:repeat(${col},11px)">${cells.join("")}</div></div>
+    <div class="hm-foot"><span class="small muted">${summary}${streak ? ` · current streak ${streak} day${streak === 1 ? "" : "s"}` : ""}</span>
+      <span class="hm-legend small muted">Less <i class="hm-cell l0"></i><i class="hm-cell l1"></i><i class="hm-cell l2"></i><i class="hm-cell l3"></i><i class="hm-cell l4"></i> More</span></div>`;
+  const wrap = hm.querySelector(".hm-wrap"); wrap.scrollLeft = wrap.scrollWidth;
+  hm.querySelectorAll("[data-day]").forEach(c => c.onclick = () => { selectedDay = selectedDay === c.dataset.day ? null : c.dataset.day; renderActivity(); });
+  renderFeed();
+}
+
+function renderFeed() {
+  const byDay = new Map();
+  for (const e of taskEvents()) { if (!byDay.has(e.day)) byDay.set(e.day, []); byDay.get(e.day).push(e); }
+  for (const k of Object.keys(checklist)) if (!byDay.has(k) && Object.keys(checklist[k]).length) byDay.set(k, []);
+  const hours = yearIntervals ? hoursByDay() : null;
+  let keys = [...byDay.keys()].filter(k => k <= todayKey).sort().reverse();
+  if (selectedDay) keys = [selectedDay];
+  const shown = keys.slice(0, feedDays);
+  const LABEL = { done: "Completed", added: "Added", repeat: "Added repeating", started: "Started", skip: "Skipped", dismiss: "Dismissed", deleted: "Deleted" };
+  const ICON = { done: "✓", added: "+", repeat: "↻", started: "▶", skip: "↷", dismiss: "✕", deleted: "✕" };
+  $("#feed-title").textContent = selectedDay ? new Date(selectedDay + "T12:00:00").toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric", year: "numeric" }) : "Recent activity";
+  $("#feed-clear").hidden = !selectedDay;
+  $("#feed").innerHTML = shown.length ? shown.map(k => {
+    const evs = byDay.get(k) || [];
+    // Collapse repeats (e.g. 30 skipped copies of one task) into one line.
+    const groups = new Map();
+    for (const e of evs) {
+      const key = `${e.type}|${e.t.description}|${e.note || ""}`;
+      if (!groups.has(key)) groups.set(key, { ...e, count: 0 });
+      groups.get(key).count++;
+    }
+    const order = ["done", "started", "added", "repeat", "skip", "dismiss", "deleted"];
+    const items = [...groups.values()].sort((a, b) => order.indexOf(a.type) - order.indexOf(b.type));
+    const st = checklist[k], r = st ? dayRatio(k) : 0, h = hours?.get(k);
+    const doneN = evs.filter(e => e.type === "done").length;
+    return `<div class="hist-day"><h3><span>${esc(fmtDay(new Date(k + "T12:00:00")))}</span>
+        <span class="small muted">${[doneN ? `${doneN} done` : "", h ? `${fmtDur(h * 3.6e6)} tracked` : "", st ? `checklist ${Math.round(r * 100)}%` : ""].filter(Boolean).join(" · ")}</span></h3>
+      ${items.map(e => `<div class="feed-item ev-${e.type}"><span class="ev-icon">${ICON[e.type]}</span><span>${LABEL[e.type]} <b>${esc(e.t.description)}</b>${e.count > 1 ? ` <span class="badge">×${e.count}</span>` : ""}${e.t.project ? ` <span class="badge">${esc(e.t.project)}</span>` : ""}${e.note ? ` · <span class="why">${esc(e.note)}</span>` : ""}</span></div>`).join("") || `<div class="small muted">No task activity.</div>`}
+    </div>`;
+  }).join("") + (keys.length > feedDays ? `<button class="sm" id="feed-more" style="margin-top:10px">Show older</button>` : "")
+    : `<p class="muted">${selectedDay ? "Nothing happened this day." : "No activity yet."}</p>`;
+  const more = $("#feed-more"); if (more) more.onclick = () => { feedDays += 10; renderFeed(); };
+}
+
+document.querySelectorAll("#hm-mode button").forEach(b => b.onclick = () => {
+  hmMode = b.dataset.mode; try { localStorage.setItem("hmMode", hmMode); } catch {}
+  renderActivity();
+});
+$("#feed-clear").onclick = () => { selectedDay = null; renderActivity(); };
+
+// ---------- time log: view, add and edit Timewarrior entries, any week ----------
+let tlWeek = 0, tlIntervals = [], tlEdit = null;
+function tlRange() {
+  const mon = startOfDay(now); mon.setDate(mon.getDate() - ((mon.getDay() + 6) % 7) + tlWeek * 7);
+  const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
+  return [mon, sun];
+}
+const localDT = d => `${dayKey(d)}T${hhmm(d)}`;
+async function loadTimeLog() {
+  const [mon, sun] = tlRange();
+  try {
+    const j = await (await fetch(`/api/time?from=${dayKey(mon)}&to=${dayKey(sun)}`)).json();
+    if (j.error) throw new Error(j.error);
+    tlIntervals = j.available ? j.intervals : null;
+  } catch (e) { $("#timelog").innerHTML = `<p class="err">Timewarrior: ${esc(e.message)}</p>`; return; }
+  renderTimeLog();
+}
+function renderTimeLog() {
+  const [mon, sun] = tlRange();
+  $("#wk-label").textContent = `${fmtDay(mon)} – ${fmtDay(sun)}`;
+  const add = $("#tl-add");
+  if (!add.day.value || add.day.value < dayKey(mon) || add.day.value > dayKey(sun)) add.day.value = tlWeek === 0 ? todayKey : dayKey(mon);
+  // Suggest task names (pending + repeating) for the "what" box.
+  $("#tl-tags").innerHTML = [...new Set([...tasks, ...(allTasks || []).filter(t => t.status === "recurring")].map(t => t.description))].sort().map(d => `<option value="${esc(d)}">`).join("");
+  const el = $("#timelog");
+  el.classList.remove("muted");
+  if (tlIntervals === null) { el.innerHTML = `<p class="muted small">Timewarrior isn't available. Start the dashboard with <code>nix run</code>.</p>`; return; }
+  const byDay = new Map();
+  for (const iv of tlIntervals) { const k = dayKey(twDate(iv.start)); if (!byDay.has(k)) byDay.set(k, []); byDay.get(k).push(iv); }
+  const days = [...byDay.keys()].sort().reverse();
+  const total = tlIntervals.reduce((s, iv) => s + ((iv.end ? twDate(iv.end) : new Date()) - twDate(iv.start)), 0);
+  el.innerHTML = (days.length ? `<div class="small muted" style="margin-bottom:6px">${fmtDur(total)} this week</div>` : "") + (days.length ? days.map(k => {
+    const ivs = byDay.get(k).sort((a, b) => a.start.localeCompare(b.start));
+    const sum = ivs.reduce((s, iv) => s + ((iv.end ? twDate(iv.end) : new Date()) - twDate(iv.start)), 0);
+    return `<div class="hist-day"><h3><span>${esc(fmtDay(new Date(k + "T12:00:00")))}</span><span class="small muted">${fmtDur(sum)}</span></h3>
+      ${ivs.map(iv => {
+        const s = twDate(iv.start), e = iv.end ? twDate(iv.end) : null, key = `${iv.id}|${iv.start}`;
+        if (tlEdit === key) return `<form class="tl-edit" data-key="${esc(key)}">
+            <input class="txt" type="datetime-local" name="start" value="${localDT(s)}" required>
+            ${e ? `– <input class="txt" type="datetime-local" name="end" value="${localDT(e)}" required>` : `<span class="small muted">– still running</span>`}
+            <input class="txt" name="tags" value="${esc((iv.tags || []).join(", "))}" required>
+            <span><button class="sm primary">Save</button> <button type="button" class="sm" data-tl-cancel>Cancel</button></span></form>`;
+        return `<div class="tl-row"><span class="tl-time">${hhmm(s)}–${e ? hhmm(e) : "now"}</span><span class="tl-dur">${fmtDur((e || new Date()) - s)}</span>
+          <span class="tl-tags">${(iv.tags || []).map(t => `<span class="badge">${esc(t)}</span>`).join(" ") || `<span class="muted small">untagged</span>`}</span>
+          <span class="tl-btns"><button class="sm" data-tl-edit="${esc(key)}">Edit</button><button class="sm ghost" data-tl-del="${esc(key)}">Delete</button></span></div>`;
+      }).join("")}</div>`;
+  }).join("") : `<p class="muted small">Nothing tracked this week. Log time above, or press Start on a task.</p>`);
+  const split = key => { const [id, start] = key.split("|"); return { id: +id, start_was: start }; };
+  el.querySelectorAll("[data-tl-edit]").forEach(b => b.onclick = () => { tlEdit = b.dataset.tlEdit; renderTimeLog(); });
+  el.querySelectorAll("[data-tl-cancel]").forEach(b => b.onclick = () => { tlEdit = null; renderTimeLog(); });
+  el.querySelectorAll("[data-tl-del]").forEach(b => b.onclick = async () => {
+    if (!confirm("Delete this time entry?")) return;
+    try { await post("/api/time/delete", split(b.dataset.tlDel)); toast("Entry deleted"); tlEdit = null; loadTimeLog(); loadTime(); yearIntervals = null; renderActivity(); }
+    catch (e) { toast(e.message, true); }
+  });
+  el.querySelectorAll("form.tl-edit").forEach(f => f.onsubmit = async e => {
+    e.preventDefault();
+    const iv = tlIntervals.find(x => `${x.id}|${x.start}` === f.dataset.key);
+    const body = split(f.dataset.key);
+    if (f.start.value !== localDT(twDate(iv.start))) body.start = f.start.value;
+    if (f.end && f.end.value !== localDT(twDate(iv.end))) body.end = f.end.value;
+    const tags = f.tags.value.split(",").map(t => t.trim()).filter(Boolean);
+    if (tags.join("|") !== (iv.tags || []).join("|")) body.tags = tags;
+    if (f.end && (body.end || localDT(twDate(iv.end))) <= (body.start || localDT(twDate(iv.start)))) return toast("End must be after start", true);
+    try { await post("/api/time/modify", body); toast("Entry updated"); tlEdit = null; loadTimeLog(); loadTime(); yearIntervals = null; renderActivity(); }
+    catch (err) { toast(err.message, true); }
+  });
+}
+$("#tl-add").onsubmit = async e => {
+  e.preventDefault();
+  const f = e.target, tags = f.tags.value.split(",").map(t => t.trim()).filter(Boolean);
+  let endDay = f.day.value;
+  if (f.end.value <= f.start.value) { const d = new Date(f.day.value + "T12:00:00"); d.setDate(d.getDate() + 1); endDay = dayKey(d); }  // past midnight
+  try {
+    await post("/api/time/track", { start: `${f.day.value}T${f.start.value}`, end: `${endDay}T${f.end.value}`, tags });
+    toast("Time logged"); f.start.value = f.end.value = f.tags.value = "";
+    loadTimeLog(); loadTime(); yearIntervals = null; renderActivity();
+  } catch (err) { toast(err.message, true); }
+};
+document.querySelectorAll("[data-wk]").forEach(b => b.onclick = () => { tlWeek = +b.dataset.wk === 0 ? 0 : Math.min(0, tlWeek + +b.dataset.wk); tlEdit = null; loadTimeLog(); });
+
+// ---------- time tracking (Timewarrior) ----------
+let intervals = [], timeAvailable = true;
+const fmtDur = ms => { const m = Math.round(ms / 60000); return m < 60 ? `${m}m` : `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, "0")}m`; };
+
+async function loadTime() {
+  try {
+    const r = await fetch("/api/time");
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error);
+    timeAvailable = j.available; intervals = j.intervals;
+  } catch (e) { $("#time-body").innerHTML = `<p class="err">Timewarrior: ${esc(e.message)}</p>`; return; }
+  renderTime();
+}
+
+function renderTime() {
+  const body = $("#time-body");
+  body.classList.remove("muted");
+  if (!timeAvailable) {
+    body.innerHTML = `<p class="muted small">Timewarrior isn't available. Start the dashboard with <code>nix run</code> (or <code>./run.sh</code>) from the site folder.</p>`;
+    return;
+  }
+  const t = Date.now(), dayStart = startOfDay(new Date()).getTime();
+  const per = new Map(); let week = 0, today = 0, running = null;
+  for (const iv of intervals) {
+    const s = twDate(iv.start).getTime(), e = iv.end ? twDate(iv.end).getTime() : t;
+    const label = (iv.tags || []).join(" · ") || "untagged";
+    per.set(label, (per.get(label) || 0) + (e - s));
+    week += e - s;
+    today += Math.max(0, e - Math.max(s, dayStart));
+    if (!iv.end) running = { label, s };
+  }
+  const rows = [...per.entries()].sort((a, b) => b[1] - a[1]);
+  const max = rows[0]?.[1] || 1;
+  body.innerHTML =
+    (running ? `<div class="small" style="color:var(--accent);margin-bottom:8px">● Tracking <b>${esc(running.label)}</b> · ${fmtDur(t - running.s)}</div>` : "") +
+    `<div style="display:flex;gap:24px;margin-bottom:10px"><div><div class="big">${fmtDur(today)}</div><div class="small muted">today</div></div>
+      <div><div class="big">${fmtDur(week)}</div><div class="small muted">this week</div></div></div>` +
+    (rows.length ? rows.map(([label, ms]) => `<div style="margin:6px 0"><div class="small" style="display:flex;justify-content:space-between;gap:8px"><span style="overflow-wrap:anywhere">${esc(label)}</span><span class="muted">${fmtDur(ms)}</span></div>
+      <div class="progress" style="margin:3px 0 0"><div class="d" style="width:${(ms / max) * 100}%"></div></div></div>`).join("")
+      : `<p class="small muted" style="margin:0">Nothing tracked this week. Press <b>Start</b> on a task to start the clock; <b>Stop</b> or <b>Done</b> stops it.</p>`) +
+    `<p style="margin:10px 0 0"><a href="#history" class="small link" id="tl-link">Edit or add time →</a></p>`;
+  $("#tl-link").onclick = () => setTimeout(() => $("#card-timelog").scrollIntoView({ behavior: "smooth" }), 50);
+}
+setInterval(() => { if (!document.hidden && intervals.some(iv => !iv.end)) renderTime(); }, 30_000);
+
+// ---------- docs ----------
+async function loadDocs() {
+  const names = await (await fetch("/api/docs")).json();
+  const order = ["README.md", "background.md", "nutrition-plan.md", "workout-plan.md", "career.md", "food-history.md"];
+  names.sort((a, b) => ((order.indexOf(a) + 1) || 99) - ((order.indexOf(b) + 1) || 99));
+  const label = n => n === "README.md" ? "Overview" : n.replace(/\.md$/, "").replace(/-/g, " ").replace(/^\w/, c => c.toUpperCase());
+  $("#doclist").innerHTML = names.map(n => `<button data-doc="${esc(n)}">${esc(label(n))}</button>`).join("");
+  $("#doclist").querySelectorAll("button").forEach(b => b.onclick = () => openDoc(b.dataset.doc));
+  let last = null; try { last = localStorage.getItem("doc"); } catch {}
+  openDoc(names.includes(last) ? last : names[0]);
+}
+
+async function openDoc(name) {
+  document.querySelectorAll("#doclist button").forEach(b => b.classList.toggle("on", b.dataset.doc === name));
+  const text = await (await fetch("/api/docs/" + encodeURIComponent(name))).text();
+  $("#doc").innerHTML = window.marked ? marked.parse(text) : `<pre style="white-space:pre-wrap">${esc(text)}</pre>`;
+  $("#doc").querySelectorAll("a[href$='.md']").forEach(a => a.onclick = ev => { ev.preventDefault(); openDoc(a.getAttribute("href")); });
+  try { localStorage.setItem("doc", name); } catch {}
+}
+
+// ---------- live updates ----------
+// Refresh tasks when you come back to the tab and every 2 minutes; roll over at midnight.
+function tick() {
+  const n = new Date();
+  if (dayKey(n) !== todayKey) { now = n; todayKey = dayKey(n); renderToday(); renderStreak(); loadTasks(); }
+  else now = n;
+}
+document.addEventListener("visibilitychange", () => { if (!document.hidden) { tick(); loadTasks(); loadTime(); } });
+setInterval(tick, 60_000);
+setInterval(() => { if (!document.hidden) loadTasks(); }, 120_000);
+
+// ---------- boot ----------
+(async () => {
+  [plan, checklist, weights] = await Promise.all(["/api/plan", "/api/checklist", "/api/weights"].map(u => fetch(u).then(r => r.ok ? r.json() : Promise.reject(new Error(u)))))
+    .catch(async () => [await (await fetch("/plan.json")).json(), {}, []]);  // older server without these endpoints
+  renderToday(); renderStreak();
+  loadTasks(); loadAllTasks(); loadTime(); loadTimeLog(); loadDocs();
+  let t = location.hash.slice(1); if (!["today", "tasks", "history", "docs"].includes(t)) { t = null; try { t = localStorage.getItem("tab"); } catch {} }
+  if (t) showTab(t);
+})();
+</script>
+</body>
+</html>
