@@ -1,0 +1,43 @@
+/* Tasks tab: task rows, editor, repeat schedules, catch-up */
+.task .title[data-open] { cursor: pointer; }
+.task .title[data-open]:hover { color: var(--accent); }
+.badge.pri-H { background: var(--warn-soft); color: var(--warn); }
+.badge.pri-M { background: var(--skip-soft); color: var(--skip); }
+.task-editor { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px 12px; margin-top: 10px; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); }
+.task-editor label > span, .task-editor .wide > span { display: block; font-size: 12px; color: var(--muted); margin-bottom: 3px; }
+.task-editor label input.txt, .task-editor label select.txt { width: 100%; }
+.task-editor .wide { grid-column: 1 / -1; }
+.task-editor .scope label { display: inline-flex; gap: 6px; align-items: center; margin-right: 14px; font-size: 14px; }
+.task-editor .foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+.anno { display: flex; align-items: center; gap: 8px; padding: 3px 0; font-size: 14px; }
+.anno > span:nth-child(2) { flex: 1; overflow-wrap: anywhere; }
+.anno-add { display: flex; gap: 6px; margin-top: 6px; }
+.anno-add input { flex: 1; }
+form.add select.txt { flex: 0 1 150px; }
+form.add input[name=tags] { flex: 0 1 120px; }
+.cu-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 4px 0; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.cu-btns { display: inline-flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.cu-btns input { width: 220px; max-width: 100%; font-size: 13px; padding: 4px 8px; }
+.repeat { border-top: 1px solid var(--line); padding-top: 10px; }
+.rep-summary { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.rep-form { display: flex; flex-direction: column; gap: 10px; margin-top: 4px; }
+.rep-form[hidden], .rep-row[hidden], .rep-summary[hidden] { display: none; }
+.rep-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 14px; }
+.rep-row .num { width: 70px; }
+.daypick { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+.daypick button { font: inherit; font-size: 13px; width: 44px; padding: 5px 0; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--muted); cursor: pointer; }
+.daypick button.on { background: var(--accent); border-color: var(--accent); color: var(--panel); font-weight: 600; }
+.rep-actions { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.rep-preview { color: var(--accent); }
+.copies { margin-top: 8px; border-left: 2px solid var(--line); padding-left: 10px; }
+.copy { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 4px 0; font-size: 14px; flex-wrap: wrap; }
+.toggle { display: flex; align-items: center; gap: 6px; margin: 4px 0 6px; cursor: pointer; }
+.task { padding: 10px 0; border-bottom: 1px solid var(--line); }
+.task:last-child { border-bottom: 0; }
+.task .title { font-weight: 500; overflow-wrap: anywhere; }
+.task .meta { font-size: 12px; color: var(--muted); display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 3px; }
+.task .actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+form.add { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+form.add input[name=description] { flex: 1 1 240px; }
+form.add input[name=project], form.add input[name=due] { flex: 0 1 140px; }
+.filter { width: 100%; margin: 8px 0; }

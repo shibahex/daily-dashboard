@@ -14,6 +14,8 @@ import subprocess
 import sys
 import threading
 import time
+import urllib.error
+import urllib.request
 from datetime import date, datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -41,6 +43,9 @@ def load_env(path):
 
 
 load_env(SITE / ".env")
+WEB = SITE / "web"             # the page: index.html, css/, js/
+STATIC = re.compile(r"/(css|js)/([\w-]+)\.(css|js)")
+STATIC_TYPES = {"css": "text/css; charset=utf-8", "js": "text/javascript; charset=utf-8"}
 PLAN = SITE / "plan.json"
 DATA = SITE / "data"
 DATA.mkdir(exist_ok=True)
@@ -274,6 +279,78 @@ def mfp_mcp_server():
     return server
 
 
+# ---------- Anki ----------
+# Through the AnkiConnect add-on, so Anki has to be open. The page can only call the actions
+# listed here; the server adds a few of its own (status, overview, open).
+ANKI_URL = os.environ.get("ANKI_CONNECT_URL", "http://127.0.0.1:8765")
+ANKICONNECT = "2055492159"  # AnkiConnect's add-on code
+ANKI_MCP = "@ankimcp/anki-mcp-server@0.27.0"
+ANKI_ACTIONS = {
+    "findNotes", "notesInfo", "areSuspended", "suspend", "unsuspend", "updateNoteFields", "updateNoteTags",
+    "deleteNotes", "addNote", "canAddNotes", "modelFieldNames", "createDeck", "getTags", "sync",
+    "guiDeckOverview", "guiBrowse", "cardsInfo",
+}
+
+
+def anki(action, **params):
+    payload = {"action": action, "version": 6, "params": params}
+    if os.environ.get("ANKI_CONNECT_API_KEY"):
+        payload["key"] = os.environ["ANKI_CONNECT_API_KEY"]
+    req = urllib.request.Request(ANKI_URL, json.dumps(payload).encode(), {"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=30) as r:
+        body = json.load(r)
+    if body.get("error"):
+        raise RuntimeError(body["error"])
+    return body.get("result")
+
+
+def anki_running():
+    return subprocess.run(["pgrep", "-x", r"anki|\.anki-wrapped"], capture_output=True).returncode == 0
+
+
+def anki_status():
+    try:
+        return {"connected": True, "version": anki("version")}
+    except (urllib.error.URLError, OSError, RuntimeError, ValueError):
+        return {"connected": False, "installed": bool(shutil.which("anki")), "running": anki_running(),
+                "addon": ANKICONNECT}
+
+
+def anki_overview():
+    """Everything the Anki tab shows at once: decks with due counts, reviews, note types."""
+    decks = anki("deckNamesAndIds")
+    stats = anki("getDeckStats", decks=list(decks))
+    # getDeckStats only has each deck's last name part ("Japanese::Verbs" -> "Verbs"); use the full name.
+    full = {str(did): name for name, did in decks.items()}
+    return {
+        "decks": sorted(({"name": full.get(did, st["name"]), "id": int(did), "new": st["new_count"], "learn": st["learn_count"],
+                          "review": st["review_count"], "total": st["total_in_deck"]} for did, st in stats.items()),
+                        key=lambda d: d["name"].lower()),
+        "reviewed_today": anki("getNumCardsReviewedToday"),
+        "by_day": anki("getNumCardsReviewedByDay")[:60],
+        "models": anki("modelNames"),
+    }
+
+
+def anki_mcp_server():
+    """The Anki MCP server for the AI agents. Needs Node 22.12+, so it runs on Nix's Node 22."""
+    node = ["nix", "shell", "nixpkgs#nodejs_22", "--command", "npx"] if shutil.which("nix") else ["npx"]
+    server = {"command": node[0], "args": node[1:] + ["-y", ANKI_MCP, "--stdio"], "env": {"ANKI_CONNECT_URL": ANKI_URL}}
+    if os.environ.get("ANKI_CONNECT_API_KEY"):
+        server["env"]["ANKI_CONNECT_API_KEY"] = os.environ["ANKI_CONNECT_API_KEY"]
+    return server
+
+
+def mcp_list(chat):
+    """The MCP servers the MCPs tab can turn on, and whether each is ready to use."""
+    mfp, ank = mfp_setup(), anki_status()
+    on = chat.get("mcps", ["myfitnesspal", "anki"])
+    return [
+        {"id": "myfitnesspal", "label": "MyFitnessPal", "enabled": "myfitnesspal" in on, "ready": mfp["signed_in"], "setup": mfp},
+        {"id": "anki", "label": "Anki", "enabled": "anki" in on, "ready": ank["connected"], "setup": ank},
+    ]
+
+
 def mfp_setup():
     """Is the MyFitnessPal MCP signed in? Its login lives in ~/.config/myfitnesspal-mcp."""
     cfg = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "myfitnesspal-mcp" / "cookies.json"
@@ -377,10 +454,18 @@ chat_proc = None
 chat_stopped = False  # Stop was pressed (CLIs exit with codes like 143 on SIGTERM, not a signal)
 
 
+# Claude model names saved before the tab used Claude Code's own menu values.
+OLD_CLAUDE_MODELS = {"claude-opus-5-5": "opus", "claude-sonnet-5-5": "sonnet", "claude-fable-5-1": "fable",
+                     "claude-haiku-5-5": "haiku"}
+
+
 def load_chat():
     chat = read_json(CHAT, {"messages": []})
+    models = chat.get("models", {})
+    if models.get("claude") in OLD_CLAUDE_MODELS:
+        models["claude"] = OLD_CLAUDE_MODELS[models["claude"]]
     if chat.get("provider") not in assistant.PROVIDERS:
-        chat["provider"] = next((p["id"] for p in assistant.provider_list() if p["installed"]), "claude")
+        chat["provider"] = next((p["id"] for p in assistant.provider_list(CHAT_DIR) if p["installed"]), "claude")
     return chat
 
 
@@ -414,10 +499,13 @@ class Handler(BaseHTTPRequestHandler):
         if not chat_lock.acquire(blocking=False):
             return self.send(409, {"error": "still answering the last message"})
         try:
-            cmd, cwd, env = assistant.build(pid, message, chat.get("session_id"), mfp_mcp_server(), ROOT,
-                                            CHAT_DIR, date.today().strftime("%A, %B %-d, %Y"))
+            servers = {m["id"]: (mfp_mcp_server() if m["id"] == "myfitnesspal" else anki_mcp_server())
+                       for m in mcp_list(chat) if m["enabled"]}
+            model = chat.get("models", {}).get(pid, "")
+            cmd, cwd, env = assistant.build(pid, message, chat.get("session_id"), servers, ROOT,
+                                            CHAT_DIR, date.today().strftime("%A, %B %-d, %Y"), model)
             chat["messages"].append({"role": "user", "text": message, "at": time.time()})
-            reply = {"role": "assistant", "provider": pid, "text": "", "tools": [], "at": time.time()}
+            reply = {"role": "assistant", "provider": pid, "model": model, "text": "", "tools": [], "at": time.time()}
 
             self.send_response(200)
             self.send_header("Content-Type", "application/x-ndjson")
@@ -438,7 +526,7 @@ class Handler(BaseHTTPRequestHandler):
             chat_stopped = False
             chat_proc = subprocess.Popen(cmd, cwd=cwd, env=env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                                          stderr=subprocess.PIPE, text=True, bufsize=1)
-            changed, error, tools, gap = False, None, {}, False
+            changed, anki_changed, error, tools, gap = False, False, None, {}, False
             for line in chat_proc.stdout:
                 try:
                     ev = json.loads(line)
@@ -459,6 +547,7 @@ class Handler(BaseHTTPRequestHandler):
                         tools[a[0]] = tool
                         reply["tools"].append(tool)
                         changed = changed or assistant.changes_diary(a[1])
+                        anki_changed = anki_changed or assistant.changes_anki(a[1])
                         emit({"type": "tool", **tool})
                     elif kind == "tool_error" and a[0] in tools:
                         tools[a[0]]["error"] = True
@@ -479,7 +568,7 @@ class Handler(BaseHTTPRequestHandler):
             write_json(CHAT, chat)
             if changed:
                 sync_mfp()  # the Today card shows the change right away
-            emit({"type": "done", "changed": changed, "error": error})
+            emit({"type": "done", "changed": changed, "anki": anki_changed, "error": error})
         finally:
             chat_proc = None
             chat_lock.release()
@@ -495,7 +584,10 @@ class Handler(BaseHTTPRequestHandler):
             return
         path = self.path.split("?", 1)[0]
         if path in ("/", "/index.html"):
-            return self.send(200, (SITE / "index.html").read_bytes(), "text/html; charset=utf-8")
+            return self.send(200, (WEB / "index.html").read_bytes(), "text/html; charset=utf-8")
+        m = STATIC.fullmatch(path)
+        if m and m[1] == m[3] and (WEB / m[1] / f"{m[2]}.{m[3]}").is_file():
+            return self.send(200, (WEB / m[1] / f"{m[2]}.{m[3]}").read_bytes(), STATIC_TYPES[m[3]])
         if path in ("/plan.json", "/api/plan"):
             ensure_plan()
             return self.send(200, PLAN.read_bytes())
@@ -536,8 +628,18 @@ class Handler(BaseHTTPRequestHandler):
                                       "note": text.split(":", 1)[1].strip() if ":" in text else "", "at": a.get("entry")})
             return self.send(200, {"skips": skips})
         if path == "/api/chat":
-            return self.send(200, {**load_chat(), "busy": chat_lock.locked(),
-                                   "providers": assistant.provider_list(), "mcp": mfp_setup()})
+            chat = load_chat()
+            return self.send(200, {**chat, "busy": chat_lock.locked(), "providers": assistant.provider_list(CHAT_DIR),
+                                   "mcp": mfp_setup(), "mcps": mcp_list(chat)})
+        if path == "/api/anki/status":
+            return self.send(200, anki_status())
+        if path == "/api/anki/overview":
+            try:
+                return self.send(200, anki_overview())
+            except (urllib.error.URLError, OSError) as e:
+                return self.send(502, {"error": f"Anki isn't reachable ({e}). Is Anki open with AnkiConnect installed?"})
+            except RuntimeError as e:
+                return self.send(502, {"error": str(e)})
         if path == "/api/mfp":
             # Cached so the page loads instantly; a stale cache refreshes in the background.
             cache, stale = mfp_status()
@@ -838,8 +940,49 @@ class Handler(BaseHTTPRequestHandler):
             provider = str(body.get("provider") or load_chat()["provider"])
             if provider not in assistant.PROVIDERS:
                 return self.send(400, {"error": "unknown AI"})
-            write_json(CHAT, {"provider": provider, "messages": []})
+            old = load_chat()
+            write_json(CHAT, {"provider": provider, "messages": [], "mcps": old.get("mcps", ["myfitnesspal", "anki"]),
+                              "models": old.get("models", {})})
             return self.send(200, {"ok": True})
+        if self.path == "/api/chat/model":
+            # The model for the current AI ("" = its default). Applies from the next message, same chat.
+            model = str(body.get("model", "")).strip()
+            if model and not assistant.MODEL_RE.match(model):
+                return self.send(400, {"error": "that doesn't look like a model name"})
+            if chat_lock.locked():
+                return self.send(409, {"error": "wait for the current answer"})
+            chat = load_chat()
+            chat.setdefault("models", {})[chat["provider"]] = model
+            write_json(CHAT, chat)
+            return self.send(200, {"ok": True})
+        if self.path == "/api/chat/mcps":
+            # Which MCP servers the AI gets. Takes effect from the next message.
+            mcps = [m for m in body.get("mcps", []) if m in ("myfitnesspal", "anki")]
+            if chat_lock.locked():
+                return self.send(409, {"error": "wait for the current answer"})
+            chat = load_chat()
+            chat["mcps"] = mcps
+            write_json(CHAT, chat)
+            return self.send(200, {"ok": True, "mcps": mcp_list(chat)})
+
+        if self.path == "/api/anki":
+            action, params = str(body.get("action", "")), body.get("params") or {}
+            if action not in ANKI_ACTIONS or not isinstance(params, dict):
+                return self.send(400, {"error": f"action not allowed: {action}"})
+            try:
+                return self.send(200, {"ok": True, "result": anki(action, **params)})
+            except (urllib.error.URLError, OSError) as e:
+                return self.send(502, {"ok": False, "error": f"Anki isn't reachable ({e})"})
+            except RuntimeError as e:
+                return self.send(400, {"ok": False, "error": str(e)})
+        if self.path == "/api/anki/open":
+            if anki_running():
+                return self.send(200, {"ok": True, "started": False})
+            if not shutil.which("anki"):
+                return self.send(400, {"error": "Anki isn't installed"})
+            subprocess.Popen(["anki"], start_new_session=True, stdin=subprocess.DEVNULL,
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            return self.send(200, {"ok": True, "started": True})
         if self.path == "/api/chat/stop":
             global chat_stopped
             if chat_proc and chat_proc.poll() is None:

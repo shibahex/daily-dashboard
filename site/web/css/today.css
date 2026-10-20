@@ -1,0 +1,55 @@
+/* Today tab: training, goals, checklist, weight, week, reminders, moving cards */
+/* Moving cards on Today: drag a card by its title */
+#tab-today .card-head h2 { cursor: grab; user-select: none; }
+#tab-today .card-head h2::before { content: "⠿"; margin-right: 6px; opacity: .35; letter-spacing: 0; }
+#tab-today .card-head h2:hover::before { opacity: .8; }
+#tab-today .card.dragging { opacity: .45; outline: 2px dashed var(--accent); outline-offset: 2px; }
+#tab-today.moving .col { min-height: 120px; border-radius: 10px; outline: 1px dashed var(--line); outline-offset: 4px; }
+.layout-reset { display: block; margin: 16px auto 0; }
+@media (max-width: 1000px) { #tab-today .card-head h2::before { display: none; } #tab-today .card-head h2 { cursor: auto; } }
+/* The inline order styles are for the one-column phone layout; on wide screens the DOM order (your layout) wins. */
+@media (min-width: 1001px) { #tab-today .col > .card { order: 0 !important; } }
+.goals { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.goal { background: var(--chip); border-radius: 8px; padding: 8px 10px; min-width: 0; }
+.goal b { display: block; font-size: 18px; }
+.goal span { font-size: 12px; color: var(--muted); }
+table.ex { width: 100%; border-collapse: collapse; }
+table.ex td { padding: 6px 0; border-bottom: 1px solid var(--line); }
+table.ex td:last-child { text-align: right; color: var(--muted); padding-left: 12px; }
+table.week { table-layout: fixed; }
+table.week td:first-child { width: 100px; vertical-align: top; }
+table.week td:last-child { text-align: left; }
+table.week tr.cur td { color: var(--accent); font-weight: 600; }
+.check { display: flex; align-items: center; gap: 10px; padding: 5px 0; }
+.check label { display: flex; align-items: center; gap: 10px; flex: 1; cursor: pointer; min-width: 0; }
+.check input { width: 18px; height: 18px; accent-color: var(--accent); flex: none; }
+.check.done label span { color: var(--muted); text-decoration: line-through; }
+.check.skip label span { color: var(--skip); }
+.check .skip-btn { font: inherit; font-size: 12px; border: 1px solid var(--line); background: none; color: var(--muted); border-radius: 12px; padding: 1px 9px; cursor: pointer; flex: none; }
+.check .skip-btn:hover { border-color: var(--skip); color: var(--skip); }
+.check.skip .skip-btn { background: var(--skip-soft); border-color: var(--skip-soft); color: var(--skip); }
+.note-line { display: block; background: none; border: 0; padding: 0 0 4px 28px; font: inherit; font-size: 12px; color: var(--skip); cursor: pointer; text-align: left; overflow-wrap: anywhere; }
+.note-line:hover { text-decoration: underline; }
+.note-edit { display: flex; gap: 6px; padding: 2px 0 6px 28px; }
+.note-edit input { flex: 1; font-size: 13px; padding: 4px 8px; }
+.reason { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; width: 100%; }
+.reason input { flex: 1 1 200px; font-size: 13px; padding: 4px 8px; }
+.history { display: flex; gap: 4px; margin-top: 12px; flex-wrap: wrap; }
+.history i { width: 16px; height: 16px; border-radius: 4px; background: var(--chip); display: block; }
+.history i.full { background: var(--accent); } .history i.part { background: var(--accent-soft); outline: 1px solid var(--accent); outline-offset: -1px; }
+.history i.today { outline: 2px solid var(--ink); outline-offset: 1px; }
+ul.notes { margin: 0; padding-left: 18px; } ul.notes li { margin: 4px 0; }
+.editor .row { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; }
+.editor .row input.txt { flex: 1; }
+.editor .row input.txt.narrow { flex: 0 0 90px; }
+.editor .row button { flex: none; }
+.editor .foot { display: flex; gap: 8px; justify-content: space-between; margin-top: 10px; flex-wrap: wrap; }
+.editor label.lbl { display: block; font-size: 12px; color: var(--muted); margin: 8px 0 3px; }
+.weight-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.weight-row input { width: 130px; }
+.w-now { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.w-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 10px 0 4px; }
+.w-stats .goal b { font-size: 16px; }
+.w-log { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+svg.spark { width: 100%; height: 60px; display: block; margin-top: 10px; }
+@media (max-width: 700px) { .goals { grid-template-columns: repeat(2, 1fr); } }

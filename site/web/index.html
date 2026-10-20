@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Daily Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
+<link rel="stylesheet" href="css/base.css">
+<link rel="stylesheet" href="css/today.css">
+<link rel="stylesheet" href="css/nutrition.css">
+<link rel="stylesheet" href="css/tasks.css">
+<link rel="stylesheet" href="css/history.css">
+<link rel="stylesheet" href="css/docs.css">
+<link rel="stylesheet" href="css/anki.css">
+<link rel="stylesheet" href="css/chat.css">
+<link rel="stylesheet" href="css/components.css">
+</head>
+<body>
+<header>
+  <div class="left"><h1>Daily Dashboard</h1><span class="date" id="today"></span></div>
+  <span class="streak" id="streak" hidden></span>
+</header>
+<nav>
+  <button data-tab="today" class="on">Today</button>
+  <button data-tab="tasks">Tasks</button>
+  <button data-tab="history">History</button>
+  <button data-tab="docs">Docs</button>
+  <button data-tab="anki">Anki</button>
+  <button data-tab="mcp">MCPs</button>
+</nav>
+<main>
+  <section id="tab-anki" hidden>
+    <div class="anki-top">
+      <div class="chat-badge" data-icon-cards></div>
+      <div class="chat-title"><b>Anki</b><span class="chat-status off" id="anki-status"><i></i>Connecting…</span></div>
+      <span class="chat-tools"><button class="pill" id="anki-sync" title="Sync with AnkiWeb">↻ Sync</button>
+        <button class="pill" id="anki-open" title="Open the Anki app">Open Anki</button></span>
+    </div>
+    <div id="anki-setup" hidden></div>
+    <div id="anki-main" hidden>
+      <div class="anki-grid">
+        <div class="card" id="anki-decks"></div>
+        <div class="card" id="anki-add">
+          <div class="card-head"><h2>Add card</h2></div>
+          <div class="anki-form">
+            <div class="row2"><label>Deck<select class="txt" id="anki-deck"></select></label>
+              <label>Type<select class="txt" id="anki-model"></select></label></div>
+            <div id="anki-fields"></div>
+            <label>Tags<input class="txt" id="anki-tags" placeholder="space separated, optional"></label>
+            <div class="anki-form-foot"><span class="small muted">Ctrl+Enter to add</span><button class="sm primary" id="anki-add-btn">Add card</button></div>
+          </div>
+        </div>
+      </div>
+      <div class="card" id="anki-browse">
+        <div class="card-head"><h2>Browse</h2><span class="small muted" id="anki-count"></span></div>
+        <form class="anki-search" id="anki-search"><input class="txt" id="anki-q" placeholder='Search, e.g. deck:Japanese  tag:verbs  "is:due"' value="added:7">
+          <button class="sm">Search</button></form>
+        <div id="anki-results"></div>
+      </div>
+    </div>
+  </section>
+  <section id="tab-mcp" hidden>
+    <div class="card chat-card">
+      <div class="chat-top">
+        <div class="chat-badge" data-icon></div>
+        <div class="chat-title"><b>MCPs</b><span class="chat-status" id="chat-status"><i></i>Connecting…</span></div>
+        <div class="mcp-toggles" id="mcp-toggles" title="Which MCP servers the AI can use"></div>
+        <span class="chat-tools"><select class="pill" id="chat-ai" title="Which AI answers"></select>
+          <select class="pill" id="chat-model" title="Which model it uses"></select>
+          <button class="pill" id="chat-new" title="Start over">New chat</button></span>
+      </div>
+      <div id="mcp-setup" hidden></div>
+      <div id="chat-log" class="chat-log"></div>
+      <form id="chat-form" class="chat-form">
+        <div class="composer">
+          <textarea id="chat-in" rows="1" maxlength="4000" placeholder="Ask about your food, or tell it what you ate…"></textarea>
+          <button class="send-btn" id="chat-send" title="Send (Enter)"></button>
+          <button type="button" class="send-btn stop" id="chat-stop" title="Stop" hidden></button>
+        </div>
+      </form>
+      <p class="muted chat-note">Uses the <a class="link" href="https://github.com/Mason-Levyy/myfitnesspal-mcp" target="_blank" rel="noopener">MyFitnessPal</a> and <a class="link" href="https://github.com/ankimcp/anki-mcp-server" target="_blank" rel="noopener">Anki</a> MCPs · Shift+Enter for a new line</p>
+    </div>
+  </section>
+  <section id="tab-today">
+    <div class="grid">
+      <div class="col">
+        <div class="card" id="card-session" style="order:1"></div>
+        <div class="card" id="card-goals" style="order:5"></div>
+        <div class="card" id="card-notes" style="order:7"></div>
+      </div>
+      <div class="col">
+        <div class="card" id="card-checklist" style="order:2"></div>
+        <div class="card" id="card-tasks" style="order:4"><div class="card-head"><h2>Due &amp; overdue tasks</h2></div><div id="today-tasks" class="muted">Loading…</div></div>
+      </div>
+      <div class="col">
+        <div class="card" id="card-weight" style="order:3"></div>
+        <div class="card" id="card-time" style="order:4"><div class="card-head"><h2>Time tracked</h2></div><div id="time-body" class="muted">Loading…</div></div>
+        <div class="card" id="card-week" style="order:6"></div>
+      </div>
+    </div>
+    <button class="edit-btn layout-reset" id="layout-reset" hidden>Reset card layout</button>
+  </section>
+
+  <section id="tab-tasks" hidden>
+    <div class="card">
+      <div class="card-head"><h2>New task</h2></div>
+      <form class="add" id="add">
+        <input class="txt" name="description" placeholder="What needs doing?" required maxlength="300">
+        <input class="txt" name="project" placeholder="project" list="projects">
+        <input class="txt" name="tags" placeholder="tags">
+        <input class="txt" name="due" placeholder="due (today, fri, 2026-10-20)">
+        <select class="txt" name="priority"><option value="">priority</option><option value="H">High</option><option value="M">Medium</option><option value="L">Low</option></select>
+        <select class="txt" name="recur"><option value="">doesn't repeat</option><option value="daily">daily</option><option value="2d">every 2 days</option><option value="weekly">weekly</option><option value="biweekly">every 2 weeks</option><option value="monthly">monthly</option></select>
+        <button class="sm primary">Add</button>
+      </form>
+      <datalist id="projects"></datalist>
+    </div>
+    <div class="card" style="margin-top:16px">
+      <div class="card-head">
+        <div class="seg" id="task-views"><button data-view="pending" class="on">Pending</button><button data-view="repeating">Repeating</button><button data-view="completed">Completed</button><button data-view="deleted">Deleted</button></div>
+        <button class="edit-btn" id="undo" title="Undo the last Taskwarrior change (task undo)">↶ Undo last change</button>
+      </div>
+      <input class="txt filter" id="filter" placeholder="Filter by name, project, tag or note…">
+      <div id="all-tasks" class="muted">Loading…</div>
+    </div>
+  </section>
+
+  <section id="tab-history" hidden>
+    <div class="card">
+      <div class="card-head"><h2>Activity</h2>
+        <div class="seg" id="hm-mode"><button data-mode="tasks">Tasks done</button><button data-mode="hours">Hours tracked</button><button data-mode="checklist">Checklist</button></div></div>
+      <div id="heatmap" class="muted">Loading…</div>
+    </div>
+    <div class="card" id="card-timelog" style="margin-top:16px">
+      <div class="card-head"><h2>Time log</h2>
+        <div class="weeknav"><button class="icon" data-wk="-1" title="Previous week">◀</button><span id="wk-label" class="small"></span><button class="icon" data-wk="1" title="Next week">▶</button><button class="edit-btn" data-wk="0">This week</button></div></div>
+      <form class="tl-add" id="tl-add">
+        <input class="txt" type="date" name="day" required>
+        <input class="txt" type="time" name="start" required> – <input class="txt" type="time" name="end" required>
+        <select class="txt" name="task" title="Fills in the same tags the task's timer uses, so the time counts toward it"><option value="">Pick a task…</option></select>
+        <input class="txt" name="tags" list="tl-tags" placeholder="what (task name, extra tags after commas)" required>
+        <button class="sm primary">Log time</button>
+      </form>
+      <datalist id="tl-tags"></datalist>
+      <div id="timelog" class="muted">Loading…</div>
+    </div>
+    <div class="hist-cols">
+      <div class="card"><div class="card-head"><h2 id="feed-title">Recent activity</h2><button class="edit-btn" id="feed-clear" hidden>Show all days</button></div><div id="feed"></div></div>
+      <div class="card"><div class="card-head"><h2>Skipped &amp; why</h2></div><div id="history" class="muted">Loading…</div></div>
+    </div>
+  </section>
+
+  <section id="tab-docs" hidden>
+    <div class="docs">
+      <div class="doclist" id="doclist"></div>
+      <div class="card md" id="doc"></div>
+    </div>
+  </section>
+</main>
+<div id="toast"></div>
+
+<!-- Plain scripts, loaded in this order; they share one global scope. -->
+<script src="js/core.js"></script>
+<script src="js/tabs.js"></script>
+<script src="js/today.js"></script>
+<script src="js/nutrition.js"></script>
+<script src="js/tasks.js"></script>
+<script src="js/task-repeat.js"></script>
+<script src="js/task-actions.js"></script>
+<script src="js/task-list.js"></script>
+<script src="js/history.js"></script>
+<script src="js/time.js"></script>
+<script src="js/docs.js"></script>
+<script src="js/live.js"></script>
+<script src="js/layout.js"></script>
+<script src="js/anki.js"></script>
+<script src="js/chat.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>

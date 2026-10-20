@@ -2,7 +2,11 @@
 
 ## Layout
 
-- `site/`: the dashboard (Python server, single-page `index.html`, Nix flake). See `docs/dashboard.md`.
+- `site/`: the dashboard (Python server `server.py`, Nix flake). See `docs/dashboard.md`.
+- `site/web/`: the page the server serves.
+  - `index.html`: markup only. It loads the CSS and JS files below, in order.
+  - `css/`: one file per area (`today.css`, `anki.css`, `chat.css`…), with `base.css` first (colour tokens for light and dark, layout) and `components.css` last (buttons, inputs, badges). When two rules match an element equally, the later file wins, so keep that order.
+  - `js/`: plain scripts (not modules) that share one global scope and run in the order `index.html` lists them. `core.js` has the shared state and helpers; each tab has its own file; `main.js` boots the page. Top-level code may only use what earlier files define.
 - `noctalia-plugin/`: the Noctalia bar plugin. See `docs/noctalia-plugin.md`.
 - `docs/`: the user's own notes (`*.md`, git-ignored), the guides (`README.md`, `dashboard.md`, `noctalia-plugin.md`) and the starter notes in `docs/templates/`.
 
