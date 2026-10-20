@@ -332,6 +332,21 @@ def anki_overview():
     }
 
 
+ANKI_HISTORY = DATA / "anki-history.json"
+
+
+def anki_history():
+    """Cards reviewed per day, all time: {"by_day": [["2026-10-20", 31], ...], "live": bool}.
+    Saved on each read, so History still has it while Anki is closed."""
+    try:
+        days = anki("getNumCardsReviewedByDay")
+        write_json(ANKI_HISTORY, {"by_day": days, "at": time.time()})
+        return {"by_day": days, "live": True}
+    except (urllib.error.URLError, OSError, RuntimeError, ValueError):
+        saved = read_json(ANKI_HISTORY, {})
+        return {"by_day": saved.get("by_day", []), "live": False, "at": saved.get("at")}
+
+
 def anki_mcp_server():
     """The Anki MCP server for the AI agents. Needs Node 22.12+, so it runs on Nix's Node 22."""
     node = ["nix", "shell", "nixpkgs#nodejs_22", "--command", "npx"] if shutil.which("nix") else ["npx"]
@@ -633,6 +648,8 @@ class Handler(BaseHTTPRequestHandler):
                                    "mcp": mfp_setup(), "mcps": mcp_list(chat)})
         if path == "/api/anki/status":
             return self.send(200, anki_status())
+        if path == "/api/anki/history":
+            return self.send(200, anki_history())
         if path == "/api/anki/overview":
             try:
                 return self.send(200, anki_overview())

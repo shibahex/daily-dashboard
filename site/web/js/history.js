@@ -50,11 +50,21 @@ function renderHistory() {
 
 // ---------- activity: heatmap + feed ----------
 let hmMode = "tasks", selectedDay = null, feedDays = 10, yearIntervals = null;
+// Anki cards reviewed per day ({live: false} when Anki is closed and this is the saved copy).
+let ankiDays = null, ankiHistoryLive = true;
 try { hmMode = localStorage.getItem("hmMode") || "tasks"; } catch {}
 
 async function loadYearTime() {
   try { const j = await (await fetch("/api/time?range=year")).json(); yearIntervals = j.available ? j.intervals : []; }
   catch { yearIntervals = []; }
+  renderActivity();
+}
+
+async function loadAnkiHistory() {
+  try {
+    const j = await (await fetch("/api/anki/history")).json();
+    ankiDays = new Map(j.by_day); ankiHistoryLive = j.live;
+  } catch { ankiDays = new Map(); }
   renderActivity();
 }
 
@@ -86,6 +96,7 @@ function heatValues() {
   const m = new Map();
   if (hmMode === "tasks") for (const e of taskEvents()) { if (e.type === "done") m.set(e.day, (m.get(e.day) || 0) + 1); }
   else if (hmMode === "hours") for (const [k, h] of hoursByDay()) m.set(k, h);
+  else if (hmMode === "anki") for (const [k, n] of ankiDays || []) m.set(k, n);
   else for (const k of Object.keys(checklist)) { const r = dayRatio(k); if (r > 0) m.set(k, r); }
   return m;
 }
@@ -96,6 +107,7 @@ function renderActivity() {
   document.querySelectorAll("#hm-mode button").forEach(b => b.classList.toggle("on", b.dataset.mode === hmMode));
   if (!allTasks) { hm.innerHTML = `<p class="muted">Loading…</p>`; return; }
   if (hmMode === "hours" && !yearIntervals) { hm.innerHTML = `<p class="muted">Loading Timewarrior…</p>`; loadYearTime(); return; }
+  if (hmMode === "anki" && !ankiDays) { hm.innerHTML = `<p class="muted">Loading Anki…</p>`; loadAnkiHistory(); return; }
   // 53 weeks ending this week, Sunday-first columns like GitHub.
   const end = startOfDay(now), start = new Date(end);
   start.setDate(start.getDate() - 364 - start.getDay());
@@ -114,7 +126,8 @@ function renderActivity() {
       col++;
     }
     const k = dayKey(d), v = vals.get(k) || 0;
-    const label = hmMode === "tasks" ? `${v} task${v === 1 ? "" : "s"} done` : hmMode === "hours" ? `${fmtDur(v * 3.6e6)} tracked` : `checklist ${Math.round(v * 100)}%`;
+    const label = hmMode === "tasks" ? `${v} task${v === 1 ? "" : "s"} done` : hmMode === "hours" ? `${fmtDur(v * 3.6e6)} tracked`
+      : hmMode === "anki" ? `${v} Anki review${v === 1 ? "" : "s"}` : `checklist ${Math.round(v * 100)}%`;
     cells.push(`<button class="hm-cell l${level(v)}${k === selectedDay ? " sel" : ""}" data-day="${k}" style="grid-row:${d.getDay() + 1}" title="${esc(fmtDay(d))}: ${label}"></button>`);
   }
   // Summary line + streak of active days.
@@ -125,6 +138,7 @@ function renderActivity() {
   const activeDays = [...vals.values()].filter(Boolean).length;
   const summary = hmMode === "tasks" ? `${total} task${total === 1 ? "" : "s"} completed in the last year · ${activeDays} active day${activeDays === 1 ? "" : "s"}`
     : hmMode === "hours" ? `${fmtDur(total * 3.6e6)} tracked in the last year · ${activeDays} day${activeDays === 1 ? "" : "s"}`
+    : hmMode === "anki" ? `${total.toLocaleString()} Anki reviews in the last year · ${activeDays} day${activeDays === 1 ? "" : "s"} studied${ankiHistoryLive ? "" : " · saved copy (Anki is closed)"}`
     : `${[...vals.values()].filter(v => v >= 1).length} complete checklist days · ${activeDays} days with progress`;
   hm.innerHTML = `<div class="hm-wrap"><div class="hm-months" style="grid-template-columns:repeat(${col},11px)">${months.join("")}</div>
       <div class="hm-grid" style="grid-template-columns:repeat(${col},11px)">${cells.join("")}</div></div>
@@ -139,6 +153,7 @@ function renderFeed() {
   const byDay = new Map();
   for (const e of taskEvents()) { if (!byDay.has(e.day)) byDay.set(e.day, []); byDay.get(e.day).push(e); }
   for (const k of Object.keys(checklist)) if (!byDay.has(k) && Object.keys(checklist[k]).length) byDay.set(k, []);
+  for (const [k, n] of ankiDays || []) if (n && !byDay.has(k)) byDay.set(k, []);
   const hours = yearIntervals ? hoursByDay() : null;
   let keys = [...byDay.keys()].filter(k => k <= todayKey).sort().reverse();
   if (selectedDay) keys = [selectedDay];
@@ -158,11 +173,12 @@ function renderFeed() {
     }
     const order = ["done", "started", "added", "repeat", "skip", "dismiss", "deleted"];
     const items = [...groups.values()].sort((a, b) => order.indexOf(a.type) - order.indexOf(b.type));
-    const st = checklist[k], r = st ? dayRatio(k) : 0, h = hours?.get(k);
+    const st = checklist[k], r = st ? dayRatio(k) : 0, h = hours?.get(k), cards = ankiDays?.get(k) || 0;
     const doneN = evs.filter(e => e.type === "done").length;
     return `<div class="hist-day"><h3><span>${esc(fmtDay(new Date(k + "T12:00:00")))}</span>
-        <span class="small muted">${[doneN ? `${doneN} done` : "", h ? `${fmtDur(h * 3.6e6)} tracked` : "", st ? `checklist ${Math.round(r * 100)}%` : ""].filter(Boolean).join(" · ")}</span></h3>
-      ${items.map(e => `<div class="feed-item ev-${e.type}"><span class="ev-icon">${ICON[e.type]}</span><span>${LABEL[e.type]} <b>${esc(e.t.description)}</b>${e.count > 1 ? ` <span class="badge">×${e.count}</span>` : ""}${e.t.project ? ` <span class="badge">${esc(e.t.project)}</span>` : ""}${e.note ? ` · <span class="why">${esc(e.note)}</span>` : ""}</span></div>`).join("") || `<div class="small muted">No task activity.</div>`}
+        <span class="small muted">${[doneN ? `${doneN} done` : "", h ? `${fmtDur(h * 3.6e6)} tracked` : "", st ? `checklist ${Math.round(r * 100)}%` : "", cards ? `${cards} Anki` : ""].filter(Boolean).join(" · ")}</span></h3>
+      ${cards ? `<div class="feed-item ev-anki"><span class="ev-icon">🗂</span><span>Reviewed <b>${cards}</b> Anki card${cards === 1 ? "" : "s"}</span></div>` : ""}
+      ${items.map(e => `<div class="feed-item ev-${e.type}"><span class="ev-icon">${ICON[e.type]}</span><span>${LABEL[e.type]} <b>${esc(e.t.description)}</b>${e.count > 1 ? ` <span class="badge">×${e.count}</span>` : ""}${e.t.project ? ` <span class="badge">${esc(e.t.project)}</span>` : ""}${e.note ? ` · <span class="why">${esc(e.note)}</span>` : ""}</span></div>`).join("") || (cards ? "" : `<div class="small muted">No task activity.</div>`)}
     </div>`;
   }).join("") + (keys.length > feedDays ? `<button class="sm" id="feed-more" style="margin-top:10px">Show older</button>` : "")
     : `<p class="muted">${selectedDay ? "Nothing happened this day." : "No activity yet."}</p>`;

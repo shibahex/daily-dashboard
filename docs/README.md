@@ -6,7 +6,7 @@ A local, private dashboard for getting healthier: your daily checklist and train
 - **Tasks:** [Taskwarrior](https://taskwarrior.org) tasks with repeating schedules, skips with reasons and time tracking in [Timewarrior](https://timewarrior.net).
 - **History:** activity heatmap, activity feed, time log.
 - **Docs:** your own notes (goals, nutrition plan, workout plan…), which the AI also reads.
-- **Anki:** your decks and due counts, add cards, search and edit notes (through the AnkiConnect add-on).
+- **Anki:** your decks and due counts, add cards, search and edit notes, plus an Anki card on Today and your review history in History (through the AnkiConnect add-on).
 - **MCPs:** chat with Claude Code, Codex or Gemini CLI through the [MyFitnessPal](https://github.com/Mason-Levyy/myfitnesspal-mcp) and [Anki](https://github.com/ankimcp/anki-mcp-server) MCPs: "what should I eat tonight?", "log 2 eggs for breakfast", "make flashcards from my notes".
 - **Noctalia bar plugin** (optional): checklist, due tasks and a task timer on the [Noctalia](https://github.com/noctalia-dev/noctalia-shell) bar.
 

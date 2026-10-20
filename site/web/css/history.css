@@ -28,7 +28,7 @@
 .hm-legend .hm-cell { cursor: default; }
 .feed-item { display: flex; gap: 8px; font-size: 14px; padding: 3px 0; overflow-wrap: anywhere; }
 .ev-icon { width: 14px; flex: none; text-align: center; color: var(--muted); }
-.ev-done .ev-icon { color: var(--accent); } .ev-skip .ev-icon { color: var(--skip); }
+.ev-done .ev-icon { color: var(--accent); } .ev-anki .ev-icon { font-size: 12px; } .ev-skip .ev-icon { color: var(--skip); }
 .weeknav { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .tl-add { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px; }
 .tl-add input[name=tags] { flex: 1 1 220px; }

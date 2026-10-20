@@ -41,6 +41,8 @@ Works through the [AnkiConnect](https://ankiweb.net/shared/info/2055492159) add-
 - **Add card:** pick a deck (or make a new one) and a note type; the fields follow the note type. Ctrl+Enter adds it. The deck and type are remembered.
 - **Browse:** search with Anki's syntax (`deck:Japanese`, `tag:verbs`, `is:due`, `added:7`). Edit fields and tags, suspend or unsuspend, open the note in Anki's browser, or delete it.
 - **↻ Sync** syncs with AnkiWeb.
+- **Today tab:** an Anki card with cards due (new / learning / due), reviews today, your study streak, the last 14 days, and the decks with the most due cards (Study opens them in Anki). Drag it like the other cards.
+- **History tab:** an **Anki reviews** heatmap mode, and "Reviewed N Anki cards" in the activity feed. The last review history is saved in `site/data/anki-history.json`, so it still shows while Anki is closed.
 - The page can only use a fixed list of AnkiConnect actions (see `ANKI_ACTIONS` in `server.py`). If you set an API key in AnkiConnect, put it in `site/.env` as `ANKI_CONNECT_API_KEY`.
 
 ## MCPs tab

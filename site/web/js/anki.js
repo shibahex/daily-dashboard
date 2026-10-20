@@ -36,6 +36,7 @@ async function loadAnki() {
   $("#anki-sync").disabled = !st.connected;
   $("#anki-setup").hidden = st.connected; $("#anki-main").hidden = !st.connected;
   if (!st.connected) {
+    renderAnkiToday(st);
     $("#anki-setup").innerHTML = ankiSetupHtml(st);
     $("#anki-setup").querySelectorAll("[data-anki-open]").forEach(b => b.onclick = openAnki);
     if (!$("#tab-anki").hidden) ankiRetry = setTimeout(loadAnki, 8000);  // pick it up once Anki opens
@@ -47,6 +48,7 @@ async function loadAnki() {
     ankiData = d;
   } catch (e) { $("#anki-decks").innerHTML = `<p class="err">${esc(e.message)}</p>`; return; }
   renderAnkiDecks();
+  renderAnkiToday(st, ankiData);
   if (!ankiLoaded) { await fillAnkiForm(); runAnkiSearch(); }
   ankiLoaded = true;
 }
@@ -178,3 +180,48 @@ function renderAnkiNotes() {
   });
 }
 $("#anki-search").onsubmit = e => { e.preventDefault(); ankiEdit = null; runAnkiSearch(); };
+
+// ----- Today card -----
+// Cards due across your decks, reviews today, study streak, the last 14 days, and the decks
+// with the most due cards. Refreshed with the page's other live data.
+async function loadAnkiToday() {
+  let st = { connected: false }, d = null;
+  try { st = await (await fetch("/api/anki/status")).json(); } catch {}
+  if (st.connected) {
+    try { const r = await fetch("/api/anki/overview"); d = await r.json(); if (!r.ok) throw new Error(d.error); }
+    catch { st = { ...st, connected: false }; }
+  }
+  renderAnkiToday(st, d);
+}
+function renderAnkiToday(st, d) {
+  const el = $("#card-anki");
+  if (!el) return;
+  const head = `<div class="card-head"><h2>Anki</h2><a class="edit-btn" href="#anki">Open tab →</a></div>`;
+  if (!st.connected || !d) {
+    el.innerHTML = head + `<p class="small muted" style="margin:0 0 10px">${st.running ? "Anki is open, but AnkiConnect isn't answering." : "Anki isn't open."}</p>
+      ${st.installed ? `<button class="sm primary" data-anki-open>Open Anki</button>` : ""}`;
+    el.querySelectorAll("[data-anki-open]").forEach(b => b.onclick = openAnki);
+    return;
+  }
+  // Top-level decks already include their subdecks (and daily limits), like Anki's own deck list.
+  const top = d.decks.filter(x => !x.name.includes("::"));
+  const sum = k => top.reduce((n, x) => n + x[k], 0);
+  const [nw, lr, rv] = [sum("new"), sum("learn"), sum("review")], due = nw + lr + rv;
+  const days = new Map(d.by_day);
+  let streak = 0; const s = new Date(now);
+  if (!days.get(dayKey(s))) s.setDate(s.getDate() - 1);   // today not studied yet: count up to yesterday
+  while (days.get(dayKey(s))) { streak++; s.setDate(s.getDate() - 1); }
+  const last = []; for (let i = 13; i >= 0; i--) { const x = new Date(now); x.setDate(x.getDate() - i); last.push([dayKey(x), days.get(dayKey(x)) || 0]); }
+  const max = Math.max(1, ...last.map(x => x[1]));
+  const busy = top.filter(x => x.new + x.learn + x.review).sort((a, b) => (b.new + b.learn + b.review) - (a.new + a.learn + a.review)).slice(0, 3);
+  el.innerHTML = head + `
+    <div class="anki-today"><div><span class="big">${due}</span> <span class="muted">due</span></div>
+      <div class="deck"><span class="counts"><span class="${nw ? "c-new" : "z"}" title="New">${nw}</span><span class="${lr ? "c-learn" : "z"}" title="Learning">${lr}</span><span class="${rv ? "c-due" : "z"}" title="Due">${rv}</span></span></div></div>
+    <div class="anki-stats"><div><b>${d.reviewed_today}</b> <span class="lbl">today</span><br><b>${streak}</b> <span class="lbl">day streak</span></div>
+      <div class="anki-chart" title="Reviews, last 14 days">${last.map(([k, n]) => `<div class="${n ? "" : "zero"}" style="height:${Math.max(4, (n / max) * 100)}%" title="${esc(k)}: ${n}"></div>`).join("")}</div></div>
+    ${busy.map(x => `<div class="deck"><span class="name">${esc(x.name)}</span><span class="counts"><span class="c-due">${x.new + x.learn + x.review}</span></span>
+      <button class="sm" data-study="${esc(x.name)}" title="Open this deck in Anki">Study</button></div>`).join("") || `<p class="small muted" style="margin:6px 0 0">All done for today. 🎉</p>`}`;
+  el.querySelectorAll("[data-study]").forEach(b => b.onclick = async () => {
+    try { await anki("guiDeckOverview", { name: b.dataset.study }); toast("Opened in Anki"); } catch (e) { toast("Anki: " + e.message, true); }
+  });
+}

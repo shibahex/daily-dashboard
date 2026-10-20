@@ -7,7 +7,7 @@ function tick() {
   if (dayKey(n) !== todayKey) { now = n; todayKey = dayKey(n); renderToday(); renderStreak(); loadTasks(); }
   else now = n;
 }
-document.addEventListener("visibilitychange", () => { if (!document.hidden) { tick(); loadTasks(); loadTime(); loadMfp(); } });
-setInterval(() => { if (!document.hidden) loadMfp(); }, 300_000);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) { tick(); loadTasks(); loadTime(); loadMfp(); loadAnkiToday(); } });
+setInterval(() => { if (!document.hidden) { loadMfp(); loadAnkiToday(); } }, 300_000);
 setInterval(tick, 60_000);
 setInterval(() => { if (!document.hidden) loadTasks(); }, 120_000);
