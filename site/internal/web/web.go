@@ -48,6 +48,8 @@ func (ui *UI) Routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /setup", ui.createAccount)
 	page("/login", ui.loginPage)
 	mux.HandleFunc("POST /login", ui.login)
+	page("/invite", ui.invitePage)
+	mux.HandleFunc("POST /invite", ui.acceptInvite)
 	page("/account", ui.accountPage)
 	change("/account/logout", ui.logout)
 	change("/account/logout-others", ui.logoutOthers)

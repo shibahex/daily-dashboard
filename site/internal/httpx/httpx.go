@@ -4,6 +4,7 @@ package httpx
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"strconv"
 )
@@ -43,4 +44,13 @@ func WriteBytes(w http.ResponseWriter, status int, data []byte, contentType stri
 
 func WriteError(w http.ResponseWriter, status int, message string) {
 	WriteJSON(w, status, map[string]string{"error": message})
+}
+
+// ClientIP is the address the request came from.
+func ClientIP(r *http.Request) string {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return host
 }

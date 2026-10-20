@@ -4,33 +4,41 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{{if .Setup}}Create your account{{else}}Log in{{end}} · Daily Dashboard</title>
+<title>{{if .Setup}}Create your account{{else if .Reset}}Set a new password{{else if .Invite}}Join the dashboard{{else}}Log in{{end}} · Daily Dashboard</title>
 <link rel="stylesheet" href="/static/css/base.css">
 <link rel="stylesheet" href="/static/css/account.css">
 <link rel="stylesheet" href="/static/css/components.css">
 </head>
 <body>
 <main class="sign-in">
-  <form class="card" method="post" action="{{if .Setup}}/setup{{else}}/login{{end}}">
-    <h1>{{if .Setup}}Create your account{{else}}Log in{{end}}</h1>
-    {{if .Setup}}<p class="muted">Your dashboard is only for you. The password keeps other programs and people on this computer out of your food, notes and tasks.</p>{{end}}
+  <form class="card" method="post" action="{{if .Setup}}/setup{{else if .Invite}}/invite{{else}}/login{{end}}">
+    <h1>{{if .Setup}}Create your account{{else if .Reset}}Set a new password{{else if .Invite}}Join the dashboard{{else}}Log in{{end}}</h1>
+    {{if .Setup}}<p class="muted">You're the first account, so you're an admin: you'll invite everyone else. Each person only ever sees their own food, notes and tasks.</p>{{end}}
+    {{if and .Invite (not .Reset) .Username}}<p class="muted">You were invited as <b>{{.Username}}</b>. Pick a password to finish. Your food, notes and tasks are only yours.</p>{{end}}
     {{with .Error}}<p class="sign-in-error" role="alert">{{.}}</p>{{end}}
     {{if .Setup}}
     <label>Setup code
       <input class="txt" name="code" value="{{.Code}}" required autocomplete="off" spellcheck="false">
       <small class="muted">The link printed in the terminal fills this in. It's also in <code>site/data/setup-code</code>.</small></label>
     {{end}}
+    {{if .Invite}}
+    <input type="hidden" name="code" value="{{.Code}}">
+    <input type="text" name="username" value="{{.Username}}" autocomplete="username" hidden>
+    {{else}}
     <label>Username
       <input class="txt" name="username" value="{{.Username}}" required maxlength="32" pattern="[A-Za-z0-9._\-]+" autocomplete="username" autocapitalize="none" spellcheck="false"{{if not .Username}} autofocus{{end}}></label>
-    <label>Password
-      <input class="txt" type="password" name="password" required{{if .Setup}} minlength="12" maxlength="256" autocomplete="new-password"{{else}} autocomplete="current-password"{{end}}{{if .Username}} autofocus{{end}}>
-      {{if .Setup}}<small class="muted">At least 12 characters. A few random words is easy to remember and hard to guess.</small>{{end}}</label>
-    {{if .Setup}}
+    {{end}}
+    {{if or (not .Invite) .Username}}
+    <label>{{if .Reset}}New password{{else}}Password{{end}}
+      <input class="txt" type="password" name="password" required{{if or .Setup .Invite}} minlength="12" maxlength="256" autocomplete="new-password"{{else}} autocomplete="current-password"{{end}}{{if or .Username .Invite}} autofocus{{end}}>
+      {{if or .Setup .Invite}}<small class="muted">At least 12 characters. A few random words is easy to remember and hard to guess.</small>{{end}}</label>
+    {{if or .Setup .Invite}}
     <label>Password again
       <input class="txt" type="password" name="confirm" required minlength="12" maxlength="256" autocomplete="new-password"></label>
     {{end}}
-    <button class="primary sm sign-in-btn">{{if .Setup}}Create account{{else}}Log in{{end}}</button>
-    {{if not .Setup}}<p class="muted small">Forgot it? Stop the dashboard, delete <code>site/data/account.json</code> and start it again to make a new account. Your data stays.</p>{{end}}
+    <button class="primary sm sign-in-btn">{{if .Setup}}Create account{{else if .Reset}}Set password{{else if .Invite}}Join{{else}}Log in{{end}}</button>
+    {{end}}
+    {{if not (or .Setup .Invite)}}<p class="muted small">Forgot it? Ask an admin for a reset link.</p>{{end}}
   </form>
 </main>
 </body>

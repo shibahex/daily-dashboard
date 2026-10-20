@@ -1,12 +1,37 @@
 package auth
 
 import (
+	"context"
 	"net/http"
 	"strings"
 	"time"
 
 	"dashboard/internal/httpx"
 )
+
+type userKey struct{}
+
+// UserFrom is the signed-in user of a request that went through Guard. Handlers behind Guard
+// always have one; ok is false only on the public pages.
+func UserFrom(r *http.Request) (User, bool) {
+	user, ok := r.Context().Value(userKey{}).(User)
+	return user, ok
+}
+
+func withUser(r *http.Request, user User) *http.Request {
+	return r.WithContext(context.WithValue(r.Context(), userKey{}, user))
+}
+
+// RequireAdmin refuses the request unless the signed-in user is an admin.
+func RequireAdmin(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if user, ok := UserFrom(r); !ok || !user.IsAdmin() {
+			http.Error(w, "only admins can do that", http.StatusForbidden)
+			return
+		}
+		next(w, r)
+	}
+}
 
 const SessionCookie = "session"
 
@@ -40,23 +65,29 @@ func tokenFrom(r *http.Request) string {
 	return strings.TrimSpace(token)
 }
 
-// isPublic is what can be seen signed out: the login and setup pages and the styles they use.
+// isPublic is what can be seen signed out: the login, setup and invite pages and the styles
+// they use.
 func isPublic(path string) bool {
-	return path == "/login" || path == "/setup" || strings.HasPrefix(path, "/static/")
+	return path == "/login" || path == "/setup" || path == "/invite" || strings.HasPrefix(path, "/static/")
 }
 
-// Guard lets a request through when it's public, has a session, or (for /api/) has the
-// plugin's token. Otherwise pages go to the login (or setup) page and the API answers 401.
+// Guard lets a request through when it's public, has a session, or (for /api/) has a plugin
+// token, and tells the handlers whose request it is (UserFrom). Otherwise pages go to the
+// login (or setup) page and the API answers 401.
 func (a *Auth) Guard(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
+		if user, ok := a.Session(SessionFrom(r)); ok {
+			next.ServeHTTP(w, withUser(r, user))
+			return
+		}
 		switch {
-		case isPublic(path), a.ValidSession(SessionFrom(r)):
+		case isPublic(path):
 			next.ServeHTTP(w, r)
 			return
 		case strings.HasPrefix(path, "/api/"):
-			if a.ValidToken(tokenFrom(r)) {
-				next.ServeHTTP(w, r)
+			if user, ok := a.TokenUser(tokenFrom(r)); ok {
+				next.ServeHTTP(w, withUser(r, user))
 				return
 			}
 			httpx.WriteError(w, http.StatusUnauthorized, "log in to the dashboard, or set the plugin's token")

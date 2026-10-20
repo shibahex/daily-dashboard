@@ -15,6 +15,7 @@ const (
 	NotFound                // the thing asked about doesn't exist
 	Conflict                // it changed meanwhile, or something else is still running
 	Unavailable             // a service didn't answer (Anki closed...)
+	Forbidden               // allowed for someone, but not for this user (admin-only, the agent policy)
 )
 
 type Error struct {
@@ -29,6 +30,7 @@ func NotFoundf(message string) error    { return Error{Kind: NotFound, Message: 
 func Conflictf(message string) error    { return Error{Kind: Conflict, Message: message} }
 func Failedf(message string) error      { return Error{Kind: Failed, Message: message} }
 func Unavailablef(message string) error { return Error{Kind: Unavailable, Message: message} }
+func Forbiddenf(message string) error   { return Error{Kind: Forbidden, Message: message} }
 
 // KindOf is err's kind; errors that aren't a problem.Error count as Failed.
 func KindOf(err error) Kind {
@@ -50,6 +52,8 @@ func Status(err error) int {
 		return http.StatusConflict
 	case Unavailable:
 		return http.StatusBadGateway
+	case Forbidden:
+		return http.StatusForbidden
 	}
 	return http.StatusInternalServerError
 }
