@@ -153,7 +153,7 @@ func (run *agentRun) mcpServer(name string, spec *sandbox.Spec) (mcp.Server, err
 		spec.Mounts = append(spec.Mounts, program.Mount,
 			sandbox.Mount{Source: login, Target: sandbox.HomeDir + "/.config/myfitnesspal-mcp", Writable: true})
 		spec.Path = append(spec.Path, program.Path)
-		return mcp.Server{Command: program.Command, Args: program.Args}, nil
+		return mcp.Server{Command: program.Command, Args: program.Args, Env: program.Env}, nil
 	case "anki":
 		program, err := run.ui.Programs.Anki()
 		if err != nil {

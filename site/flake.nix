@@ -37,6 +37,9 @@
           fi
           site="$PWD"
 
+          # The MyFitnessPal MCP's prebuilt curl_cffi wheel needs libstdc++, which Nix's Python lacks.
+          export MFP_LIBRARY_PATH=${pkgs.stdenv.cc.cc.lib}/lib
+
           # Timewarrior asks to create its database on first use; create it up front.
           mkdir -p "''${XDG_DATA_HOME:-$HOME/.local/share}/timewarrior/data" "''${XDG_CONFIG_HOME:-$HOME/.config}/timewarrior"
           touch "''${XDG_CONFIG_HOME:-$HOME/.config}/timewarrior/timewarrior.cfg"
@@ -69,6 +72,7 @@
       # `nix develop`: Go, timew and uv, e.g. `go run ./cmd/dashboard 8080` or `timew summary :week`.
       devShells.${system}.default = pkgs.mkShell {
         packages = [ pkgs.go pkgs.gopls pkgs.timewarrior pkgs.uv pkgs.bubblewrap pkgs.socat pkgs.bash pkgs.coreutils pkgs.nodejs_22 pkgs.python312 ];
+        MFP_LIBRARY_PATH = "${pkgs.stdenv.cc.cc.lib}/lib";
       };
     };
 }

@@ -23,6 +23,7 @@ type Programs struct {
 	Dir         string // site/data/tools
 	MFPPackage  string // pip requirement for the released MyFitnessPal MCP ("mfp-mcp==0.4.1")
 	MFPCheckout string // a local checkout to install instead ("" = the released package)
+	MFPLibPath  string // LD_LIBRARY_PATH for its curl_cffi wheel (libstdc++), from MFP_LIBRARY_PATH
 	AnkiPackage string // npm package for the Anki MCP ("@ankimcp/anki-mcp-server@0.27.0")
 
 	mu sync.Mutex // one install at a time
@@ -32,6 +33,7 @@ type Programs struct {
 type Program struct {
 	Command string
 	Args    []string
+	Env     map[string]string
 	Mount   Mount // its folder, read-only
 	Path    string
 }
@@ -60,7 +62,12 @@ func (p *Programs) MyFitnessPal() (Program, error) {
 			return Program{}, err
 		}
 	}
-	return Program{Command: bin, Mount: Mount{Source: dir, Target: dir}, Path: filepath.Dir(bin)}, nil
+	var env map[string]string
+	if p.MFPLibPath != "" {
+		env = map[string]string{"LD_LIBRARY_PATH": p.MFPLibPath}
+	}
+	// Args must be [] rather than nil: Claude Code silently drops a server whose args are null.
+	return Program{Command: bin, Args: []string{}, Env: env, Mount: Mount{Source: dir, Target: dir}, Path: filepath.Dir(bin)}, nil
 }
 
 // Anki is the Anki MCP, installing it first if needed.

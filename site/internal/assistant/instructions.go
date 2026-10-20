@@ -64,7 +64,9 @@ var mcpInstructions = map[string]string{
 	"myfitnesspal": `MyFitnessPal: the fitness_* tools read and write the user's real diary. To log food, search
 first, prefer verified matches and foods the user has logged before, then say exactly what you logged
 with calories and protein/carbs/fat. If the food or amount is unclear, ask before logging. Use today's
-date unless the user says otherwise.`,
+date unless the user says otherwise. For past days, fitness_bulk_export reads a local cache that may be
+empty, so always pass sync_first: true (or use fitness_get_day for a single date); a missing day there
+means the cache, not an empty diary.`,
 	"anki": `Anki: the Anki tools manage the user's real Anki collection through AnkiConnect (Anki must be
 open). For new cards: one fact per card, short clear questions, check for duplicates with findNotes
 first, ask which deck if it isn't clear, then say what you added and to which deck. Only delete notes,
