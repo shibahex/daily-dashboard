@@ -28,7 +28,7 @@ Each account gets its own private folder (`site/data/users/<id>/`, ignored by gi
 
 1. **Fill in your notes.** They're in the Docs tab (`overview.md` first); replace the placeholders. The AI uses them for advice, and if your admin allows it, it can edit them for you.
 2. **Edit your plan.** On the Today tab, use **Edit** on the training, checklist, weight and reminder cards.
-3. **Connect MyFitnessPal** (optional, for nutrition and the AI): on the **Account** page, paste your MyFitnessPal session token. The page says where to find it.
+3. **Connect MyFitnessPal** (optional, for nutrition and the AI): on the **Account** page, paste the Cookie header of a myfitnesspal.com request. The page says where to find it.
 4. **Connect Anki** (optional, for the Anki tab and the AI): install the AnkiConnect add-on in Anki (**Tools → Add-ons → Get Add-ons…**, code `2055492159`) and restart Anki. On the host's computer that's all; everyone else also sets an address and API key in AnkiConnect's config and enters them on their Account page.
 5. **Add an AI key** (optional, for the MCPs tab): on the Account page, an Anthropic, OpenAI or Google API key, or for Claude a subscription token from `claude setup-token`.
 6. **Invite people** (optional): put the dashboard behind an HTTPS reverse proxy ([Sharing it on a network](dashboard.md#sharing-it-on-a-network)), then use **Admin → Invite someone**.

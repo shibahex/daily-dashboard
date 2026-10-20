@@ -188,13 +188,13 @@ func (c Client) command(ctx context.Context, program ...string) *exec.Cmd {
 	return cmd
 }
 
-// Connect signs the user in with their MyFitnessPal session token (the
-// __Secure-next-auth.session-token cookie), through the MCP's own `auth`, which checks it with
-// MyFitnessPal before saving it in the user's folder.
+// Connect signs the user in with their browser's MyFitnessPal Cookie header (it must include
+// remember_me; the session token alone no longer signs in), through the MCP's own `auth`,
+// which checks it with MyFitnessPal before saving it in the user's folder.
 func (c Client) Connect(token string) error {
 	token = strings.TrimSpace(token)
-	if token == "" || len(token) > 8000 || strings.ContainsAny(token, "\r\n") {
-		return problem.Invalidf("Paste the value of the __Secure-next-auth.session-token cookie")
+	if token == "" || len(token) > 32000 || strings.ContainsAny(token, "\r\n") {
+		return problem.Invalidf("Paste the whole Cookie header from a myfitnesspal.com request")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
