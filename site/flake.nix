@@ -15,13 +15,22 @@
         exec python3 ${pkgs.timewarrior}/share/doc/timew/ext/on-modify.timewarrior "$@"
       '';
 
+      # The Go server (cmd/dashboard). Standard library only, so there are no dependencies to vendor.
+      server = pkgs.buildGoModule {
+        pname = "health-dashboard-server";
+        version = "0.1.0";
+        src = ./.;
+        vendorHash = null;
+        subPackages = [ "cmd/dashboard" ];
+      };
+
       dashboard = pkgs.writeShellApplication {
         name = "health-dashboard";
-        # uv runs mfp_fetch.py in the myfitnesspal-mcp project for the MyFitnessPal sync.
-        runtimeInputs = [ pkgs.python3 pkgs.timewarrior pkgs.uv ];
+        # uv runs mfp_fetch.py with the MyFitnessPal MCP package for the MyFitnessPal sync.
+        runtimeInputs = [ pkgs.timewarrior pkgs.uv ];
         text = ''
           # Run from the site folder so the server uses the live files, not a store copy.
-          if [ ! -f server.py ]; then
+          if [ ! -f web/index.html ]; then
             echo "Run this from the site/ folder (cd there, then: nix run)" >&2
             exit 1
           fi
@@ -38,13 +47,14 @@
           nix-store --add-root "$site/.timew-hook" --realise ${timewHook} > /dev/null
           ln -sfn "$site/.timew-hook" "$hooks/on-modify.timewarrior"
 
-          exec python3 server.py "''${1:-1628}"
+          exec ${server}/bin/dashboard "''${1:-1628}"
         '';
       };
     in
     {
       packages.${system} = {
         default = dashboard;
+        server = server;
         timew-hook = timewHook;
       };
 
@@ -53,9 +63,9 @@
         program = "${dashboard}/bin/health-dashboard";
       };
 
-      # `nix develop` gives you timew/python3 in a shell, e.g. for `timew summary :week`.
+      # `nix develop`: Go, timew and uv, e.g. `go run ./cmd/dashboard 8080` or `timew summary :week`.
       devShells.${system}.default = pkgs.mkShell {
-        packages = [ pkgs.python3 pkgs.timewarrior pkgs.uv ];
+        packages = [ pkgs.go pkgs.gopls pkgs.timewarrior pkgs.uv ];
       };
     };
 }

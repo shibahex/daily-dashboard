@@ -2,7 +2,9 @@
 
 ## Layout
 
-- `site/`: the dashboard (Python server `server.py`, Nix flake). See `docs/dashboard.md`.
+- `site/`: the dashboard: a Go server (`cmd/dashboard`, `internal/…`) and a Nix flake. See `docs/dashboard.md`.
+  - `internal/` has one package per area: `store` (plan, checklist, weigh-ins, docs), `taskwarrior`, `timewarrior`, `myfitnesspal`, `anki`, `assistant` (the MCPs tab's AI agents) and `server` (HTTP handlers, one file per area). Dependencies are passed in through `server.Server`, not globals.
+  - `mfp_fetch.py` stays Python: it runs inside the MyFitnessPal MCP's Python package.
 - `site/web/`: the page the server serves.
   - `index.html`: markup only. It loads the CSS and JS files below, in order.
   - `css/`: one file per area (`today.css`, `anki.css`, `chat.css`…), with `base.css` first (colour tokens for light and dark, layout) and `components.css` last (buttons, inputs, badges). When two rules match an element equally, the later file wins, so keep that order.
@@ -18,10 +20,11 @@ This repo is public. Never commit the user's notes, plan, history or settings: `
 
 The project assumes Nix, and tools like `python3`, `node` and `jq` may **not** be on the PATH. When you need a program, get it from a Nix shell:
 
-- **Dashboard work (`site/`):** run commands inside the flake's dev shell, which provides `python3`, `timew` and `uv`:
+- **Dashboard work (`site/`):** run commands inside the flake's dev shell, which provides `go`, `timew` and `uv`:
   ```sh
-  nix develop ./site --command python3 server.py 8080
+  cd site && nix develop --command go run ./cmd/dashboard 8080
   ```
+  Check changes with `go vet ./...` and `gofmt -l .` (both should print nothing).
 - **One-off tools:** use a temporary shell:
   ```sh
   nix shell nixpkgs#python3 nixpkgs#jq --command jq . site/plan.example.json
@@ -33,4 +36,4 @@ If a command fails with `command not found`, rerun it through `nix shell` instea
 ## Environment notes
 
 - The user's shell may not be bash (for example nushell), so `&&`, `$(...)` and heredocs may not work there. When you need bash, wrap the command: `nix shell nixpkgs#bash --command bash -c '...'`, or put it in a script.
-- Run the dashboard with `nix run` from `site/` (see `docs/dashboard.md`). The server restarts itself when `server.py` or `assistant.py` changes.
+- Run the dashboard with `nix run` from `site/` (see `docs/dashboard.md`). After changing Go code, restart it so it rebuilds. New files must be `git add`ed before `nix run`/`nix build` can see them.

@@ -16,7 +16,7 @@ Needs Nix (flakes) and Taskwarrior 3. From `site/`:
 ```sh
 nix run            # or ./run.sh — serves http://localhost:1628
 nix run . -- 8080  # another port
-nix develop        # shell with python3 + timew
+nix develop        # shell with go, timew and uv (go run ./cmd/dashboard 8080)
 ```
 
 On start it installs a Taskwarrior `on-modify` hook so starting/stopping a task tracks time in Timewarrior.
@@ -67,7 +67,6 @@ Everything stays local. The server binds to 127.0.0.1 only and rejects cross-sit
 
 ## Code
 
-- `site/server.py`: the local server (API, MyFitnessPal sync, Anki proxy, chat). It restarts itself when it or `assistant.py` changes.
-- `site/assistant.py`: runs Claude Code, Codex or Gemini CLI for the MCPs tab.
-- `site/mfp_fetch.py`: MyFitnessPal reads and writes, run through the MyFitnessPal MCP package.
+- `site/cmd/dashboard`: the Go server's entry point; `site/internal/` holds one package per area (Taskwarrior, Timewarrior, MyFitnessPal, Anki, the MCPs tab's AI agents, the HTTP handlers). Standard library only. `nix run` builds it.
+- `site/mfp_fetch.py`: MyFitnessPal reads and writes, run through the MyFitnessPal MCP's Python package.
 - `site/web/`: the page. `index.html` is markup only; styles are in `css/` (one file per area) and scripts in `js/` (one file per tab, plain scripts loaded in order). No build step: edit a file and reload the page.
