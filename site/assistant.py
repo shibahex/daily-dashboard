@@ -29,8 +29,9 @@ has logged before, then say exactly what you logged with calories and protein/ca
 amount is unclear, ask before logging. Use today's date unless the user says otherwise.
 
 Context in {docs} (read what's relevant before giving advice, and base advice on it):
-- README.md (overview), background.md, nutrition-plan.md (calorie/macro goals, cholesterol and sodium
-  guidance, swaps), workout-plan.md, food-history.md, career.md
+- docs/*.md: the user's own notes, e.g. overview.md (who they are, targets), background.md,
+  nutrition-plan.md, workout-plan.md, food-history.md, and anything else they added. Ignore
+  docs/README.md, docs/dashboard.md and docs/noctalia-plugin.md (app guides) and docs/templates/.
 - site/plan.json: daily checklist, weekly training schedule, weight target
 - site/data/weights.json (weigh-ins), site/data/checklist.json (checklist history)
 - site/data/mfp.json: today's diary as the dashboard sees it, synced every 10 minutes, with every

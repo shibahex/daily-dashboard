@@ -22,7 +22,7 @@
         text = ''
           # Run from the site folder so the server uses the live files, not a store copy.
           if [ ! -f server.py ]; then
-            echo "Run this from ~/Projects/health/site (cd there, then: nix run)" >&2
+            echo "Run this from the site/ folder (cd there, then: nix run)" >&2
             exit 1
           fi
           site="$PWD"

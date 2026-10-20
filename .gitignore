@@ -1,7 +1,21 @@
-# Personal: your plan, checklist history, weigh-ins and Taskwarrior backups
-plan.json
-data/
+# Everything personal stays on your machine. Only the app, the guides and the templates are tracked.
 
-# GC root symlink created by `nix run`
-.timew-hook
+# Your docs: docs/templates/ is copied here on first run, then they're yours to fill in.
+docs/*.md
+!docs/README.md
+!docs/dashboard.md
+!docs/noctalia-plugin.md
+
+# Your plan, checklist history, weigh-ins, MyFitnessPal cache and chats
+site/plan.json
+site/data/
+# Local settings (paths, keys): see site/.env.example
+site/.env
+
+# Noctalia plugin settings (saved next to the plugin)
+noctalia-plugin/settings.json
+
+# Build and runtime leftovers
+site/.timew-hook
 result
+__pycache__/

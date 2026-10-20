@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Local dashboard for ~/Projects/health: serves the docs, the editable plan and wraps Taskwarrior.
+"""Local health dashboard: serves your docs and editable plan, wraps Taskwarrior/Timewarrior and
+syncs MyFitnessPal.
 
 Binds to 127.0.0.1 only. Writes require a JSON body and an X-Dashboard header,
 so other websites open in the browser can't trigger them.
@@ -21,7 +22,25 @@ import assistant
 
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 1628
 SITE = Path(__file__).resolve().parent
-DOCS = SITE.parent
+ROOT = SITE.parent
+DOCS = ROOT / "docs"            # your Markdown docs (git-ignored), plus the guides
+TEMPLATES = DOCS / "templates"  # starter docs, copied into docs/ when missing
+
+
+def load_env(path):
+    """KEY=value lines from site/.env (local paths and keys; see .env.example). Real
+    environment variables win."""
+    try:
+        lines = path.read_text().splitlines()
+    except FileNotFoundError:
+        return
+    for line in lines:
+        key, sep, value = line.strip().partition("=")
+        if sep and key and not key.startswith("#"):
+            os.environ.setdefault(key.strip(), os.path.expanduser(value.strip().strip('"\'')))
+
+
+load_env(SITE / ".env")
 PLAN = SITE / "plan.json"
 DATA = SITE / "data"
 DATA.mkdir(exist_ok=True)
@@ -42,11 +61,10 @@ CHECK_STATES = {"done", "skip"}
 lock = threading.Lock()
 
 # MyFitnessPal, through the MyFitnessPal MCP (mfp-mcp) and its saved login (see mfp_fetch.py).
-# A local checkout is used if there is one; otherwise uv fetches the released package.
-MFP_DIR = Path(os.environ.get("MFP_MCP_DIR", "~/Documents/gitLibs/myfitnesspal-mcp")).expanduser()
+# MFP_MCP_DIR points at a local checkout of it; otherwise uv fetches the released package.
+MFP_DIR = Path(os.environ["MFP_MCP_DIR"]).expanduser() if os.environ.get("MFP_MCP_DIR") else None
 MFP_PACKAGE = "mfp-mcp[autorefresh]"
 MFP_REPO = "https://github.com/Mason-Levyy/myfitnesspal-mcp"
-MFP_BROWSER = Path("~/.local/share/myfitnesspal-mcp/playwright-browsers/chromium-1243/chrome-linux64/chrome").expanduser()
 MFP_CACHE = DATA / "mfp.json"
 MFP_EVERY = 600       # background sync, seconds
 MFP_STALE = 300       # a page load older than this triggers a sync
@@ -196,6 +214,13 @@ def ensure_plan():
         PLAN.write_bytes((SITE / "plan.example.json").read_bytes())
 
 
+def seed_docs():
+    """First run: give a new user the starter docs to fill in. Never overwrites."""
+    for t in TEMPLATES.glob("*.md"):
+        if not (DOCS / t.name).exists():
+            shutil.copyfile(t, DOCS / t.name)
+
+
 def doc_names():
     return sorted(p.name for p in DOCS.glob("*.md"))
 
@@ -230,14 +255,12 @@ def uv_cmd():
 
 
 def mfp_local():
-    return (MFP_DIR / "pyproject.toml").exists()
+    return bool(MFP_DIR) and (MFP_DIR / "pyproject.toml").exists()
 
 
 def mfp_env():
-    env = {}
-    if "MFP_BROWSER_PATH" not in os.environ and MFP_BROWSER.exists():
-        env["MFP_BROWSER_PATH"] = str(MFP_BROWSER)  # for the headless session refresh
-    return env
+    """MFP_BROWSER_PATH: the browser the MCP's session refresh uses (needed on NixOS)."""
+    return {"MFP_BROWSER_PATH": os.environ["MFP_BROWSER_PATH"]} if os.environ.get("MFP_BROWSER_PATH") else {}
 
 
 def mfp_mcp_server():
@@ -391,7 +414,7 @@ class Handler(BaseHTTPRequestHandler):
         if not chat_lock.acquire(blocking=False):
             return self.send(409, {"error": "still answering the last message"})
         try:
-            cmd, cwd, env = assistant.build(pid, message, chat.get("session_id"), mfp_mcp_server(), DOCS,
+            cmd, cwd, env = assistant.build(pid, message, chat.get("session_id"), mfp_mcp_server(), ROOT,
                                             CHAT_DIR, date.today().strftime("%A, %B %-d, %Y"))
             chat["messages"].append({"role": "user", "text": message, "at": time.time()})
             reply = {"role": "assistant", "provider": pid, "text": "", "tools": [], "at": time.time()}
@@ -918,5 +941,6 @@ if __name__ == "__main__":
         sys.exit(f"Port {PORT} is busy ({err.strerror}). Is the dashboard already running? Try: ./run.sh <other-port>")
     threading.Thread(target=reload_on_change, daemon=True).start()
     threading.Thread(target=mfp_loop, daemon=True).start()
+    seed_docs()
     print(f"Health dashboard: http://localhost:{PORT}  ({date.today()})", flush=True)
     server.serve_forever()

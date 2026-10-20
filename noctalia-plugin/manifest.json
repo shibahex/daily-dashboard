@@ -1,0 +1,28 @@
+{
+  "id": "health-dashboard",
+  "name": "Health Dashboard",
+  "version": "1.0.0",
+  "minNoctaliaVersion": "4.4.4",
+  "author": "shiba",
+  "license": "MIT",
+  "description": "Keeps the local health dashboard running and shows today's checklist and due tasks on the bar.",
+  "tags": ["Bar", "Panel", "Productivity"],
+  "entryPoints": {
+    "main": "Main.qml",
+    "barWidget": "BarWidget.qml",
+    "panel": "Panel.qml",
+    "settings": "Settings.qml"
+  },
+  "dependencies": {
+    "plugins": []
+  },
+  "metadata": {
+    "defaultSettings": {
+      "url": "http://localhost:1628",
+      "siteDir": "",
+      "autoStart": true,
+      "openCommand": "chromium --app={url}",
+      "showCount": true
+    }
+  }
+}
