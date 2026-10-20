@@ -2,7 +2,7 @@
 """MyFitnessPal for the dashboard: read the day (food per meal, goals, weigh-ins) and log,
 edit or remove foods. Prints JSON.
 
-Runs inside the myfitnesspal-mcp project's environment (server.py starts it with `uv run`),
+Runs inside the myfitnesspal-mcp project's environment (the Go server starts it with `uv run`),
 so it reuses that project's saved login and its headless-browser session refresh.
 
 Usage: mfp_fetch.py '{"op": "fetch", "date": "YYYY-MM-DD"}'

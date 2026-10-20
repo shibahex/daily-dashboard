@@ -41,7 +41,7 @@ ColumnLayout {
   NTextInput {
     Layout.fillWidth: true
     label: "Site folder"
-    description: "The folder with flake.nix and server.py, where the server is started with `nix run`. Leave empty to use the site/ folder next to this plugin."
+    description: "The folder with flake.nix, where the server is started with `nix run`. Leave empty to use the site/ folder next to this plugin."
     text: root.editSiteDir
     defaultValue: root.defaults.siteDir
     onTextChanged: root.editSiteDir = text

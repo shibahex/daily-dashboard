@@ -244,7 +244,7 @@ Item {
   Process {
     id: findSite
     running: true
-    command: ["sh", "-c", 'd=$(readlink -f "$1") && [ -f "${d%/*}/site/server.py" ] && echo "${d%/*}/site"', "sh",
+    command: ["sh", "-c", 'd=$(readlink -f "$1") && [ -f "${d%/*}/site/flake.nix" ] && echo "${d%/*}/site"', "sh",
               decodeURIComponent(String(Qt.resolvedUrl(".")).replace(/^file:\/\//, "").replace(/[?#].*$/, "").replace(/\/$/, ""))]
     stdout: StdioCollector { onStreamFinished: root.foundSiteDir = text.trim() }
   }
