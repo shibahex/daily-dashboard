@@ -4,6 +4,7 @@ package store
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -223,8 +224,9 @@ func (s *Store) saveWeights(byDay map[string]Weight) error {
 
 // ---------- docs ----------
 
-// SeedDocs copies the starter notes into docs/ on first run. It never overwrites a file.
+// SeedDocs copies the starter notes into the user's notes on first run. It never overwrites a file.
 func (s *Store) SeedDocs() {
+	os.MkdirAll(s.paths.Docs, 0o700)
 	templates, _ := filepath.Glob(filepath.Join(s.paths.DocTemplates, "*.md"))
 	for _, template := range templates {
 		target := filepath.Join(s.paths.Docs, filepath.Base(template))
@@ -236,12 +238,23 @@ func (s *Store) SeedDocs() {
 	}
 }
 
-// DocNames lists the Markdown files in docs/, sorted.
+// GuideNames are the app's own guides, in docs/ and the same for everyone. Everything else in
+// the Docs tab is the user's own notes.
+var GuideNames = []string{"README.md", "dashboard.md", "noctalia-plugin.md"}
+
+// DocNames lists the user's notes and the guides, sorted.
 func (s *Store) DocNames() []string {
 	files, _ := filepath.Glob(filepath.Join(s.paths.Docs, "*.md"))
-	names := make([]string, 0, len(files))
+	names := make([]string, 0, len(files)+len(GuideNames))
 	for _, f := range files {
-		names = append(names, filepath.Base(f))
+		if name := filepath.Base(f); !slices.Contains(GuideNames, name) {
+			names = append(names, name)
+		}
+	}
+	for _, guide := range GuideNames {
+		if _, err := os.Stat(filepath.Join(s.paths.Guides, guide)); err == nil {
+			names = append(names, guide)
+		}
 	}
 	sort.Strings(names)
 	return names
@@ -249,11 +262,13 @@ func (s *Store) DocNames() []string {
 
 // Doc returns a doc's text. Only names from DocNames work, so no other file can be read.
 func (s *Store) Doc(name string) ([]byte, bool) {
-	for _, known := range s.DocNames() {
-		if known == name {
-			content, err := os.ReadFile(filepath.Join(s.paths.Docs, name))
-			return content, err == nil
-		}
+	if !slices.Contains(s.DocNames(), name) {
+		return nil, false
 	}
-	return nil, false
+	dir := s.paths.Docs
+	if slices.Contains(GuideNames, name) {
+		dir = s.paths.Guides
+	}
+	content, err := os.ReadFile(filepath.Join(dir, name))
+	return content, err == nil
 }

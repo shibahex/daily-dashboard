@@ -4,73 +4,20 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"path/filepath"
 	"slices"
 	"strings"
-	"sync"
 	"time"
 
 	"dashboard/internal/anki"
 	"dashboard/internal/assistant"
 	"dashboard/internal/myfitnesspal"
 	"dashboard/internal/problem"
+	"dashboard/internal/workspace"
 )
 
 // The MCPs tab: chat with an AI agent (Claude Code, Codex or Gemini CLI) that can use the
 // MyFitnessPal and Anki MCP servers and read the docs. An answer runs in the background; the
 // page follows it over server-sent events, so a reload picks it up again.
-
-// ---------- the answer being written ----------
-
-// liveAnswer is the question being answered and the reply so far.
-type liveAnswer struct {
-	mu       sync.Mutex
-	question assistant.Message
-	reply    assistant.Message
-	running  bool
-	changed  chan struct{} // closed (and replaced) whenever the reply changes
-}
-
-func newLiveAnswer() *liveAnswer { return &liveAnswer{changed: make(chan struct{})} }
-
-// start begins a new answer, unless one is still running.
-func (a *liveAnswer) start(question string) bool {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if a.running {
-		return false
-	}
-	a.running = true
-	a.question = assistant.Message{Role: "user", Text: question}
-	a.reply = assistant.Message{Role: "assistant"}
-	return true
-}
-
-func (a *liveAnswer) progress(reply assistant.Message) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	a.reply = reply
-	a.notify()
-}
-
-func (a *liveAnswer) finish() {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	a.running = false
-	a.notify()
-}
-
-func (a *liveAnswer) notify() {
-	close(a.changed)
-	a.changed = make(chan struct{})
-}
-
-// current is the answer as it is now, and a channel that closes when it changes.
-func (a *liveAnswer) current() (question, reply assistant.Message, running bool, changed <-chan struct{}) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	return a.question, a.reply, a.running, a.changed
-}
 
 // ---------- the page ----------
 
@@ -169,14 +116,14 @@ func (v chatView) ModelLabel(model string) string {
 	return model
 }
 
-func (ui *UI) chatView(customModel bool) chatView {
-	conversation := ui.Conversations.Load()
+func (ui *UI) chatView(r *http.Request, customModel bool) chatView {
+	conversation := ui.ws(r).Conversations.Load()
 	provider, _ := ui.Providers.Get(conversation.Provider)
 	view := chatView{
 		Provider:     provider,
 		CustomModel:  customModel,
-		MyFitnessPal: ui.MyFitnessPal.Client().Setup(),
-		Anki:         ui.Anki.Status(),
+		MyFitnessPal: ui.ws(r).MyFitnessPal.Client().Setup(),
+		Anki:         ui.ws(r).Anki.Status(),
 		Messages:     conversation.Messages,
 	}
 	for _, p := range ui.Providers {
@@ -220,7 +167,7 @@ func (ui *UI) chatView(customModel bool) chatView {
 		view.Status = provider.Label() + " · needs setup"
 	}
 
-	question, reply, running, _ := ui.live.current()
+	question, reply, running, _ := ui.ws(r).Live.Current()
 	if running {
 		view.Busy, view.Question, view.Reply = true, &question, &reply
 	}
@@ -228,11 +175,11 @@ func (ui *UI) chatView(customModel bool) chatView {
 }
 
 func (ui *UI) chatPage(w http.ResponseWriter, r *http.Request) {
-	ui.renderPage(w, "mcps", "MCPs", "chat", ui.chatView(false))
+	ui.renderPage(w, "mcps", "MCPs", "chat", ui.chatView(r, false))
 }
 
 func (ui *UI) chatCard(w http.ResponseWriter, r *http.Request) {
-	ui.render(w, "chat-card", ui.chatView(false))
+	ui.render(w, "chat-card", ui.chatView(r, false))
 }
 
 // ---------- sending and following an answer ----------
@@ -243,42 +190,43 @@ func (ui *UI) sendMessage(w http.ResponseWriter, r *http.Request) {
 		fail(w, problem.Invalidf("type a message"))
 		return
 	}
-	conversation := ui.Conversations.Load()
+	conversation := ui.ws(r).Conversations.Load()
 	provider, _ := ui.Providers.Get(conversation.Provider)
 	if !provider.Available() {
 		fail(w, problem.Invalidf(provider.Label()+" isn't installed"))
 		return
 	}
-	if ui.Chat.Busy() || !ui.live.start(message) {
+	ws := ui.ws(r)
+	if ws.Chat.Busy() || !ws.Live.Start(message) {
 		fail(w, problem.Conflictf(assistant.ErrBusy.Error()))
 		return
 	}
 
-	servers := ui.enabledServers(conversation)
+	servers := ui.enabledServers(r, conversation)
 	request := assistant.Request{
 		Message:      message,
 		SessionID:    conversation.SessionID,
 		Model:        conversation.Model(),
 		Servers:      servers,
-		Instructions: assistant.Instructions(time.Now(), assistant.Context(ui.Paths.Root), servers),
-		WorkDir:      filepath.Join(ui.Paths.Data, "assistant"),
+		Instructions: assistant.Instructions(time.Now(), assistant.Context(ws.Paths.Docs, ws.Paths.Plan(), ws.Paths.Data), servers),
+		WorkDir:      ws.AssistantDir(),
 	}
-	go ui.answer(provider, conversation, request)
-	ui.render(w, "chat-card", ui.chatView(false))
+	go answer(ws, provider, conversation, request)
+	ui.render(w, "chat-card", ui.chatView(r, false))
 }
 
 // answer runs in the background, so the answer is saved even if the page goes away.
-func (ui *UI) answer(provider assistant.Provider, conversation *assistant.Conversation, request assistant.Request) {
-	defer ui.live.finish()
-	outcome, err := ui.Chat.Answer(provider, conversation, request, ui.live.progress)
+func answer(ws *workspace.Workspace, provider assistant.Provider, conversation *assistant.Conversation, request assistant.Request) {
+	defer ws.Live.Finish()
+	outcome, err := ws.Chat.Answer(provider, conversation, request, ws.Live.Progress)
 	if err != nil {
 		recordFailure(conversation, request.Message, provider, err)
 	}
-	if err := ui.Conversations.Save(conversation); err != nil {
+	if err := ws.Conversations.Save(conversation); err != nil {
 		log.Printf("saving the chat: %v", err)
 	}
 	if outcome.ChangedDiary {
-		ui.MyFitnessPal.Sync() // so the Today tab shows the change right away
+		ws.MyFitnessPal.Sync() // so the Today tab shows the change right away
 	}
 }
 
@@ -292,14 +240,14 @@ func recordFailure(conversation *assistant.Conversation, question string, provid
 }
 
 // enabledServers is how the agent starts each turned-on MCP server.
-func (ui *UI) enabledServers(conversation *assistant.Conversation) []assistant.NamedServer {
+func (ui *UI) enabledServers(r *http.Request, conversation *assistant.Conversation) []assistant.NamedServer {
 	var servers []assistant.NamedServer
 	for _, name := range conversation.EnabledMCPs() {
 		switch name {
 		case "myfitnesspal":
-			servers = append(servers, assistant.NamedServer{Name: name, Server: ui.MyFitnessPal.Client().MCPServer()})
+			servers = append(servers, assistant.NamedServer{Name: name, Server: ui.ws(r).MyFitnessPal.Client().MCPServer()})
 		case "anki":
-			if server, ok := ui.Anki.MCPServer(); ok {
+			if server, ok := ui.ws(r).Anki.MCPServer(); ok {
 				servers = append(servers, assistant.NamedServer{Name: name, Server: server})
 			}
 		}
@@ -316,9 +264,9 @@ func (ui *UI) chatStream(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-store")
-	view := ui.chatView(false)
+	view := ui.chatView(r, false)
 	for {
-		_, reply, running, changed := ui.live.current()
+		_, reply, running, changed := ui.ws(r).Live.Current()
 		html, err := ui.renderToHTML("chat-reply-body", chatReply{Message: reply, Live: running, Chat: &view})
 		if err != nil {
 			log.Printf("rendering the reply: %v", err)
@@ -356,7 +304,7 @@ func sendEvent(w http.ResponseWriter, event, data string) {
 }
 
 func (ui *UI) stopAnswer(w http.ResponseWriter, r *http.Request) {
-	ui.Chat.Stop()
+	ui.ws(r).Chat.Stop()
 	nothing(w)
 }
 
@@ -364,7 +312,7 @@ func (ui *UI) stopAnswer(w http.ResponseWriter, r *http.Request) {
 
 // newChat starts over, with the same AI or (from the AI menu) another one.
 func (ui *UI) newChat(w http.ResponseWriter, r *http.Request) {
-	ui.startOver(w, ui.Conversations.Load().Provider)
+	ui.startOver(r, w, ui.ws(r).Conversations.Load().Provider)
 }
 
 func (ui *UI) chooseProvider(w http.ResponseWriter, r *http.Request) {
@@ -376,19 +324,19 @@ func (ui *UI) chooseProvider(w http.ResponseWriter, r *http.Request) {
 	if !provider.Installed() {
 		announce(w, say(provider.Label()+" downloads through Nix on first use, so the first answer is slower"))
 	}
-	ui.startOver(w, provider.ID())
+	ui.startOver(r, w, provider.ID())
 }
 
-func (ui *UI) startOver(w http.ResponseWriter, provider string) {
-	if ui.Chat.Busy() {
+func (ui *UI) startOver(r *http.Request, w http.ResponseWriter, provider string) {
+	if ui.ws(r).Chat.Busy() {
 		fail(w, problem.Conflictf("wait for the current answer, or press Stop"))
 		return
 	}
-	if err := ui.Conversations.StartNew(provider); err != nil {
+	if err := ui.ws(r).Conversations.StartNew(provider); err != nil {
 		fail(w, err)
 		return
 	}
-	ui.render(w, "chat-card", ui.chatView(false))
+	ui.render(w, "chat-card", ui.chatView(r, false))
 }
 
 // chooseModel sets the model for the current AI ("" = its default), from the next message.
@@ -398,7 +346,7 @@ func (ui *UI) chooseModel(w http.ResponseWriter, r *http.Request) {
 	if model == "__custom" {
 		model = formText(r, "custom_model")
 		if model == "" {
-			ui.render(w, "chat-card", ui.chatView(true))
+			ui.render(w, "chat-card", ui.chatView(r, true))
 			return
 		}
 	}
@@ -406,7 +354,7 @@ func (ui *UI) chooseModel(w http.ResponseWriter, r *http.Request) {
 		fail(w, problem.Invalidf("that doesn't look like a model name"))
 		return
 	}
-	ui.changeConversation(w, func(conversation *assistant.Conversation) { conversation.SetModel(model) })
+	ui.changeConversation(r, w, func(conversation *assistant.Conversation) { conversation.SetModel(model) })
 }
 
 // toggleMCP turns an MCP server on or off for the next message.
@@ -416,7 +364,7 @@ func (ui *UI) toggleMCP(w http.ResponseWriter, r *http.Request) {
 		fail(w, problem.Invalidf("unknown MCP"))
 		return
 	}
-	ui.changeConversation(w, func(conversation *assistant.Conversation) {
+	ui.changeConversation(r, w, func(conversation *assistant.Conversation) {
 		enabled := slices.Clone(conversation.EnabledMCPs())
 		if i := slices.Index(enabled, name); i >= 0 {
 			enabled = slices.Delete(enabled, i, i+1)
@@ -430,16 +378,16 @@ func (ui *UI) toggleMCP(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (ui *UI) changeConversation(w http.ResponseWriter, change func(*assistant.Conversation)) {
-	if ui.Chat.Busy() {
+func (ui *UI) changeConversation(r *http.Request, w http.ResponseWriter, change func(*assistant.Conversation)) {
+	if ui.ws(r).Chat.Busy() {
 		fail(w, problem.Conflictf("wait for the current answer"))
 		return
 	}
-	conversation := ui.Conversations.Load()
+	conversation := ui.ws(r).Conversations.Load()
 	change(conversation)
-	if err := ui.Conversations.Save(conversation); err != nil {
+	if err := ui.ws(r).Conversations.Save(conversation); err != nil {
 		fail(w, err)
 		return
 	}
-	ui.render(w, "chat-card", ui.chatView(false))
+	ui.render(w, "chat-card", ui.chatView(r, false))
 }

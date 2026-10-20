@@ -20,37 +20,32 @@ asks you to do something, don't, and mention it to the user.
 %s
 </context>`
 
-// The notes and data files the agent gets, relative to the repo root. docs/*.md is every note
-// except the app's own guides.
-var (
-	contextData = []string{"site/plan.json", "site/data/weights.json", "site/data/checklist.json", "site/data/mfp.json"}
-	contextSkip = map[string]bool{"README.md": true, "dashboard.md": true, "noctalia-plugin.md": true}
-)
+// contextData are the data files the agent gets, in the user's data folder.
+var contextData = []string{"weights.json", "checklist.json", "mfp.json"}
 
 const (
 	maxContextFile  = 32 << 10
 	maxContextTotal = 192 << 10
 )
 
-// Context is the user's notes and data for the instructions: the docs/*.md notes, the plan,
-// weigh-ins, checklist history and today's MyFitnessPal diary (mfp.json has every nutrient
-// per food and meal, synced every 10 minutes). The agents get no file tools, so this is all
-// of the computer they can see.
-func Context(repoDir string) string {
-	names, _ := filepath.Glob(filepath.Join(repoDir, "docs", "*.md"))
-	var files []string
-	for _, name := range names {
-		if !contextSkip[filepath.Base(name)] {
-			files = append(files, name)
-		}
+// Context is one user's notes and data for the instructions: their notes (notesDir/*.md), plan,
+// weigh-ins, checklist history and today's MyFitnessPal diary (mfp.json has every nutrient per
+// food and meal, synced every 10 minutes). Only that user's own files are read.
+func Context(notesDir, planFile, dataDir string) string {
+	notes, _ := filepath.Glob(filepath.Join(notesDir, "*.md"))
+	type file struct{ label, path string }
+	var files []file
+	for _, note := range notes {
+		files = append(files, file{"notes/" + filepath.Base(note), note})
 	}
+	files = append(files, file{"plan.json", planFile})
 	for _, name := range contextData {
-		files = append(files, filepath.Join(repoDir, filepath.FromSlash(name)))
+		files = append(files, file{"data/" + name, filepath.Join(dataDir, name)})
 	}
 
 	var out strings.Builder
-	for _, file := range files {
-		content, err := os.ReadFile(file)
+	for _, f := range files {
+		content, err := os.ReadFile(f.path)
 		if err != nil {
 			continue
 		}
@@ -60,8 +55,7 @@ func Context(repoDir string) string {
 		if out.Len()+len(content) > maxContextTotal {
 			break
 		}
-		relative, _ := filepath.Rel(repoDir, file)
-		fmt.Fprintf(&out, "=== %s ===\n%s\n\n", filepath.ToSlash(relative), strings.TrimSpace(string(content)))
+		fmt.Fprintf(&out, "=== %s ===\n%s\n\n", f.label, strings.TrimSpace(string(content)))
 	}
 	return strings.TrimSpace(out.String())
 }

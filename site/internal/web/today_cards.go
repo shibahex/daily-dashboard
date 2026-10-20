@@ -34,15 +34,15 @@ type sessionCardView struct {
 const sessionURL = "/cards/session"
 
 func (ui *UI) renderSessionCard(r *http.Request) (template.HTML, error) {
-	view, err := ui.sessionView(isEditing(r), nil)
+	view, err := ui.sessionView(r, isEditing(r), nil)
 	if err != nil {
 		return "", err
 	}
 	return ui.renderToHTML("card-session", view)
 }
 
-func (ui *UI) sessionView(editing bool, exercises [][]string) (sessionCardView, error) {
-	plan, err := ui.Store.LoadPlan()
+func (ui *UI) sessionView(r *http.Request, editing bool, exercises [][]string) (sessionCardView, error) {
+	plan, err := ui.ws(r).Store.LoadPlan()
 	if err != nil {
 		return sessionCardView{}, err
 	}
@@ -63,7 +63,7 @@ func (ui *UI) sessionView(editing bool, exercises [][]string) (sessionCardView, 
 }
 
 func (ui *UI) sessionCard(w http.ResponseWriter, r *http.Request) {
-	view, err := ui.sessionView(isEditing(r), nil)
+	view, err := ui.sessionView(r, isEditing(r), nil)
 	if err != nil {
 		fail(w, err)
 		return
@@ -75,7 +75,7 @@ func (ui *UI) sessionCard(w http.ResponseWriter, r *http.Request) {
 func (ui *UI) saveSession(w http.ResponseWriter, r *http.Request) {
 	rows := rowsFromForm(r, 2)
 	if operation := rowOperation(r); operation != "" {
-		view, err := ui.sessionView(true, applyRowOperation(rows, operation, 2))
+		view, err := ui.sessionView(r, true, applyRowOperation(rows, operation, 2))
 		if err != nil {
 			fail(w, err)
 			return
@@ -85,7 +85,7 @@ func (ui *UI) saveSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	weekday := time.Now().Weekday().String()
-	err := ui.Store.UpdatePlan(func(plan *store.Plan) {
+	err := ui.ws(r).Store.UpdatePlan(func(plan *store.Plan) {
 		key, session, _ := plan.SessionFor(weekday)
 		if title := formText(r, "title"); title != "" {
 			session.Title = title
@@ -102,7 +102,7 @@ func (ui *UI) saveSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	announce(w, say("Workout saved"), planChanged)
-	view, err := ui.sessionView(false, nil)
+	view, err := ui.sessionView(r, false, nil)
 	if err != nil {
 		fail(w, err)
 		return
@@ -154,19 +154,19 @@ func checklistDay(r *http.Request) time.Time {
 }
 
 func (ui *UI) renderChecklistCard(r *http.Request) (template.HTML, error) {
-	view, err := ui.checklistView(isEditing(r), checklistDay(r), r.URL.Query().Get("note"), nil)
+	view, err := ui.checklistView(r, isEditing(r), checklistDay(r), r.URL.Query().Get("note"), nil)
 	if err != nil {
 		return "", err
 	}
 	return ui.renderToHTML("card-checklist", view)
 }
 
-func (ui *UI) checklistView(editing bool, shown time.Time, noteOpenFor string, editedItems [][]string) (checklistCardView, error) {
-	plan, err := ui.Store.LoadPlan()
+func (ui *UI) checklistView(r *http.Request, editing bool, shown time.Time, noteOpenFor string, editedItems [][]string) (checklistCardView, error) {
+	plan, err := ui.ws(r).Store.LoadPlan()
 	if err != nil {
 		return checklistCardView{}, err
 	}
-	days := ui.Store.Checklist()
+	days := ui.ws(r).Store.Checklist()
 	now := time.Now()
 	states := days[shown.Format(dayLayout)]
 	view := checklistCardView{Editing: editing, Day: shown, IsToday: shown.Equal(startOfDay(now)), Total: len(plan.Checklist)}
@@ -211,7 +211,7 @@ func checkState(value any) (state, note string) {
 }
 
 func (ui *UI) checklistCard(w http.ResponseWriter, r *http.Request) {
-	view, err := ui.checklistView(isEditing(r), checklistDay(r), r.URL.Query().Get("note"), nil)
+	view, err := ui.checklistView(r, isEditing(r), checklistDay(r), r.URL.Query().Get("note"), nil)
 	if err != nil {
 		fail(w, err)
 		return
@@ -223,7 +223,7 @@ func (ui *UI) checklistCard(w http.ResponseWriter, r *http.Request) {
 func (ui *UI) saveChecklistItems(w http.ResponseWriter, r *http.Request) {
 	rows := rowsFromForm(r, 1)
 	if operation := rowOperation(r); operation != "" {
-		view, err := ui.checklistView(true, checklistDay(r), "", applyRowOperation(rows, operation, 1))
+		view, err := ui.checklistView(r, true, checklistDay(r), "", applyRowOperation(rows, operation, 1))
 		if err != nil {
 			fail(w, err)
 			return
@@ -231,12 +231,12 @@ func (ui *UI) saveChecklistItems(w http.ResponseWriter, r *http.Request) {
 		ui.render(w, "card-checklist", view)
 		return
 	}
-	if err := ui.Store.UpdatePlan(func(plan *store.Plan) { plan.Checklist = firstColumn(cleanRows(rows)) }); err != nil {
+	if err := ui.ws(r).Store.UpdatePlan(func(plan *store.Plan) { plan.Checklist = firstColumn(cleanRows(rows)) }); err != nil {
 		fail(w, err)
 		return
 	}
 	announce(w, say("Checklist saved"), planChanged, checklistChanged)
-	ui.renderChecklistAfterChange(w, checklistDay(r), "")
+	ui.renderChecklistAfterChange(r, w, checklistDay(r), "")
 }
 
 // setChecklistItem ticks, skips or clears an item on the card's day (today, or an earlier day):
@@ -253,7 +253,7 @@ func (ui *UI) setChecklistItem(w http.ResponseWriter, r *http.Request) {
 	}
 	shown := checklistDay(r)
 	day := shown.Format(dayLayout)
-	items := ui.Store.Checklist()[day]
+	items := ui.ws(r).Store.Checklist()[day]
 	if items == nil {
 		items = map[string]any{}
 	}
@@ -269,7 +269,7 @@ func (ui *UI) setChecklistItem(w http.ResponseWriter, r *http.Request) {
 	default:
 		delete(items, item)
 	}
-	if err := ui.Store.SaveChecklistDay(day, items); err != nil {
+	if err := ui.ws(r).Store.SaveChecklistDay(day, items); err != nil {
 		fail(w, err)
 		return
 	}
@@ -283,11 +283,11 @@ func (ui *UI) setChecklistItem(w http.ResponseWriter, r *http.Request) {
 		message = say("Reason saved")
 	}
 	announce(w, message, checklistChanged)
-	ui.renderChecklistAfterChange(w, shown, noteOpen)
+	ui.renderChecklistAfterChange(r, w, shown, noteOpen)
 }
 
-func (ui *UI) renderChecklistAfterChange(w http.ResponseWriter, shown time.Time, noteOpenFor string) {
-	view, err := ui.checklistView(false, shown, noteOpenFor, nil)
+func (ui *UI) renderChecklistAfterChange(r *http.Request, w http.ResponseWriter, shown time.Time, noteOpenFor string) {
+	view, err := ui.checklistView(r, false, shown, noteOpenFor, nil)
 	if err != nil {
 		fail(w, err)
 		return
@@ -317,19 +317,19 @@ type sparkline struct {
 }
 
 func (ui *UI) renderWeightCard(r *http.Request) (template.HTML, error) {
-	view, err := ui.weightView(isEditing(r))
+	view, err := ui.weightView(r, isEditing(r))
 	if err != nil {
 		return "", err
 	}
 	return ui.renderToHTML("card-weight", view)
 }
 
-func (ui *UI) weightView(editing bool) (weightCardView, error) {
-	plan, err := ui.Store.LoadPlan()
+func (ui *UI) weightView(r *http.Request, editing bool) (weightCardView, error) {
+	plan, err := ui.ws(r).Store.LoadPlan()
 	if err != nil {
 		return weightCardView{}, err
 	}
-	weights := ui.Store.Weights()
+	weights := ui.ws(r).Store.Weights()
 	today := time.Now().Format("2006-01-02")
 	view := weightCardView{Editing: editing, Plan: plan.Weight, Current: plan.Weight.Start}
 	view.StartDate, _ = time.ParseInLocation("2006-01-02", plan.Weight.StartDate, time.Local)
@@ -382,7 +382,7 @@ func weightTrend(weights []store.Weight, since string) *sparkline {
 }
 
 func (ui *UI) weightCard(w http.ResponseWriter, r *http.Request) {
-	view, err := ui.weightView(isEditing(r))
+	view, err := ui.weightView(r, isEditing(r))
 	if err != nil {
 		fail(w, err)
 		return
@@ -392,7 +392,7 @@ func (ui *UI) weightCard(w http.ResponseWriter, r *http.Request) {
 
 // saveWeightPlan saves the starting weight, start date, target and lowest weight.
 func (ui *UI) saveWeightPlan(w http.ResponseWriter, r *http.Request) {
-	err := ui.Store.UpdatePlan(func(plan *store.Plan) {
+	err := ui.ws(r).Store.UpdatePlan(func(plan *store.Plan) {
 		if start, err := strconv.ParseFloat(formText(r, "start"), 64); err == nil && start > 0 {
 			plan.Weight.Start = start
 		}
@@ -409,7 +409,7 @@ func (ui *UI) saveWeightPlan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	announce(w, say("Weight settings saved"), planChanged)
-	ui.renderWeightAfterChange(w)
+	ui.renderWeightAfterChange(r, w)
 }
 
 // logWeight logs today's weigh-in (lb), or removes it (remove=1). A new weigh-in also goes to
@@ -417,12 +417,12 @@ func (ui *UI) saveWeightPlan(w http.ResponseWriter, r *http.Request) {
 func (ui *UI) logWeight(w http.ResponseWriter, r *http.Request) {
 	day := time.Now().Format("2006-01-02")
 	if r.FormValue("remove") != "" {
-		if err := ui.Store.SetWeight(day, nil); err != nil {
+		if err := ui.ws(r).Store.SetWeight(day, nil); err != nil {
 			fail(w, err)
 			return
 		}
 		announce(w, say("Removed here. Remove it in MyFitnessPal too, or the next sync brings it back."))
-		ui.renderWeightAfterChange(w)
+		ui.renderWeightAfterChange(r, w)
 		return
 	}
 	lb, err := strconv.ParseFloat(formText(r, "lb"), 64)
@@ -431,21 +431,21 @@ func (ui *UI) logWeight(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	lb = math.Round(lb*10) / 10
-	if err := ui.Store.SetWeight(day, &lb); err != nil {
+	if err := ui.ws(r).Store.SetWeight(day, &lb); err != nil {
 		fail(w, err)
 		return
 	}
-	ui.Store.TickWeighIn(day)
+	ui.ws(r).Store.TickWeighIn(day)
 	message := say("Weight logged · sent to MyFitnessPal")
-	if err := ui.MyFitnessPal.LogWeight(day, lb); err != nil {
+	if err := ui.ws(r).MyFitnessPal.LogWeight(day, lb); err != nil {
 		message = &notice{Message: "Saved here, but not in MyFitnessPal: " + err.Error(), Bad: true}
 	}
 	announce(w, message, checklistChanged)
-	ui.renderWeightAfterChange(w)
+	ui.renderWeightAfterChange(r, w)
 }
 
-func (ui *UI) renderWeightAfterChange(w http.ResponseWriter) {
-	view, err := ui.weightView(false)
+func (ui *UI) renderWeightAfterChange(r *http.Request, w http.ResponseWriter) {
+	view, err := ui.weightView(r, false)
 	if err != nil {
 		fail(w, err)
 		return
@@ -473,7 +473,7 @@ type weekCardView struct {
 }
 
 func (ui *UI) renderWeekCard(r *http.Request) (template.HTML, error) {
-	view, err := ui.weekView(isEditing(r), nil)
+	view, err := ui.weekView(r, isEditing(r), nil)
 	if err != nil {
 		return "", err
 	}
@@ -481,8 +481,8 @@ func (ui *UI) renderWeekCard(r *http.Request) (template.HTML, error) {
 }
 
 // weekView is the week's sessions; chosen overrides the plan's picks while editing.
-func (ui *UI) weekView(editing bool, chosen map[string]string) (weekCardView, error) {
-	plan, err := ui.Store.LoadPlan()
+func (ui *UI) weekView(r *http.Request, editing bool, chosen map[string]string) (weekCardView, error) {
+	plan, err := ui.ws(r).Store.LoadPlan()
 	if err != nil {
 		return weekCardView{}, err
 	}
@@ -511,7 +511,7 @@ func sortSessions(choices []sessionChoice) {
 }
 
 func (ui *UI) weekCard(w http.ResponseWriter, r *http.Request) {
-	view, err := ui.weekView(isEditing(r), nil)
+	view, err := ui.weekView(r, isEditing(r), nil)
 	if err != nil {
 		fail(w, err)
 		return
@@ -533,7 +533,7 @@ func chosenSessions(r *http.Request) map[string]string {
 
 func (ui *UI) saveWeek(w http.ResponseWriter, r *http.Request) {
 	chosen := chosenSessions(r)
-	err := ui.Store.UpdatePlan(func(plan *store.Plan) {
+	err := ui.ws(r).Store.UpdatePlan(func(plan *store.Plan) {
 		for day, key := range chosen {
 			plan.Schedule[day] = key
 		}
@@ -543,7 +543,7 @@ func (ui *UI) saveWeek(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	announce(w, say("Schedule saved"), planChanged)
-	view, _ := ui.weekView(false, nil)
+	view, _ := ui.weekView(r, false, nil)
 	ui.render(w, "card-week", view)
 }
 
@@ -554,7 +554,7 @@ func (ui *UI) addSession(w http.ResponseWriter, r *http.Request) {
 	title := formText(r, "title")
 	chosen := chosenSessions(r)
 	if title != "" {
-		err := ui.Store.UpdatePlan(func(plan *store.Plan) {
+		err := ui.ws(r).Store.UpdatePlan(func(plan *store.Plan) {
 			key := strings.Trim(nonWordRun.ReplaceAllString(strings.ToLower(title), "-"), "-")
 			if key == "" {
 				key = "session"
@@ -570,7 +570,7 @@ func (ui *UI) addSession(w http.ResponseWriter, r *http.Request) {
 		}
 		announce(w, say(fmt.Sprintf("Added “%s”. Pick it for a day, then Save.", title)))
 	}
-	view, err := ui.weekView(true, chosen)
+	view, err := ui.weekView(r, true, chosen)
 	if err != nil {
 		fail(w, err)
 		return
@@ -589,15 +589,15 @@ type notesCardView struct {
 const notesURL = "/cards/notes"
 
 func (ui *UI) renderNotesCard(r *http.Request) (template.HTML, error) {
-	view, err := ui.notesView(isEditing(r), nil)
+	view, err := ui.notesView(r, isEditing(r), nil)
 	if err != nil {
 		return "", err
 	}
 	return ui.renderToHTML("card-notes", view)
 }
 
-func (ui *UI) notesView(editing bool, edited [][]string) (notesCardView, error) {
-	plan, err := ui.Store.LoadPlan()
+func (ui *UI) notesView(r *http.Request, editing bool, edited [][]string) (notesCardView, error) {
+	plan, err := ui.ws(r).Store.LoadPlan()
 	if err != nil {
 		return notesCardView{}, err
 	}
@@ -609,7 +609,7 @@ func (ui *UI) notesView(editing bool, edited [][]string) (notesCardView, error) 
 }
 
 func (ui *UI) notesCard(w http.ResponseWriter, r *http.Request) {
-	view, err := ui.notesView(isEditing(r), nil)
+	view, err := ui.notesView(r, isEditing(r), nil)
 	if err != nil {
 		fail(w, err)
 		return
@@ -620,15 +620,15 @@ func (ui *UI) notesCard(w http.ResponseWriter, r *http.Request) {
 func (ui *UI) saveNotes(w http.ResponseWriter, r *http.Request) {
 	rows := rowsFromForm(r, 1)
 	if operation := rowOperation(r); operation != "" {
-		view, _ := ui.notesView(true, applyRowOperation(rows, operation, 1))
+		view, _ := ui.notesView(r, true, applyRowOperation(rows, operation, 1))
 		ui.render(w, "card-notes", view)
 		return
 	}
-	if err := ui.Store.UpdatePlan(func(plan *store.Plan) { plan.Notes = firstColumn(cleanRows(rows)) }); err != nil {
+	if err := ui.ws(r).Store.UpdatePlan(func(plan *store.Plan) { plan.Notes = firstColumn(cleanRows(rows)) }); err != nil {
 		fail(w, err)
 		return
 	}
 	announce(w, say("Reminders saved"), planChanged)
-	view, _ := ui.notesView(false, nil)
+	view, _ := ui.notesView(r, false, nil)
 	ui.render(w, "card-notes", view)
 }

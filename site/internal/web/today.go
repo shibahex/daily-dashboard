@@ -46,7 +46,7 @@ type todayView struct {
 }
 
 func (ui *UI) todayPage(w http.ResponseWriter, r *http.Request) {
-	plan, err := ui.Store.LoadPlan()
+	plan, err := ui.ws(r).Store.LoadPlan()
 	if err != nil {
 		fail(w, err)
 		return
@@ -113,7 +113,7 @@ func (ui *UI) saveLayout(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	if err := ui.Store.UpdatePlan(func(plan *store.Plan) { plan.Layout = cleaned }); err != nil {
+	if err := ui.ws(r).Store.UpdatePlan(func(plan *store.Plan) { plan.Layout = cleaned }); err != nil {
 		fail(w, err)
 		return
 	}
@@ -122,7 +122,7 @@ func (ui *UI) saveLayout(w http.ResponseWriter, r *http.Request) {
 }
 
 func (ui *UI) resetLayout(w http.ResponseWriter, r *http.Request) {
-	if err := ui.Store.UpdatePlan(func(plan *store.Plan) { plan.Layout = nil }); err != nil {
+	if err := ui.ws(r).Store.UpdatePlan(func(plan *store.Plan) { plan.Layout = nil }); err != nil {
 		fail(w, err)
 		return
 	}
@@ -135,12 +135,12 @@ func (ui *UI) resetLayout(w http.ResponseWriter, r *http.Request) {
 // streakBadge is the header's "🔥 4-day streak": days in a row with the whole checklist done
 // or skipped (today counts once it's complete).
 func (ui *UI) streakBadge(w http.ResponseWriter, r *http.Request) {
-	ui.render(w, "streak", ui.checklistStreak())
+	ui.render(w, "streak", ui.checklistStreak(r))
 }
 
-func (ui *UI) checklistStreak() int {
-	plan, _ := ui.Store.LoadPlan()
-	days := ui.Store.Checklist()
+func (ui *UI) checklistStreak(r *http.Request) int {
+	plan, _ := ui.ws(r).Store.LoadPlan()
+	days := ui.ws(r).Store.Checklist()
 	day := time.Now()
 	if dayRatio(plan.Checklist, days, day) < 1 {
 		day = day.AddDate(0, 0, -1) // today is still in progress

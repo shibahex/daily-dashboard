@@ -8,13 +8,14 @@ import (
 	"slices"
 	"sort"
 	"strings"
+
+	"dashboard/internal/store"
 )
 
 // The Docs tab shows the Markdown files in docs/: your notes first, the app's guides last.
 
 var (
 	usualDocs = []string{"overview.md", "background.md", "nutrition-plan.md", "workout-plan.md", "food-history.md"}
-	guideDocs = []string{"README.md", "dashboard.md", "noctalia-plugin.md"}
 	docTitles = map[string]string{"README.md": "Getting started", "dashboard.md": "Dashboard guide", "noctalia-plugin.md": "Noctalia plugin"}
 )
 
@@ -31,7 +32,7 @@ type docsView struct {
 }
 
 func (ui *UI) docsPage(w http.ResponseWriter, r *http.Request) {
-	names := ui.Store.DocNames()
+	names := ui.ws(r).Store.DocNames()
 	sort.SliceStable(names, func(i, j int) bool { return docRank(names[i]) < docRank(names[j]) })
 
 	open := r.FormValue("doc")
@@ -49,7 +50,7 @@ func (ui *UI) docsPage(w http.ResponseWriter, r *http.Request) {
 	for _, name := range names {
 		view.Docs = append(view.Docs, docLink{Name: name, Title: docTitle(name), Open: name == open})
 	}
-	if content, found := ui.Store.Doc(open); found {
+	if content, found := ui.ws(r).Store.Doc(open); found {
 		view.Content = linkDocs(renderMarkdown(string(content)))
 	}
 	ui.renderPage(w, "docs", "Docs", "docs", view)
@@ -57,7 +58,7 @@ func (ui *UI) docsPage(w http.ResponseWriter, r *http.Request) {
 
 // docRank puts the usual notes first (in order), then other notes, then the guides.
 func docRank(name string) int {
-	if i := slices.Index(guideDocs, name); i >= 0 {
+	if i := slices.Index(store.GuideNames, name); i >= 0 {
 		return 100 + i
 	}
 	if i := slices.Index(usualDocs, name); i >= 0 {

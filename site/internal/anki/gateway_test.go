@@ -66,10 +66,15 @@ func TestGatewayNeedsItsKeyAndForwards(t *testing.T) {
 		io.WriteString(w, `{"result": ["Default"], "error": null}`)
 	}))
 	defer anki.Close()
-	gateway, err := StartGateway(Client{URL: anki.URL, APIKey: "anki-key", http: anki.Client()})
+	gateway, err := StartGateway()
 	if err != nil {
 		t.Fatal(err)
 	}
+	key := gateway.Register("me", Client{URL: anki.URL, APIKey: "anki-key", http: anki.Client()})
+	if again := gateway.Register("me", Client{URL: anki.URL, APIKey: "anki-key", http: anki.Client()}); again != key {
+		t.Fatal("registering again should keep the key")
+	}
+	other := gateway.Register("someone else", Client{})
 
 	post := func(body string) map[string]any {
 		resp, err := http.Post(gateway.URL, "application/json", strings.NewReader(body))
@@ -85,8 +90,16 @@ func TestGatewayNeedsItsKeyAndForwards(t *testing.T) {
 	if reply := post(`{"action": "deckNames", "version": 6, "key": "wrong"}`); reply["error"] == nil || forwarded != nil {
 		t.Fatalf("wrong key: got %v, forwarded %v", reply, forwarded)
 	}
-	reply := post(`{"action": "deckNames", "version": 6, "key": "` + gateway.Key + `"}`)
+	if reply := post(`{"action": "deckNames", "version": 6, "key": "` + other + `"}`); reply["error"] == nil || forwarded != nil {
+		t.Fatalf("another user's key must not reach this Anki: got %v, forwarded %v", reply, forwarded)
+	}
+	reply := post(`{"action": "deckNames", "version": 6, "key": "` + key + `"}`)
 	if reply["error"] != nil || forwarded["action"] != "deckNames" || forwarded["key"] != "anki-key" {
 		t.Fatalf("right key: got %v, forwarded %v", reply, forwarded)
+	}
+	gateway.Unregister("me")
+	forwarded = nil
+	if reply := post(`{"action": "deckNames", "version": 6, "key": "` + key + `"}`); reply["error"] == nil || forwarded != nil {
+		t.Fatal("an unregistered key must stop working")
 	}
 }

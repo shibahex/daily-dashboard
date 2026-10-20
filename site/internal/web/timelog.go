@@ -30,15 +30,15 @@ type timeCardView struct {
 }
 
 func (ui *UI) renderTimeCard(r *http.Request) (template.HTML, error) {
-	view, err := ui.timeCardView()
+	view, err := ui.timeCardView(r)
 	if err != nil {
 		return "", err
 	}
 	return ui.renderToHTML("card-time", view)
 }
 
-func (ui *UI) timeCardView() (timeCardView, error) {
-	intervals, err := ui.Time.IntervalsThisWeek()
+func (ui *UI) timeCardView(r *http.Request) (timeCardView, error) {
+	intervals, err := ui.ws(r).Time.IntervalsThisWeek()
 	if problem.KindOf(err) == problem.Unavailable {
 		return timeCardView{}, nil
 	}
@@ -145,16 +145,16 @@ type timeLogView struct {
 func (v timeLogView) Previous() int { return v.Week - 1 }
 func (v timeLogView) Next() int     { return min(0, v.Week+1) }
 
-func (ui *UI) timeLogView(week int) timeLogView {
+func (ui *UI) timeLogView(r *http.Request, week int) timeLogView {
 	now := time.Now()
 	monday := startOfDay(now).AddDate(0, 0, -((int(now.Weekday())+6)%7)+7*week)
 	view := timeLogView{Week: week, Monday: monday, Sunday: monday.AddDate(0, 0, 6), AddDay: monday.Format(dayLayout)}
 	if week == 0 {
 		view.AddDay = now.Format(dayLayout)
 	}
-	view.TaskGroups, view.Names = ui.taskChoices(now)
+	view.TaskGroups, view.Names = ui.taskChoices(r, now)
 
-	intervals, err := ui.Time.IntervalsBetween(monday, monday.AddDate(0, 0, 7))
+	intervals, err := ui.ws(r).Time.IntervalsBetween(monday, monday.AddDate(0, 0, 7))
 	switch {
 	case problem.KindOf(err) == problem.Unavailable:
 		return view
@@ -185,8 +185,8 @@ func (ui *UI) timeLogView(week int) timeLogView {
 
 // taskChoices are pending tasks, repeating ones, and tasks done in the last two weeks, plus
 // task names to suggest.
-func (ui *UI) taskChoices(now time.Time) ([]taskChoiceGroup, []string) {
-	all, err := ui.Tasks.All()
+func (ui *UI) taskChoices(r *http.Request, now time.Time) ([]taskChoiceGroup, []string) {
+	all, err := ui.ws(r).Tasks.All()
 	if err != nil {
 		return nil, nil
 	}
@@ -240,7 +240,7 @@ func weekFrom(r *http.Request) int {
 }
 
 func (ui *UI) timeLogCard(w http.ResponseWriter, r *http.Request) {
-	ui.render(w, "card-timelog", ui.timeLogView(weekFrom(r)))
+	ui.render(w, "card-timelog", ui.timeLogView(r, weekFrom(r)))
 }
 
 // trackTime logs time from the add form. An end before the start is past midnight.
@@ -257,7 +257,7 @@ func (ui *UI) trackTime(w http.ResponseWriter, r *http.Request) {
 	}
 	start := day.Format(dayLayout) + "T" + startClock
 	end := endDay.Format(dayLayout) + "T" + endClock
-	if err := ui.Time.Track(start, end, splitTimeTags(r.FormValue("tags"))); err != nil {
+	if err := ui.ws(r).Time.Track(start, end, splitTimeTags(r.FormValue("tags"))); err != nil {
 		fail(w, err)
 		return
 	}
@@ -278,7 +278,7 @@ func splitTimeTags(typed string) []string {
 
 // timeEntryEditor turns an entry of the log into a form.
 func (ui *UI) timeEntryEditor(w http.ResponseWriter, r *http.Request) {
-	view := ui.timeLogView(weekFrom(r))
+	view := ui.timeLogView(r, weekFrom(r))
 	view.Editing = r.PathValue("id") + "|" + r.FormValue("start")
 	ui.render(w, "card-timelog", view)
 }
@@ -306,7 +306,7 @@ func (ui *UI) saveTimeEntry(w http.ResponseWriter, r *http.Request) {
 		fail(w, problem.Invalidf("End must be after start"))
 		return
 	}
-	if err := ui.Time.EditInterval(id, startWas, edit); err != nil {
+	if err := ui.ws(r).Time.EditInterval(id, startWas, edit); err != nil {
 		fail(w, err)
 		return
 	}
@@ -316,7 +316,7 @@ func (ui *UI) saveTimeEntry(w http.ResponseWriter, r *http.Request) {
 
 func (ui *UI) deleteTimeEntry(w http.ResponseWriter, r *http.Request) {
 	id, _ := strconv.Atoi(r.PathValue("id"))
-	if err := ui.Time.DeleteInterval(id, r.FormValue("start_was")); err != nil {
+	if err := ui.ws(r).Time.DeleteInterval(id, r.FormValue("start_was")); err != nil {
 		fail(w, err)
 		return
 	}

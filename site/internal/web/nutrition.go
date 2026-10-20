@@ -63,23 +63,23 @@ type goalsCardView struct {
 const goalsURL = "/cards/goals"
 
 func (ui *UI) renderGoalsCard(r *http.Request) (template.HTML, error) {
-	view, err := ui.goalsView(isEditing(r), nil)
+	view, err := ui.goalsView(r, isEditing(r), nil)
 	if err != nil {
 		return "", err
 	}
 	return ui.renderToHTML("card-goals", view)
 }
 
-func (ui *UI) goalsView(editing bool, edited [][]string) (goalsCardView, error) {
-	plan, err := ui.Store.LoadPlan()
+func (ui *UI) goalsView(r *http.Request, editing bool, edited [][]string) (goalsCardView, error) {
+	plan, err := ui.ws(r).Store.LoadPlan()
 	if err != nil {
 		return goalsCardView{}, err
 	}
-	cache, stale := ui.MyFitnessPal.Status()
+	cache, stale := ui.ws(r).MyFitnessPal.Status()
 	if stale {
-		ui.MyFitnessPal.SyncInBackground()
+		ui.ws(r).MyFitnessPal.SyncInBackground()
 	}
-	syncing := stale || ui.MyFitnessPal.Busy()
+	syncing := stale || ui.ws(r).MyFitnessPal.Busy()
 	view := goalsCardView{Editing: editing, Goals: plan.Goals, Syncing: syncing, LastError: cache.ErrorText()}
 	if day, synced := cache.Day(); synced && !editing {
 		view.Nutrition = nutritionFrom(day, cache, syncing)
@@ -149,11 +149,11 @@ func ago(d time.Duration) string {
 }
 
 func (ui *UI) goalsCard(w http.ResponseWriter, r *http.Request) {
-	ui.renderGoalsWith(w, isEditing(r), nil)
+	ui.renderGoalsWith(r, w, isEditing(r), nil)
 }
 
-func (ui *UI) renderGoalsWith(w http.ResponseWriter, editing bool, edited [][]string) {
-	view, err := ui.goalsView(editing, edited)
+func (ui *UI) renderGoalsWith(r *http.Request, w http.ResponseWriter, editing bool, edited [][]string) {
+	view, err := ui.goalsView(r, editing, edited)
 	if err != nil {
 		fail(w, err)
 		return
@@ -165,10 +165,10 @@ func (ui *UI) renderGoalsWith(w http.ResponseWriter, editing bool, edited [][]st
 func (ui *UI) saveGoals(w http.ResponseWriter, r *http.Request) {
 	rows := rowsFromForm(r, 3)
 	if operation := rowOperation(r); operation != "" {
-		ui.renderGoalsWith(w, true, applyRowOperation(rows, operation, 3))
+		ui.renderGoalsWith(r, w, true, applyRowOperation(rows, operation, 3))
 		return
 	}
-	err := ui.Store.UpdatePlan(func(plan *store.Plan) {
+	err := ui.ws(r).Store.UpdatePlan(func(plan *store.Plan) {
 		plan.Goals = nil
 		for _, row := range cleanRows(rows) {
 			plan.Goals = append(plan.Goals, store.Goal{Label: row[0], Value: row[1], Unit: row[2]})
@@ -179,18 +179,18 @@ func (ui *UI) saveGoals(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	announce(w, say("Goals saved"), planChanged)
-	ui.renderGoalsWith(w, false, nil)
+	ui.renderGoalsWith(r, w, false, nil)
 }
 
 // syncNutrition syncs with MyFitnessPal now.
 func (ui *UI) syncNutrition(w http.ResponseWriter, r *http.Request) {
-	cache := ui.MyFitnessPal.Sync()
+	cache := ui.ws(r).MyFitnessPal.Sync()
 	var message *notice
 	if cache.ErrorText() != "" {
 		message = &notice{Message: "MyFitnessPal: " + cache.ErrorText(), Bad: true}
 	}
 	announce(w, message, checklistChanged)
-	ui.renderGoalsWith(w, false, nil)
+	ui.renderGoalsWith(r, w, false, nil)
 }
 
 // ---------- logging foods ----------
@@ -216,7 +216,7 @@ func (ui *UI) foodSearchForm(w http.ResponseWriter, r *http.Request) {
 
 func (ui *UI) searchFood(w http.ResponseWriter, r *http.Request) {
 	view := foodSearchView{Meal: r.FormValue("meal"), Query: formText(r, "query")}
-	foods, err := ui.MyFitnessPal.Client().Search(view.Query)
+	foods, err := ui.ws(r).MyFitnessPal.Client().Search(view.Query)
 	if err != nil {
 		view.Error = err.Error()
 	}
@@ -281,7 +281,7 @@ func (ui *UI) foodPickView(r *http.Request) (foodPickView, error) {
 	}
 	quantity, _ := strconv.ParseFloat(view.Quantity, 64)
 	view.Preview = food.Nutrition.Scaled(view.Servings[view.Serving].Multiplier * quantity)
-	if day, ok := ui.MyFitnessPal.Cached().Day(); ok {
+	if day, ok := ui.ws(r).MyFitnessPal.Cached().Day(); ok {
 		for _, meal := range day.Meals {
 			view.Meals = append(view.Meals, meal.Name)
 		}
@@ -302,12 +302,12 @@ func (ui *UI) addFood(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	serving := view.Servings[view.Serving]
-	if _, err := ui.MyFitnessPal.AddFood(view.Food.FoodID, serving.WeightID, quantity, view.Meal); err != nil {
+	if _, err := ui.ws(r).MyFitnessPal.AddFood(view.Food.FoodID, serving.WeightID, quantity, view.Meal); err != nil {
 		fail(w, err)
 		return
 	}
 	announce(w, say("Added to "+view.Meal))
-	ui.renderGoalsWith(w, false, nil)
+	ui.renderGoalsWith(r, w, false, nil)
 }
 
 type foodEditView struct {
@@ -317,7 +317,7 @@ type foodEditView struct {
 
 // editFoodForm opens MyFitnessPal's own edit form for an entry: amount, serving, meal.
 func (ui *UI) editFoodForm(w http.ResponseWriter, r *http.Request) {
-	form, err := ui.MyFitnessPal.Client().EntryForm(r.PathValue("entry"))
+	form, err := ui.ws(r).MyFitnessPal.Client().EntryForm(r.PathValue("entry"))
 	view := foodEditView{Form: form}
 	if err != nil {
 		view.Error = err.Error()
@@ -331,21 +331,21 @@ func (ui *UI) saveFood(w http.ResponseWriter, r *http.Request) {
 		fail(w, problem.Invalidf("Enter how many servings"))
 		return
 	}
-	if _, err := ui.MyFitnessPal.EditFood(r.PathValue("entry"), r.FormValue("serving"), quantity, r.FormValue("meal")); err != nil {
+	if _, err := ui.ws(r).MyFitnessPal.EditFood(r.PathValue("entry"), r.FormValue("serving"), quantity, r.FormValue("meal")); err != nil {
 		fail(w, err)
 		return
 	}
 	announce(w, say("Updated in MyFitnessPal"))
-	ui.renderGoalsWith(w, false, nil)
+	ui.renderGoalsWith(r, w, false, nil)
 }
 
 func (ui *UI) deleteFood(w http.ResponseWriter, r *http.Request) {
-	if _, err := ui.MyFitnessPal.DeleteFood(r.PathValue("entry")); err != nil {
+	if _, err := ui.ws(r).MyFitnessPal.DeleteFood(r.PathValue("entry")); err != nil {
 		fail(w, err)
 		return
 	}
 	announce(w, say("Removed from MyFitnessPal"))
-	ui.renderGoalsWith(w, false, nil)
+	ui.renderGoalsWith(r, w, false, nil)
 }
 
 // closePanel empties a panel's slot (Cancel).

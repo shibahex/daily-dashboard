@@ -127,20 +127,21 @@ func TestCodexIsOfflineAndReadsTheMessageFromStdin(t *testing.T) {
 	}
 }
 
-func TestContextLeavesOutTheGuides(t *testing.T) {
-	root := t.TempDir()
-	os.MkdirAll(filepath.Join(root, "docs"), 0o700)
-	os.MkdirAll(filepath.Join(root, "site", "data"), 0o700)
-	os.WriteFile(filepath.Join(root, "docs", "overview.md"), []byte("Goal: 1 lb a week"), 0o600)
-	os.WriteFile(filepath.Join(root, "docs", "dashboard.md"), []byte("app guide"), 0o600)
-	os.WriteFile(filepath.Join(root, "site", "data", "account.json"), []byte("password hash"), 0o600)
-	os.WriteFile(filepath.Join(root, "site", "data", "weights.json"), []byte(`{"2026-10-20": 229}`), 0o600)
+func TestContextOnlyReadsTheUsersOwnFiles(t *testing.T) {
+	user := t.TempDir()
+	os.MkdirAll(filepath.Join(user, "docs"), 0o700)
+	os.WriteFile(filepath.Join(user, "docs", "overview.md"), []byte("Goal: 1 lb a week"), 0o600)
+	os.WriteFile(filepath.Join(user, "plan.json"), []byte(`{"checklist": ["Weigh in"]}`), 0o600)
+	os.WriteFile(filepath.Join(user, "weights.json"), []byte(`{"2026-10-20": 229}`), 0o600)
+	os.WriteFile(filepath.Join(user, "secrets.json"), []byte("api key"), 0o600)
 
-	context := Context(root)
-	if !strings.Contains(context, "Goal: 1 lb a week") || !strings.Contains(context, "229") {
-		t.Errorf("notes or data missing: %q", context)
+	context := Context(filepath.Join(user, "docs"), filepath.Join(user, "plan.json"), user)
+	for _, want := range []string{"Goal: 1 lb a week", "Weigh in", "229", "=== notes/overview.md ==="} {
+		if !strings.Contains(context, want) {
+			t.Errorf("missing %q: %q", want, context)
+		}
 	}
-	if strings.Contains(context, "app guide") || strings.Contains(context, "password hash") {
-		t.Errorf("guides or account files leaked in: %q", context)
+	if strings.Contains(context, "api key") {
+		t.Errorf("other files leaked in: %q", context)
 	}
 }

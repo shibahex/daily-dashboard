@@ -21,11 +21,8 @@ import (
 	"dashboard/internal/config"
 	"dashboard/internal/httpx"
 	"dashboard/internal/myfitnesspal"
-	"dashboard/internal/store"
-	"dashboard/internal/tasks"
-	"dashboard/internal/taskwarrior"
-	"dashboard/internal/timewarrior"
 	"dashboard/internal/web"
+	"dashboard/internal/workspace"
 )
 
 const defaultPort = 1628
@@ -34,7 +31,6 @@ func main() {
 	port := portFromArgs()
 	siteDir := findSiteDir()
 	config.LoadEnvFile(filepath.Join(siteDir, ".env"))
-	var account *auth.Auth
 	network, err := config.NetworkFromEnv(port)
 	if err != nil {
 		log.Fatal(err)
@@ -45,45 +41,27 @@ func main() {
 	paths := config.NewPaths(siteDir)
 	paths.MakePrivate()
 
-	account, err = auth.New(paths.Data)
+	account, err := auth.New(paths.ServerData)
 	if err != nil {
 		log.Fatal(err)
 	}
-	files := store.New(paths)
-	files.SeedDocs()
-	mfp := myfitnesspal.NewSyncer(
-		myfitnesspal.NewClientFromEnv(filepath.Join(siteDir, "mfp_fetch.py")),
-		files,
-		paths.DataFile("mfp.json"),
-	)
-	ankiClient := anki.NewClientFromEnv()
-	ankiClient.Gateway, err = anki.StartGateway(ankiClient)
+	gateway, err := anki.StartGateway()
 	if err != nil {
 		log.Fatalf("starting the Anki gateway: %v", err)
 	}
-	providers := assistant.NewProviders(assistant.NewModelCatalog(filepath.Join(paths.Data, "assistant")))
-	timeLog := timewarrior.NewClient()
-	taskService := tasks.NewService(taskwarrior.NewClient(), timeLog)
+	providers := assistant.NewProviders(assistant.NewModelCatalog(filepath.Join(paths.ServerData, "assistant")))
+	workspaces := workspace.NewManager(paths,
+		myfitnesspal.NewClientFromEnv(filepath.Join(siteDir, "mfp_fetch.py")),
+		anki.NewClientFromEnv(), gateway, providers)
+	workspaces.OpenAll(account.Users())
 
 	mux := http.NewServeMux()
-	jsonAPI := &api.API{Store: files, Tasks: taskService, Time: timeLog}
+	jsonAPI := &api.API{Workspaces: workspaces}
 	jsonAPI.Routes(mux)
-	pages := &web.UI{
-		Auth:          account,
-		Paths:         paths,
-		Store:         files,
-		Tasks:         taskService,
-		Time:          timeLog,
-		MyFitnessPal:  mfp,
-		Anki:          ankiClient,
-		Providers:     providers,
-		Conversations: assistant.NewConversations(paths.DataFile("chat.json"), providers),
-		Chat:          assistant.NewRunner(),
-	}
+	pages := &web.UI{Auth: account, Paths: paths, Workspaces: workspaces, Providers: providers}
 	pages.Routes(mux)
 
 	listener := listen(network.Listen)
-	go mfp.RunForever()
 	fmt.Printf("Health dashboard: %s  (listening on %s, %s)\n", network.BaseURL(), network.Listen, time.Now().Format("2006-01-02"))
 	if code := account.SetupCode(); code != "" {
 		fmt.Printf("Create the first (admin) account: %s/setup?code=%s\n", network.BaseURL(), code)

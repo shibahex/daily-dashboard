@@ -1,6 +1,7 @@
 package web
 
 import (
+	"net/http"
 	"sort"
 	"strconv"
 	"strings"
@@ -18,12 +19,12 @@ type taskData struct {
 	Now     time.Time
 }
 
-func (ui *UI) loadTaskData() (taskData, error) {
-	pending, err := ui.Tasks.Pending()
+func (ui *UI) loadTaskData(r *http.Request) (taskData, error) {
+	pending, err := ui.ws(r).Tasks.Pending()
 	if err != nil {
 		return taskData{}, err
 	}
-	all, err := ui.Tasks.All()
+	all, err := ui.ws(r).Tasks.All()
 	if err != nil {
 		return taskData{}, err
 	}

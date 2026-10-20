@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
 	"os/exec"
 	"strings"
 	"sync"
@@ -32,10 +33,15 @@ func (r Result) Error() string { return strings.TrimSpace(r.Stderr) }
 // Client runs Taskwarrior. Runs happen one at a time: every run creates any missing copies
 // of repeating tasks, and two at once would both create the same copy.
 type Client struct {
-	mu sync.Mutex
+	mu  sync.Mutex
+	env []string // TASKRC/TASKDATA (and TIMEWARRIORDB for the hook); nil = this computer's own
 }
 
 func NewClient() *Client { return &Client{} }
+
+// NewClientWithEnv runs `task` with these extra environment variables: a user's own taskrc,
+// task data and Timewarrior database.
+func NewClientWithEnv(env []string) *Client { return &Client{env: env} }
 
 // Run runs `task <args>` with no input, so a question makes it fail instead of hang.
 func (c *Client) Run(args ...string) Result { return c.run("", args) }
@@ -52,6 +58,9 @@ func (c *Client) run(input string, args []string) Result {
 	cmd := exec.CommandContext(ctx, "task", append(append([]string{}, baseArgs...), args...)...)
 	if input != "" {
 		cmd.Stdin = strings.NewReader(input)
+	}
+	if len(c.env) > 0 {
+		cmd.Env = append(os.Environ(), c.env...)
 	}
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr

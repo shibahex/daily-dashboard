@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -29,6 +30,41 @@ type Client struct {
 	CheckoutDir string // MFP_MCP_DIR: a local checkout; empty uses the released package
 	BrowserPath string // MFP_BROWSER_PATH: the browser the MCP renews the login with
 	ScriptPath  string // site/mfp_fetch.py
+
+	// A user's own folders for the MCP's saved login (config) and browser profile (data).
+	// Empty uses this computer's own (~/.config/myfitnesspal-mcp): the host account.
+	ConfigHome, DataHome string
+}
+
+// ForUser is the client for a user whose MyFitnessPal login lives under dir.
+func (c Client) ForUser(dir string) Client {
+	c.ConfigHome, c.DataHome = filepath.Join(dir, "config"), filepath.Join(dir, "data")
+	return c
+}
+
+// env is what the MCP runs with: the user's own folders, and the browser for renewing the login.
+func (c Client) env() map[string]string {
+	env := map[string]string{}
+	if c.ConfigHome != "" {
+		env["XDG_CONFIG_HOME"], env["XDG_DATA_HOME"] = c.ConfigHome, c.DataHome
+	}
+	if c.BrowserPath != "" {
+		env["MFP_BROWSER_PATH"] = c.BrowserPath
+	}
+	return env
+}
+
+// CookiePath is where the MCP keeps this user's MyFitnessPal login.
+func (c Client) CookiePath() string {
+	configHome := c.ConfigHome
+	if configHome == "" {
+		configHome = os.Getenv("XDG_CONFIG_HOME")
+	}
+	if configHome == "" {
+		home, _ := os.UserHomeDir()
+		configHome = filepath.Join(home, ".config")
+	}
+	return filepath.Join(configHome, "myfitnesspal-mcp", "cookies.json")
 }
 
 // NewClientFromEnv reads MFP_MCP_DIR and MFP_BROWSER_PATH.
@@ -58,17 +94,12 @@ func (c Client) usesCheckout() bool {
 
 // Setup reports the source and whether the MCP's login (~/.config/myfitnesspal-mcp) exists.
 func (c Client) Setup() Setup {
-	setup := Setup{Source: "package", Repo: RepoURL, SignedIn: os.Getenv("MFP_COOKIE") != ""}
+	setup := Setup{Source: "package", Repo: RepoURL, SignedIn: c.ConfigHome == "" && os.Getenv("MFP_COOKIE") != ""}
 	if c.usesCheckout() {
 		dir := c.CheckoutDir
 		setup.Source, setup.Dir = "local", &dir
 	}
-	configHome := os.Getenv("XDG_CONFIG_HOME")
-	if configHome == "" {
-		home, _ := os.UserHomeDir()
-		configHome = filepath.Join(home, ".config")
-	}
-	if _, err := os.Stat(filepath.Join(configHome, "myfitnesspal-mcp", "cookies.json")); err == nil {
+	if _, err := os.Stat(c.CookiePath()); err == nil {
 		setup.SignedIn = true
 	}
 	return setup
@@ -84,8 +115,8 @@ func (c Client) MCPServer() mcp.Server {
 		args = []string{"tool", "run", "--python", "3.12", "--managed-python", "--from", Package, "mfp-mcp"}
 	}
 	server := mcp.Server{Command: uv[0], Args: append(uv[1:], args...)}
-	if c.BrowserPath != "" {
-		server.Env = map[string]string{"MFP_BROWSER_PATH": c.BrowserPath}
+	if env := c.env(); len(env) > 0 {
+		server.Env = env
 	}
 	return server
 }
@@ -110,8 +141,12 @@ func (c Client) Run(request map[string]any, timeout time.Duration) (json.RawMess
 	defer cancel()
 	cmd := exec.CommandContext(ctx, uv[0], args...)
 	cmd.Env = os.Environ()
-	if c.BrowserPath != "" {
-		cmd.Env = append(cmd.Env, "MFP_BROWSER_PATH="+c.BrowserPath)
+	if c.ConfigHome != "" {
+		// Another user's MFP_COOKIE from the server's environment mustn't sign this one in.
+		cmd.Env = slices.DeleteFunc(cmd.Env, func(v string) bool { return strings.HasPrefix(v, "MFP_COOKIE=") })
+	}
+	for key, value := range c.env() {
+		cmd.Env = append(cmd.Env, key+"="+value)
 	}
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr

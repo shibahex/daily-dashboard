@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -21,12 +22,20 @@ import (
 // content or runs scripts whenever the card is shown. An agent following instructions planted
 // in a shared deck could use any of those to fetch or leak data, so the gateway passes only
 // the actions the MCP needs and refuses anything that points outside the collection.
+//
+// Each user's Anki MCP gets its own key (ANKI_CONNECT_API_KEY), and the key decides whose
+// AnkiConnect the request goes to, so one user's agent can never reach another user's Anki.
 type Gateway struct {
 	URL string // http://127.0.0.1:<port>, for ANKI_CONNECT_URL
-	Key string // for ANKI_CONNECT_API_KEY; the MCP sends it with every request
 
+	host string
+	mu   sync.Mutex
+	keys map[string]route // key → whose Anki
+}
+
+type route struct {
+	owner    string
 	upstream Client
-	host     string
 }
 
 // gatewayActions are the AnkiConnect actions the Anki MCP uses, minus storeMediaFile (it
@@ -59,23 +68,64 @@ var mediaSourceParams = map[string]bool{"picture": true, "audio": true, "video":
 var remoteContent = regexp.MustCompile(`(?i)[a-z][a-z0-9+.-]*://|(^|[^:/])//[^/\s]|url\s*\(|@import|` +
 	`<\s*/?\s*(script|iframe|frame|object|embed|link|meta|base|form|svg|math)\b|\bon[a-z]+\s*=|javascript:`)
 
-// StartGateway listens on a random port on 127.0.0.1 and forwards checked requests to upstream.
-func StartGateway(upstream Client) (*Gateway, error) {
+// StartGateway listens on a random port on 127.0.0.1. Register adds each user's AnkiConnect.
+func StartGateway() (*Gateway, error) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		return nil, err
 	}
-	secret := make([]byte, 32)
-	rand.Read(secret)
-	g := &Gateway{
-		URL:      "http://" + listener.Addr().String(),
-		Key:      base64.RawURLEncoding.EncodeToString(secret),
-		upstream: upstream,
-		host:     listener.Addr().String(),
-	}
+	g := &Gateway{URL: "http://" + listener.Addr().String(), host: listener.Addr().String(), keys: map[string]route{}}
 	server := &http.Server{Handler: g, ReadHeaderTimeout: 10 * time.Second}
 	go server.Serve(listener)
 	return g, nil
+}
+
+// Register sends owner's requests to upstream (their AnkiConnect) and returns the key their
+// MCP uses. An owner keeps one key; registering again only changes where it goes.
+func (g *Gateway) Register(owner string, upstream Client) string {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	upstream.Gateway, upstream.GatewayKey = nil, ""
+	for key, r := range g.keys {
+		if r.owner == owner {
+			g.keys[key] = route{owner: owner, upstream: upstream}
+			return key
+		}
+	}
+	secret := make([]byte, 32)
+	rand.Read(secret)
+	key := base64.RawURLEncoding.EncodeToString(secret)
+	g.keys[key] = route{owner: owner, upstream: upstream}
+	return key
+}
+
+// Unregister stops owner's key from working (a deleted user).
+func (g *Gateway) Unregister(owner string) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	for key, r := range g.keys {
+		if r.owner == owner {
+			delete(g.keys, key)
+		}
+	}
+}
+
+// Knows reports whether key still works (it's gone once its owner is unregistered).
+func (g *Gateway) Knows(key string) bool {
+	_, ok := g.upstreamFor(key)
+	return ok
+}
+
+// upstreamFor is the AnkiConnect a key goes to.
+func (g *Gateway) upstreamFor(key string) (Client, bool) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	for known, r := range g.keys {
+		if subtle.ConstantTimeCompare([]byte(known), []byte(key)) == 1 {
+			return r.upstream, true
+		}
+	}
+	return Client{}, false
 }
 
 const maxGatewayBody = 8 << 20 // addNotes sends whole batches
@@ -99,8 +149,13 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
-	if subtle.ConstantTimeCompare([]byte(request.Key), []byte(g.Key)) != 1 {
+	upstream, known := g.upstreamFor(request.Key)
+	if !known {
 		answer(w, nil, errors.New("valid api key must be provided"))
+		return
+	}
+	if upstream.URL == "" {
+		answer(w, nil, errors.New("Anki isn't set up for this account yet (see the Anki tab)"))
 		return
 	}
 	if err := checkRequest(request.Action, request.Params); err != nil {
@@ -111,7 +166,7 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if len(bytes.TrimSpace(request.Params)) > 0 && string(bytes.TrimSpace(request.Params)) != "null" {
 		params = request.Params
 	}
-	result, err := g.upstream.Call(request.Action, params)
+	result, err := upstream.Call(request.Action, params)
 	answer(w, result, err)
 }
 

@@ -58,7 +58,7 @@ func (d taskData) listView(r *http.Request) taskListView {
 }
 
 func (ui *UI) tasksPage(w http.ResponseWriter, r *http.Request) {
-	data, err := ui.loadTaskData()
+	data, err := ui.loadTaskData(r)
 	if err != nil {
 		fail(w, err)
 		return
@@ -67,7 +67,7 @@ func (ui *UI) tasksPage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (ui *UI) taskList(w http.ResponseWriter, r *http.Request) {
-	data, err := ui.loadTaskData()
+	data, err := ui.loadTaskData(r)
 	if err != nil {
 		fail(w, err)
 		return
@@ -77,7 +77,7 @@ func (ui *UI) taskList(w http.ResponseWriter, r *http.Request) {
 
 // addTask adds a task from the add form, and answers with an empty form.
 func (ui *UI) addTask(w http.ResponseWriter, r *http.Request) {
-	err := ui.Tasks.Add(tasks.NewTask{
+	err := ui.ws(r).Tasks.Add(tasks.NewTask{
 		Description: formText(r, "description"),
 		Project:     formText(r, "project"),
 		Priority:    formText(r, "priority"),
@@ -89,7 +89,7 @@ func (ui *UI) addTask(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
-	data, _ := ui.loadTaskData()
+	data, _ := ui.loadTaskData(r)
 	announce(w, sayUndoable("Task added"), tasksChanged)
 	ui.render(w, "task-add-form", tasksPageView{Projects: data.projects()})
 }
@@ -106,7 +106,7 @@ func splitTags(typed string) []string {
 }
 
 func (ui *UI) undoTaskChange(w http.ResponseWriter, r *http.Request) {
-	if err := ui.Tasks.Undo(); err != nil {
+	if err := ui.ws(r).Tasks.Undo(); err != nil {
 		fail(w, err)
 		return
 	}
@@ -121,7 +121,7 @@ type dueTasksView struct {
 }
 
 func (ui *UI) renderDueTasksCard(r *http.Request) (template.HTML, error) {
-	data, err := ui.loadTaskData()
+	data, err := ui.loadTaskData(r)
 	if err != nil {
 		return "", err
 	}
@@ -154,7 +154,7 @@ func (ui *UI) stopTask(w http.ResponseWriter, r *http.Request) {
 }
 
 func (ui *UI) runTaskAction(w http.ResponseWriter, r *http.Request, action, done string) {
-	if err := ui.Tasks.Do(r.PathValue("uuid"), action); err != nil {
+	if err := ui.ws(r).Tasks.Do(r.PathValue("uuid"), action); err != nil {
 		fail(w, err)
 		return
 	}
@@ -163,7 +163,7 @@ func (ui *UI) runTaskAction(w http.ResponseWriter, r *http.Request, action, done
 }
 
 func (ui *UI) reopenTask(w http.ResponseWriter, r *http.Request) {
-	if err := ui.Tasks.Reopen(r.PathValue("uuid")); err != nil {
+	if err := ui.ws(r).Tasks.Reopen(r.PathValue("uuid")); err != nil {
 		fail(w, err)
 		return
 	}
@@ -186,7 +186,7 @@ func (ui *UI) completeTask(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
-	warning, err := ui.Tasks.CompleteAt(uuid, time.Now().Truncate(time.Minute), minutes)
+	warning, err := ui.ws(r).Tasks.CompleteAt(uuid, time.Now().Truncate(time.Minute), minutes)
 	if err != nil {
 		fail(w, err)
 		return
@@ -205,7 +205,7 @@ type doneOnView struct {
 func (ui *UI) doneOnPanel(w http.ResponseWriter, r *http.Request) {
 	now := time.Now()
 	view := doneOnView{UUID: r.PathValue("uuid"), Day: now.Format(dayLayout), Time: now.Format("15:04"), Today: now.Format(dayLayout)}
-	if task, err := ui.Tasks.Find(view.UUID); err == nil {
+	if task, err := ui.ws(r).Tasks.Find(view.UUID); err == nil {
 		if due, ok := task.DueTime(); ok && due.Before(startOfDay(now)) {
 			view.Day, view.Time = due.Format(dayLayout), "20:00"
 		}
@@ -232,7 +232,7 @@ func (ui *UI) completeTaskOn(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
-	warning, err := ui.Tasks.CompleteAt(r.PathValue("uuid"), end, minutes)
+	warning, err := ui.ws(r).Tasks.CompleteAt(r.PathValue("uuid"), end, minutes)
 	if err != nil {
 		fail(w, err)
 		return
@@ -324,7 +324,7 @@ func (ui *UI) skipTasks(w http.ResponseWriter, r *http.Request) {
 	uuids := commaList(r.FormValue("uuids"))
 	reason := formText(r, "reason")
 	dismiss := r.FormValue("kind") == "dismiss"
-	if err := ui.Tasks.Skip(uuids, reason, dismiss); err != nil {
+	if err := ui.ws(r).Tasks.Skip(uuids, reason, dismiss); err != nil {
 		fail(w, err)
 		return
 	}
@@ -372,7 +372,7 @@ type catchUpRow struct {
 }
 
 func (ui *UI) catchUpPanel(w http.ResponseWriter, r *http.Request) {
-	data, err := ui.loadTaskData()
+	data, err := ui.loadTaskData(r)
 	if err != nil {
 		fail(w, err)
 		return
@@ -408,7 +408,7 @@ func (d taskData) missedCopies(parent string) []taskwarrior.Task {
 
 // catchUpDone completes one missed copy at 20:00 on its due day.
 func (ui *UI) catchUpDone(w http.ResponseWriter, r *http.Request) {
-	task, err := ui.Tasks.Find(r.PathValue("uuid"))
+	task, err := ui.ws(r).Tasks.Find(r.PathValue("uuid"))
 	if err != nil {
 		fail(w, err)
 		return
@@ -420,7 +420,7 @@ func (ui *UI) catchUpDone(w http.ResponseWriter, r *http.Request) {
 	}
 	due, _ := task.DueTime()
 	evening := time.Date(due.Year(), due.Month(), due.Day(), 20, 0, 0, 0, time.Local)
-	warning, err := ui.Tasks.CompleteAt(task.UUID(), evening, minutes)
+	warning, err := ui.ws(r).Tasks.CompleteAt(task.UUID(), evening, minutes)
 	if err != nil {
 		fail(w, err)
 		return
@@ -429,13 +429,13 @@ func (ui *UI) catchUpDone(w http.ResponseWriter, r *http.Request) {
 }
 
 func (ui *UI) catchUpSkip(w http.ResponseWriter, r *http.Request) {
-	task, err := ui.Tasks.Find(r.PathValue("uuid"))
+	task, err := ui.ws(r).Tasks.Find(r.PathValue("uuid"))
 	if err != nil {
 		fail(w, err)
 		return
 	}
 	reason := formText(r, "reason")
-	if err := ui.Tasks.Skip([]string{task.UUID()}, reason, false); err != nil {
+	if err := ui.ws(r).Tasks.Skip([]string{task.UUID()}, reason, false); err != nil {
 		fail(w, err)
 		return
 	}
@@ -445,7 +445,7 @@ func (ui *UI) catchUpSkip(w http.ResponseWriter, r *http.Request) {
 
 // catchUpSkipRest skips every copy still missed, and closes the panel.
 func (ui *UI) catchUpSkipRest(w http.ResponseWriter, r *http.Request) {
-	data, err := ui.loadTaskData()
+	data, err := ui.loadTaskData(r)
 	if err != nil {
 		fail(w, err)
 		return
@@ -455,7 +455,7 @@ func (ui *UI) catchUpSkipRest(w http.ResponseWriter, r *http.Request) {
 		uuids = append(uuids, missed.UUID())
 	}
 	if len(uuids) > 0 {
-		if err := ui.Tasks.Skip(uuids, formText(r, "reason"), false); err != nil {
+		if err := ui.ws(r).Tasks.Skip(uuids, formText(r, "reason"), false); err != nil {
 			fail(w, err)
 			return
 		}
@@ -505,9 +505,9 @@ func (ui *UI) saveReason(w http.ResponseWriter, r *http.Request) {
 	view := reasonFrom(r)
 	var err error
 	if view.Day != "" {
-		err = ui.Store.SetSkipReason(view.Day, view.Item, view.Reason)
+		err = ui.ws(r).Store.SetSkipReason(view.Day, view.Item, view.Reason)
 	} else {
-		err = ui.Tasks.ChangeSkipReason(commaList(view.UUIDs), view.Reason)
+		err = ui.ws(r).Tasks.ChangeSkipReason(commaList(view.UUIDs), view.Reason)
 	}
 	if err != nil {
 		fail(w, err)

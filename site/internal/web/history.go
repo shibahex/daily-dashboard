@@ -27,12 +27,12 @@ func (ui *UI) historyPage(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
-	skips, err := ui.skipsView()
+	skips, err := ui.skipsView(r)
 	if err != nil {
 		fail(w, err)
 		return
 	}
-	ui.renderPage(w, "history", "History", "history", historyPageView{Activity: activity, Skips: skips, TimeLog: ui.timeLogView(0)})
+	ui.renderPage(w, "history", "History", "history", historyPageView{Activity: activity, Skips: skips, TimeLog: ui.timeLogView(r, 0)})
 }
 
 // ---------- what happened ----------
@@ -55,23 +55,23 @@ type taskEvent struct {
 	Reason string
 }
 
-func (ui *UI) loadActivity() (activityData, error) {
-	all, err := ui.Tasks.All()
+func (ui *UI) loadActivity(r *http.Request) (activityData, error) {
+	all, err := ui.ws(r).Tasks.All()
 	if err != nil {
 		return activityData{}, err
 	}
-	plan, _ := ui.Store.LoadPlan()
+	plan, _ := ui.ws(r).Store.LoadPlan()
 	now := time.Now()
 	data := activityData{
 		Today:          startOfDay(now),
 		Events:         taskEventsByDay(all),
 		Hours:          map[string]float64{},
-		Checklist:      ui.Store.Checklist(),
+		Checklist:      ui.ws(r).Store.Checklist(),
 		ChecklistItems: plan.Checklist,
 	}
-	history := ui.Anki.History(ui.Paths.DataFile("anki_history.json"))
+	history := ui.ws(r).Anki.History(ui.ws(r).Paths.DataFile("anki_history.json"))
 	data.Reviews, data.AnkiLive = history.Reviews, history.Live
-	if intervals, err := ui.Time.IntervalsBetween(data.Today.AddDate(-1, 0, -7), data.Today.AddDate(0, 0, 1)); err == nil {
+	if intervals, err := ui.ws(r).Time.IntervalsBetween(data.Today.AddDate(-1, 0, -7), data.Today.AddDate(0, 0, 1)); err == nil {
 		for _, interval := range intervals {
 			data.Hours[interval.StartTime().Format(dayLayout)] += interval.Duration(now).Hours()
 		}
@@ -364,7 +364,7 @@ func (v activityView) SelectedDay() time.Time {
 
 // activityView reads ?mode= (remembered in a cookie), ?day= and ?days=.
 func (ui *UI) activityView(r *http.Request) (activityView, error) {
-	data, err := ui.loadActivity()
+	data, err := ui.loadActivity(r)
 	if err != nil {
 		return activityView{}, err
 	}
@@ -504,13 +504,13 @@ type skipsView struct {
 
 // skipsView lists, by day, the checklist items skipped and the tasks skipped or dismissed, with
 // their reasons. Task copies skipped together are one line.
-func (ui *UI) skipsView() (skipsView, error) {
-	deleted, err := ui.Tasks.Deleted()
+func (ui *UI) skipsView(r *http.Request) (skipsView, error) {
+	deleted, err := ui.ws(r).Tasks.Deleted()
 	if err != nil {
 		return skipsView{}, err
 	}
-	plan, _ := ui.Store.LoadPlan()
-	checklist := ui.Store.Checklist()
+	plan, _ := ui.ws(r).Store.LoadPlan()
+	checklist := ui.ws(r).Store.Checklist()
 	days := map[string]*skipDay{}
 	dayFor := func(key string) *skipDay {
 		if days[key] == nil {
@@ -588,7 +588,7 @@ func (ui *UI) skipsView() (skipsView, error) {
 }
 
 func (ui *UI) skipsCard(w http.ResponseWriter, r *http.Request) {
-	view, err := ui.skipsView()
+	view, err := ui.skipsView(r)
 	if err != nil {
 		fail(w, err)
 		return

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -42,15 +43,23 @@ type Interval struct {
 	Tags  []string `json:"tags,omitempty"`
 }
 
-type Client struct{}
+type Client struct {
+	env []string // TIMEWARRIORDB; nil = this computer's own
+}
 
 func NewClient() Client { return Client{} }
 
+// NewClientWithEnv runs `timew` with these extra environment variables (a user's TIMEWARRIORDB).
+func NewClientWithEnv(env []string) Client { return Client{env: env} }
+
 // Run runs `timew <args> :yes`, so it never stops to ask.
-func (Client) Run(args ...string) Result {
+func (c Client) Run(args ...string) Result {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "timew", append(args, ":yes")...)
+	if len(c.env) > 0 {
+		cmd.Env = append(os.Environ(), c.env...)
+	}
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 

@@ -8,38 +8,55 @@ import (
 	"strings"
 )
 
-// Paths are the folders and files the dashboard uses, all derived from the site/ folder.
+// Paths are the folders and files the dashboard uses. NewPaths gives the server's own; ForUser
+// gives one user's, whose data, notes and plan live in their own folder.
 type Paths struct {
 	Site         string // site/: the server's own folder
 	Root         string // the repo root (parent of site/)
-	Docs         string // docs/: the user's notes (git-ignored) and the guides
-	DocTemplates string // docs/templates/: starter notes copied into docs/ on first run
+	Guides       string // docs/: the app's guides, the same for everyone
+	DocTemplates string // docs/templates/: starter notes copied into a new user's notes
 	Web          string // site/web/: the page
-	Data         string // site/data/: history, weigh-ins, caches, chat (git-ignored)
+	ServerData   string // site/data/: accounts, sessions and every user's folder
+	Docs         string // the user's notes
+	Data         string // the user's data: history, weigh-ins, caches, chat
+	PlanFile     string // the user's plan.json
 }
 
 func NewPaths(siteDir string) Paths {
 	root := filepath.Dir(siteDir)
 	docs := filepath.Join(root, "docs")
+	data := filepath.Join(siteDir, "data")
 	return Paths{
 		Site:         siteDir,
 		Root:         root,
-		Docs:         docs,
+		Guides:       docs,
 		DocTemplates: filepath.Join(docs, "templates"),
 		Web:          filepath.Join(siteDir, "web"),
-		Data:         filepath.Join(siteDir, "data"),
+		ServerData:   data,
+		Docs:         docs,
+		Data:         data,
+		PlanFile:     filepath.Join(siteDir, "plan.json"),
 	}
 }
 
-func (p Paths) Plan() string                { return filepath.Join(p.Site, "plan.json") }
+// UsersDir holds one folder per user (site/data/users/<id>/).
+func (p Paths) UsersDir() string { return filepath.Join(p.ServerData, "users") }
+
+// ForUser is the paths for the user whose folder is dir: their data, notes (dir/docs) and plan.
+func (p Paths) ForUser(dir string) Paths {
+	p.Data, p.Docs, p.PlanFile = dir, filepath.Join(dir, "docs"), filepath.Join(dir, "plan.json")
+	return p
+}
+
+func (p Paths) Plan() string                { return p.PlanFile }
 func (p Paths) PlanExample() string         { return filepath.Join(p.Site, "plan.example.json") }
 func (p Paths) DataFile(name string) string { return filepath.Join(p.Data, name) }
 
 // MakePrivate makes the personal files readable by their owner only: files made before the
 // dashboard had an account were readable by every user on the computer.
 func (p Paths) MakePrivate() {
-	os.MkdirAll(p.Data, 0o700)
-	os.Chmod(p.Data, 0o700)
+	os.MkdirAll(p.ServerData, 0o700)
+	os.Chmod(p.ServerData, 0o700)
 	notes, _ := filepath.Glob(filepath.Join(p.Docs, "*.md"))
 	for _, file := range append(notes, p.Plan(), filepath.Join(p.Site, ".env")) {
 		if info, err := os.Stat(file); err == nil && info.Mode().Perm()&0o077 != 0 {

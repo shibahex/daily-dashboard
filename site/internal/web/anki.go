@@ -47,18 +47,18 @@ func (ui *UI) ankiBodyPart(w http.ResponseWriter, r *http.Request) {
 }
 
 func (ui *UI) ankiBody(r *http.Request) ankiBodyView {
-	body := ankiBodyView{Status: ui.Anki.Status()}
+	body := ankiBodyView{Status: ui.ws(r).Anki.Status()}
 	if !body.Status.Connected {
 		return body
 	}
-	overview, err := ui.Anki.Overview()
+	overview, err := ui.ws(r).Anki.Overview()
 	if err != nil {
 		body.Problem = err.Error()
 		return body
 	}
 	body.Decks = decksView(overview)
-	body.AddForm = ui.ankiAddFormFor(overview, rememberedChoice(r, deckCookie), rememberedChoice(r, modelCookie))
-	body.Browse = ui.ankiNotesFor(defaultAnkiSearch)
+	body.AddForm = ui.ankiAddFormFor(r, overview, rememberedChoice(r, deckCookie), rememberedChoice(r, modelCookie))
+	body.Browse = ui.ankiNotesFor(r, defaultAnkiSearch)
 	return body
 }
 
@@ -101,7 +101,7 @@ func reviewBars(reviews anki.ReviewsByDay, days int) []reviewBar {
 }
 
 func (ui *UI) studyDeck(w http.ResponseWriter, r *http.Request) {
-	if err := ui.Anki.OpenDeck(r.FormValue("deck")); err != nil {
+	if err := ui.ws(r).Anki.OpenDeck(r.FormValue("deck")); err != nil {
 		fail(w, err)
 		return
 	}
@@ -124,7 +124,7 @@ func (ui *UI) openAnki(w http.ResponseWriter, r *http.Request) {
 }
 
 func (ui *UI) syncAnki(w http.ResponseWriter, r *http.Request) {
-	if err := ui.Anki.Sync(); err != nil {
+	if err := ui.ws(r).Anki.Sync(); err != nil {
 		fail(w, err)
 		return
 	}
@@ -133,7 +133,7 @@ func (ui *UI) syncAnki(w http.ResponseWriter, r *http.Request) {
 }
 
 func (ui *UI) ankiDecks(w http.ResponseWriter, r *http.Request) {
-	overview, err := ui.Anki.Overview()
+	overview, err := ui.ws(r).Anki.Overview()
 	if err != nil {
 		fail(w, err)
 		return
@@ -172,7 +172,7 @@ func remember(w http.ResponseWriter, cookie, value string) {
 }
 
 // ankiAddFormFor fills the add form: the chosen deck and note type, or Basic.
-func (ui *UI) ankiAddFormFor(overview anki.Overview, deck, model string) ankiAddForm {
+func (ui *UI) ankiAddFormFor(r *http.Request, overview anki.Overview, deck, model string) ankiAddForm {
 	form := ankiAddForm{Models: overview.Models, Deck: deck, Model: model}
 	for _, d := range overview.Decks {
 		form.Decks = append(form.Decks, d.Name)
@@ -186,32 +186,32 @@ func (ui *UI) ankiAddFormFor(overview anki.Overview, deck, model string) ankiAdd
 		}
 	}
 	if form.Model != "" {
-		form.Fields, _ = ui.Anki.FieldNames(form.Model)
+		form.Fields, _ = ui.ws(r).Anki.FieldNames(form.Model)
 	}
 	return form
 }
 
 // ankiAddFormPart redraws the add form when the note type changes (its fields differ).
 func (ui *UI) ankiAddFormPart(w http.ResponseWriter, r *http.Request) {
-	overview, err := ui.Anki.Overview()
+	overview, err := ui.ws(r).Anki.Overview()
 	if err != nil {
 		fail(w, err)
 		return
 	}
 	remember(w, modelCookie, r.FormValue("model"))
-	ui.render(w, "anki-add", ui.ankiAddFormFor(overview, r.FormValue("deck"), r.FormValue("model")))
+	ui.render(w, "anki-add", ui.ankiAddFormFor(r, overview, r.FormValue("deck"), r.FormValue("model")))
 }
 
 func (ui *UI) addAnkiNote(w http.ResponseWriter, r *http.Request) {
 	deck, model := formText(r, "deck"), r.FormValue("model")
 	if deck == newDeck {
 		deck = formText(r, "new_deck")
-		if err := ui.Anki.CreateDeck(deck); err != nil {
+		if err := ui.ws(r).Anki.CreateDeck(deck); err != nil {
 			fail(w, err)
 			return
 		}
 	}
-	names, err := ui.Anki.FieldNames(model)
+	names, err := ui.ws(r).Anki.FieldNames(model)
 	if err != nil {
 		fail(w, err)
 		return
@@ -221,19 +221,19 @@ func (ui *UI) addAnkiNote(w http.ResponseWriter, r *http.Request) {
 		fail(w, problem.Invalidf("Fill in the first field"))
 		return
 	}
-	if err := ui.Anki.AddNote(deck, model, fields, strings.Fields(r.FormValue("tags"))); err != nil {
+	if err := ui.ws(r).Anki.AddNote(deck, model, fields, strings.Fields(r.FormValue("tags"))); err != nil {
 		fail(w, err)
 		return
 	}
 	remember(w, deckCookie, deck)
 	remember(w, modelCookie, model)
-	overview, err := ui.Anki.Overview()
+	overview, err := ui.ws(r).Anki.Overview()
 	if err != nil {
 		fail(w, err)
 		return
 	}
 	announce(w, say("Added to "+deck), ankiChanged)
-	ui.render(w, "anki-add", ui.ankiAddFormFor(overview, deck, model))
+	ui.render(w, "anki-add", ui.ankiAddFormFor(r, overview, deck, model))
 }
 
 // fieldsFromForm reads the "field" boxes, in the note type's order. Line breaks become <br>.
@@ -303,13 +303,13 @@ func (v ankiNotesView) Count() string {
 	return countOf(v.Total, "note", "notes")
 }
 
-func (ui *UI) ankiNotesFor(query string) ankiNotesView {
+func (ui *UI) ankiNotesFor(r *http.Request, query string) ankiNotesView {
 	view := ankiNotesView{Query: query}
 	search := query
 	if strings.TrimSpace(search) == "" {
 		search = "deck:*"
 	}
-	notes, total, err := ui.Anki.SearchNotes(search, notesShown)
+	notes, total, err := ui.ws(r).Anki.SearchNotes(search, notesShown)
 	if err != nil {
 		view.Problem = err.Error()
 		return view
@@ -322,7 +322,7 @@ func (ui *UI) ankiNotesFor(query string) ankiNotesView {
 }
 
 func (ui *UI) ankiNotes(w http.ResponseWriter, r *http.Request) {
-	ui.render(w, "anki-notes", ui.ankiNotesFor(r.FormValue("q")))
+	ui.render(w, "anki-notes", ui.ankiNotesFor(r, r.FormValue("q")))
 }
 
 func noteID(r *http.Request) (int64, error) {
@@ -338,7 +338,7 @@ func (ui *UI) findNote(r *http.Request) (ankiNote, error) {
 	if err != nil {
 		return ankiNote{}, err
 	}
-	notes, _, err := ui.Anki.SearchNotes("nid:"+strconv.FormatInt(id, 10), 1)
+	notes, _, err := ui.ws(r).Anki.SearchNotes("nid:"+strconv.FormatInt(id, 10), 1)
 	if err != nil {
 		return ankiNote{}, err
 	}
@@ -367,7 +367,7 @@ func (ui *UI) saveAnkiNote(w http.ResponseWriter, r *http.Request) {
 	for _, field := range note.Fields {
 		names = append(names, field.Name)
 	}
-	if err := ui.Anki.UpdateNote(note.ID, fieldsFromForm(r, names), strings.Fields(r.FormValue("tags"))); err != nil {
+	if err := ui.ws(r).Anki.UpdateNote(note.ID, fieldsFromForm(r, names), strings.Fields(r.FormValue("tags"))); err != nil {
 		fail(w, err)
 		return
 	}
@@ -381,7 +381,7 @@ func (ui *UI) toggleAnkiSuspended(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
-	if err := ui.Anki.SetSuspended(note.CardIDs, !note.Suspended); err != nil {
+	if err := ui.ws(r).Anki.SetSuspended(note.CardIDs, !note.Suspended); err != nil {
 		fail(w, err)
 		return
 	}
@@ -399,7 +399,7 @@ func (ui *UI) deleteAnkiNote(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
-	if err := ui.Anki.DeleteNote(id); err != nil {
+	if err := ui.ws(r).Anki.DeleteNote(id); err != nil {
 		fail(w, err)
 		return
 	}
@@ -413,7 +413,7 @@ func (ui *UI) browseAnkiNote(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
-	if err := ui.Anki.OpenNoteInBrowser(id); err != nil {
+	if err := ui.ws(r).Anki.OpenNoteInBrowser(id); err != nil {
 		fail(w, err)
 		return
 	}
@@ -458,15 +458,15 @@ type ankiTodayView struct {
 }
 
 func (ui *UI) renderAnkiTodayCard(r *http.Request) (template.HTML, error) {
-	return ui.renderToHTML("card-anki", ui.ankiTodayView())
+	return ui.renderToHTML("card-anki", ui.ankiTodayView(r))
 }
 
-func (ui *UI) ankiTodayView() ankiTodayView {
-	view := ankiTodayView{Status: ui.Anki.Status()}
+func (ui *UI) ankiTodayView(r *http.Request) ankiTodayView {
+	view := ankiTodayView{Status: ui.ws(r).Anki.Status()}
 	if !view.Status.Connected {
 		return view
 	}
-	overview, err := ui.Anki.Overview()
+	overview, err := ui.ws(r).Anki.Overview()
 	if err != nil {
 		view.Status.Connected = false
 		return view
@@ -501,5 +501,5 @@ func (ui *UI) ankiTodayView() ankiTodayView {
 }
 
 func (ui *UI) ankiTodayCard(w http.ResponseWriter, r *http.Request) {
-	ui.render(w, "card-anki", ui.ankiTodayView())
+	ui.render(w, "card-anki", ui.ankiTodayView(r))
 }

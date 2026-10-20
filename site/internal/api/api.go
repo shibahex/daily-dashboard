@@ -10,17 +10,22 @@ import (
 	"regexp"
 	"strings"
 
+	"dashboard/internal/auth"
 	"dashboard/internal/httpx"
 	"dashboard/internal/problem"
-	"dashboard/internal/store"
 	"dashboard/internal/tasks"
 	"dashboard/internal/timewarrior"
+	"dashboard/internal/workspace"
 )
 
 type API struct {
-	Store *store.Store
-	Tasks *tasks.Service
-	Time  timewarrior.Client
+	Workspaces *workspace.Manager
+}
+
+// ws is the workspace of the user whose plugin token (or session) made the request.
+func (a *API) ws(r *http.Request) *workspace.Workspace {
+	user, _ := auth.UserFrom(r)
+	return a.Workspaces.For(user)
 }
 
 var isoDate = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
@@ -39,7 +44,7 @@ func (a *API) Routes(mux *http.ServeMux) {
 }
 
 func (a *API) plan(w http.ResponseWriter, r *http.Request) {
-	plan, err := a.Store.PlanJSON()
+	plan, err := a.ws(r).Store.PlanJSON()
 	if err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -48,7 +53,7 @@ func (a *API) plan(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) checklist(w http.ResponseWriter, r *http.Request) {
-	httpx.WriteJSON(w, http.StatusOK, a.Store.Checklist())
+	httpx.WriteJSON(w, http.StatusOK, a.ws(r).Store.Checklist())
 }
 
 // saveChecklistDay: {"date": "YYYY-MM-DD", "items": {"Weigh in": "done", ...}} replaces that day.
@@ -62,11 +67,11 @@ func (a *API) saveChecklistDay(w http.ResponseWriter, r *http.Request, body requ
 		httpx.WriteError(w, http.StatusBadRequest, "bad checklist")
 		return
 	}
-	respond(w, a.Store.SaveChecklistDay(day, items))
+	respond(w, a.ws(r).Store.SaveChecklistDay(day, items))
 }
 
 func (a *API) pendingTasks(w http.ResponseWriter, r *http.Request) {
-	pending, err := a.Tasks.Pending()
+	pending, err := a.ws(r).Tasks.Pending()
 	if err != nil {
 		httpx.WriteError(w, problem.Status(err), err.Error())
 		return
@@ -75,7 +80,7 @@ func (a *API) pendingTasks(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) thisWeeksTime(w http.ResponseWriter, r *http.Request) {
-	intervals, err := a.Time.IntervalsThisWeek()
+	intervals, err := a.ws(r).Time.IntervalsThisWeek()
 	switch {
 	case problem.KindOf(err) == problem.Unavailable:
 		httpx.WriteJSON(w, http.StatusOK, map[string]any{"available": false, "intervals": []any{}})
@@ -92,7 +97,7 @@ func (a *API) thisWeeksTime(w http.ResponseWriter, r *http.Request) {
 // taskAction: {"uuid"} completes, starts or stops a task.
 func (a *API) taskAction(action string) postHandler {
 	return func(w http.ResponseWriter, r *http.Request, body request) {
-		respond(w, a.Tasks.Do(body.text("uuid"), action))
+		respond(w, a.ws(r).Tasks.Do(body.text("uuid"), action))
 	}
 }
 
@@ -108,7 +113,7 @@ func (a *API) completeAt(w http.ResponseWriter, r *http.Request, body request) {
 		httpx.WriteError(w, http.StatusBadRequest, "minutes must be between 1 and 1440")
 		return
 	}
-	warning, err := a.Tasks.CompleteAt(body.text("uuid"), end, minutes)
+	warning, err := a.ws(r).Tasks.CompleteAt(body.text("uuid"), end, minutes)
 	if err != nil {
 		respond(w, err)
 		return
@@ -120,7 +125,7 @@ func (a *API) completeAt(w http.ResponseWriter, r *http.Request, body request) {
 func (a *API) skip(w http.ResponseWriter, r *http.Request, body request) {
 	var uuids []string
 	json.Unmarshal(body["uuids"], &uuids)
-	respond(w, a.Tasks.Skip(uuids, body.text("note"), body.text("kind") == "dismiss"))
+	respond(w, a.ws(r).Tasks.Skip(uuids, body.text("note"), body.text("kind") == "dismiss"))
 }
 
 // respond sends {"ok": true} or the error as {"ok": false, "error"} with its status.

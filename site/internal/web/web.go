@@ -6,38 +6,30 @@ package web
 import (
 	"net/http"
 
-	"dashboard/internal/anki"
 	"dashboard/internal/assistant"
 	"dashboard/internal/auth"
 	"dashboard/internal/config"
-	"dashboard/internal/myfitnesspal"
-	"dashboard/internal/store"
-	"dashboard/internal/tasks"
-	"dashboard/internal/timewarrior"
+	"dashboard/internal/workspace"
 )
 
 // UI holds what the pages read and change.
 type UI struct {
-	Auth          *auth.Auth
-	Paths         config.Paths
-	Store         *store.Store
-	Tasks         *tasks.Service
-	Time          timewarrior.Client
-	MyFitnessPal  *myfitnesspal.Syncer
-	Anki          anki.Client
-	Providers     assistant.Providers
-	Conversations *assistant.Conversations
-	Chat          *assistant.Runner
+	Auth       *auth.Auth
+	Paths      config.Paths // the server's: templates and static files
+	Workspaces *workspace.Manager
+	Providers  assistant.Providers
 
 	templates *templateSet
-	live      *liveAnswer
 }
+
+// ws is the signed-in user's workspace: their own plan, notes, tasks, food, Anki and chat.
+// Every page and change reads and writes through it, never another user's.
+func (ui *UI) ws(r *http.Request) *workspace.Workspace { return ui.Workspaces.For(ui.user(r)) }
 
 // Routes registers every page, card and form. Changes are POSTs that must come from HTMX
 // (it sends HX-Request, which another website's form can't).
 func (ui *UI) Routes(mux *http.ServeMux) {
 	ui.templates = newTemplateSet(ui.Paths.Web)
-	ui.live = newLiveAnswer()
 	page := func(pattern string, handler http.HandlerFunc) { mux.HandleFunc("GET "+pattern, handler) }
 	change := func(pattern string, handler http.HandlerFunc) { mux.HandleFunc("POST "+pattern, fromHTMX(handler)) }
 

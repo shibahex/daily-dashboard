@@ -33,17 +33,24 @@ type Client struct {
 	APIKey string // only if one is set in AnkiConnect's config
 	http   *http.Client
 
-	// Gateway is what the agents' Anki MCP talks to instead of AnkiConnect (see Gateway).
-	Gateway *Gateway
+	// Gateway is what the agents' Anki MCP talks to instead of AnkiConnect (see Gateway), and
+	// GatewayKey the key that sends this user's requests to this AnkiConnect.
+	Gateway    *Gateway
+	GatewayKey string
 }
 
-// NewClientFromEnv reads ANKI_CONNECT_URL and ANKI_CONNECT_API_KEY.
+// NewClientFromEnv reads ANKI_CONNECT_URL and ANKI_CONNECT_API_KEY: the Anki on this computer.
 func NewClientFromEnv() Client {
 	url := os.Getenv("ANKI_CONNECT_URL")
 	if url == "" {
 		url = defaultURL
 	}
-	return Client{URL: url, APIKey: os.Getenv("ANKI_CONNECT_API_KEY"), http: &http.Client{Timeout: 30 * time.Second}}
+	return NewClient(url, os.Getenv("ANKI_CONNECT_API_KEY"))
+}
+
+// NewClient talks to the AnkiConnect at url ("" = not set up yet).
+func NewClient(url, apiKey string) Client {
+	return Client{URL: url, APIKey: apiKey, http: &http.Client{Timeout: 30 * time.Second}}
 }
 
 // Call runs one AnkiConnect action. params may be nil, a map, or raw JSON.
@@ -88,7 +95,7 @@ func (c Client) callInto(action string, params any, v any) error {
 // Gateway, so there's none (false) without one. It needs Node 22.12+, so it runs on Nix's
 // Node 22 when Nix is there.
 func (c Client) MCPServer() (mcp.Server, bool) {
-	if c.Gateway == nil {
+	if c.Gateway == nil || c.GatewayKey == "" {
 		return mcp.Server{}, false
 	}
 	npx := []string{"npx"}
@@ -98,7 +105,7 @@ func (c Client) MCPServer() (mcp.Server, bool) {
 	return mcp.Server{
 		Command: npx[0],
 		Args:    append(npx[1:], "-y", MCPPackage, "--stdio"),
-		Env:     map[string]string{"ANKI_CONNECT_URL": c.Gateway.URL, "ANKI_CONNECT_API_KEY": c.Gateway.Key},
+		Env:     map[string]string{"ANKI_CONNECT_URL": c.Gateway.URL, "ANKI_CONNECT_API_KEY": c.GatewayKey},
 	}, true
 }
 

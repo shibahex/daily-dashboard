@@ -81,7 +81,7 @@ func (d taskData) editorView(task taskwarrior.Task) taskEditorView {
 
 // loadEditor finds the task in {uuid} along with everything its editor shows.
 func (ui *UI) loadEditor(r *http.Request) (taskData, taskwarrior.Task, error) {
-	data, err := ui.loadTaskData()
+	data, err := ui.loadTaskData(r)
 	if err != nil {
 		return data, nil, err
 	}
@@ -140,7 +140,7 @@ func (ui *UI) saveTask(w http.ResponseWriter, r *http.Request) {
 		nothing(w) // nothing changed: just close
 		return
 	}
-	if err := ui.Tasks.Modify(edit); err != nil {
+	if err := ui.ws(r).Tasks.Modify(edit); err != nil {
 		fail(w, err)
 		return
 	}
@@ -160,11 +160,11 @@ func changedValue(r *http.Request, field, saved string) *string {
 }
 
 func (ui *UI) addTaskNote(w http.ResponseWriter, r *http.Request) {
-	ui.changeNotes(w, r, ui.Tasks.AddNote, formText(r, "note"), "Note added")
+	ui.changeNotes(w, r, ui.ws(r).Tasks.AddNote, formText(r, "note"), "Note added")
 }
 
 func (ui *UI) removeTaskNote(w http.ResponseWriter, r *http.Request) {
-	ui.changeNotes(w, r, ui.Tasks.RemoveNote, r.FormValue("remove"), "Note removed")
+	ui.changeNotes(w, r, ui.ws(r).Tasks.RemoveNote, r.FormValue("remove"), "Note removed")
 }
 
 // changeNotes adds or removes a note and answers with the editor, still open.
@@ -325,7 +325,7 @@ func (ui *UI) saveSchedule(w http.ResponseWriter, r *http.Request) {
 		fail(w, problem.Invalidf(err.Error()))
 		return
 	}
-	made, err := ui.Tasks.ReplaceSchedule(task.UUID(), data.seriesOf(task).UUIDs(), rule)
+	made, err := ui.ws(r).Tasks.ReplaceSchedule(task.UUID(), data.seriesOf(task).UUIDs(), rule)
 	if err != nil {
 		fail(w, err)
 		return
@@ -344,7 +344,7 @@ func (ui *UI) stopSchedule(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
-	if err := ui.Tasks.StopRepeating(data.seriesOf(task).UUIDs()); err != nil {
+	if err := ui.ws(r).Tasks.StopRepeating(data.seriesOf(task).UUIDs()); err != nil {
 		fail(w, err)
 		return
 	}

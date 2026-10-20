@@ -105,10 +105,17 @@ func (s *Syncer) Change(request map[string]any) (Cache, error) {
 }
 
 // RunForever syncs every SyncEvery.
-func (s *Syncer) RunForever() {
+// RunUntil syncs now and then every SyncEvery, until stop is closed.
+func (s *Syncer) RunUntil(stop <-chan struct{}) {
+	ticker := time.NewTicker(SyncEvery)
+	defer ticker.Stop()
 	for {
 		s.Sync()
-		time.Sleep(SyncEvery)
+		select {
+		case <-stop:
+			return
+		case <-ticker.C:
+		}
 	}
 }
 
