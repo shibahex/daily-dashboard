@@ -8,7 +8,7 @@ Puts the dashboard on the Noctalia bar.
 - **Middle click:** opens the full dashboard (`chromium --app=…` by default, set in the plugin settings).
 - **Right click:** stop the timer, open, refresh, start/restart the server, settings.
 
-If the dashboard isn't reachable, the plugin starts it in the background (`nix run` in `site/`, the same as `./run.sh`). A server you started yourself in a terminal is used as is. A server the plugin started stops when the shell exits.
+If the dashboard isn't reachable, the plugin starts it in the background (`nix run` in `site/`, the same as `./run.sh`). A server you started yourself in a terminal is used as is. A server the plugin started stops when the shell exits. If the dashboard runs on another computer, set its address (e.g. `https://health.example.lan`) as the plugin's URL and turn off **Start the server automatically**.
 
 ## Install
 
@@ -22,6 +22,6 @@ The plugin follows the symlink to find `site/`, so the repo can live anywhere. T
 
 Restart Noctalia, then enable **Health Dashboard** under Settings → Plugins. It's added to the right side of the bar.
 
-Then give it a token. The dashboard's API refuses requests without one. On the dashboard, open **Account** (top right), press **Make a token**, and paste the token into the plugin's settings under **API token**. Making a new token stops the old one from working.
+Then give it a token. The dashboard's API refuses requests without one. On the dashboard, open your account (your username, top right), press **Make a token**, and paste the token into the plugin's settings under **API token**. The token is yours: the bar shows your checklist and tasks, never anyone else's. Making a new token stops the old one from working.
 
 IPC (for keybinds): `noctalia-shell ipc call plugin:health-dashboard toggle` (also `open`, `refresh`, `restart`, `stop` to stop the timer)

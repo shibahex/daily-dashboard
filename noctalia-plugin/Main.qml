@@ -89,7 +89,7 @@ Item {
       let data = null;
       try { data = JSON.parse(xhr.responseText || "null"); } catch (e) {}
       if (xhr.status >= 200 && xhr.status < 300 && !(data && data.ok === false)) cb(null, data);
-      else if (xhr.status === 401) cb(token ? "The API token was refused: make a new one on the dashboard's Account page" : "Open the dashboard, create your account, then make an API token on its Account page and paste it in the plugin settings", data);
+      else if (xhr.status === 401) cb(token ? "The API token was refused: make a new one on the dashboard's Account page" : "Log in to the dashboard, make an API token on your account page and paste it in the plugin settings", data);
       else cb(xhr.status === 0 ? "Dashboard not reachable" : ((data && data.error) || ("HTTP " + xhr.status)), data);
     };
     xhr.open(method, baseUrl + path);
