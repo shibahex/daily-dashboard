@@ -1,0 +1,89 @@
+{{define "icon-leaf"}}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z"/><path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"/></svg>{{end}}
+{{define "icon-send"}}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>{{end}}
+{{define "icon-stop"}}<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>{{end}}
+
+{{define "chat"}}{{template "chat-card" .}}{{end}}
+
+{{/* The whole tab is one card. Settings and sending answer with it, redrawn. */}}
+{{define "chat-card"}}
+<div class="card chat-card" id="chat-card">
+  <div class="chat-top">
+    <div class="chat-badge">{{template "icon-leaf"}}</div>
+    <div class="chat-title"><b>MCPs</b><span class="chat-status{{if not .Ready}} off{{end}}"><i></i>{{if .StatusLink}}<a class="link" href="{{.StatusLink}}">{{.Status}}</a>{{else}}{{.Status}}{{end}}</span></div>
+    <div class="mcp-toggles" title="Which MCP servers the AI can use">{{range .MCPs}}
+      <button class="pill mcp-toggle{{if .Enabled}} on{{end}}{{if .Ready}} ready{{end}}" hx-post="/mcps/toggle" hx-vals="{{vals "mcp" .ID}}" hx-target="#chat-card" hx-swap="outerHTML"{{if $.Busy}} disabled{{end}}
+        title="{{if .Enabled}}Turn off{{else}}Turn on{{end}} the {{.Label}} MCP{{if not .Ready}}{{if eq .ID "anki"}} (not connected: see the Anki tab){{else}} (needs setup){{end}}{{end}}"><i></i>{{.Label}}</button>
+    {{end}}</div>
+    <span class="chat-tools">
+      <select class="pill" name="provider" title="Which AI answers" hx-post="/mcps/provider" hx-target="#chat-card" hx-swap="outerHTML"{{if .Messages}} hx-confirm="Start a new chat with the AI you picked?"{{end}}{{if .Busy}} disabled{{end}}>
+        {{range .Providers}}<option value="{{.ID}}"{{if .Selected}} selected{{end}}{{if not .Available}} disabled{{end}}>{{.Label}}{{if not .Installed}}{{if .Available}} (via Nix){{else}} (not installed){{end}}{{end}}</option>{{end}}
+      </select>
+      {{if .CustomModel}}
+      <form class="custom-model" hx-post="/mcps/model" hx-target="#chat-card" hx-swap="outerHTML">
+        <input type="hidden" name="model" value="__custom">
+        <input class="txt" name="custom_model" placeholder="e.g. claude-opus-5-5, gpt-5.5, gemini-2.5-pro" autofocus required>
+        <button class="pill">Use</button>
+        <button type="button" class="pill" hx-get="/mcps/card" hx-target="#chat-card" hx-swap="outerHTML">Cancel</button>
+      </form>
+      {{else}}
+      <select class="pill" name="model" title="Which model it uses" hx-post="/mcps/model" hx-target="#chat-card" hx-swap="outerHTML"{{if .Busy}} disabled{{end}}>
+        {{range .Models}}<option value="{{.ID}}"{{if .Selected}} selected{{end}}{{with .Description}} title="{{.}}"{{end}}>{{.Label}}</option>{{end}}
+        <option value="__custom">Custom…</option>
+      </select>
+      {{end}}
+      <button class="pill" hx-post="/mcps/new" hx-target="#chat-card" hx-swap="outerHTML" title="Start over"{{if .Busy}} disabled{{end}}>New chat</button>
+    </span>
+  </div>
+  {{if .NeedsMyFitnessPalSetup}}{{template "mfp-setup" .MyFitnessPal}}{{end}}
+  <div class="chat-log" data-scroll-end>
+    {{range .Messages}}{{template "chat-message" (chatMessage . $)}}{{end}}
+    {{with .Question}}{{template "chat-message" (chatMessage . $)}}{{end}}
+    {{with .Reply}}
+    <div class="msg bot" hx-ext="sse" sse-connect="/mcps/stream" sse-close="done">
+      <div class="av">{{template "icon-leaf"}}</div>
+      <div class="body" sse-swap="reply">{{template "chat-reply-body" (chatReply . $ true)}}</div>
+      <span hidden hx-get="/mcps/card" hx-trigger="sse:done" hx-target="#chat-card" hx-swap="outerHTML"></span>
+    </div>
+    {{end}}
+    {{if and (not .Messages) (not .Busy)}}
+    <div class="chat-empty"><div class="chat-badge">{{template "icon-leaf"}}</div><h3>{{.EmptyTitle}}</h3>
+      <p>{{.EmptyHint}}</p>
+      <div class="sugg">{{range .Suggestions}}<button hx-post="/mcps/messages" hx-vals="{{vals "message" .Text}}" hx-target="#chat-card" hx-swap="outerHTML"{{if $.Blocked}} disabled{{end}}><span>{{.Icon}}</span>{{.Text}}</button>{{end}}</div></div>
+    {{end}}
+  </div>
+  <form class="chat-form" hx-post="/mcps/messages" hx-target="#chat-card" hx-swap="outerHTML">
+    <div class="composer">
+      <textarea name="message" rows="1" maxlength="4000" placeholder="Ask about your food, or tell it what you ate…" data-enter-sends{{if or .Blocked .Busy}} disabled{{end}}{{if not .Busy}} autofocus{{end}}></textarea>
+      {{if .Busy}}
+      <button type="button" class="send-btn stop" hx-post="/mcps/stop" hx-swap="none" title="Stop">{{template "icon-stop"}}</button>
+      {{else}}
+      <button class="send-btn" title="Send (Enter)"{{if .Blocked}} disabled{{end}}>{{template "icon-send"}}</button>
+      {{end}}
+    </div>
+  </form>
+  <p class="muted chat-note">Uses the <a class="link" href="https://github.com/Mason-Levyy/myfitnesspal-mcp" target="_blank" rel="noopener">MyFitnessPal</a> and <a class="link" href="https://github.com/ankimcp/anki-mcp-server" target="_blank" rel="noopener">Anki</a> MCPs · Shift+Enter for a new line</p>
+</div>
+{{end}}
+
+{{define "mfp-setup"}}
+<div class="mcp-setup spaced-top"><b>Set up the MyFitnessPal MCP</b><ol>
+  <li>Download the <a class="link" href="{{.Repo}}" target="_blank" rel="noopener">MyFitnessPal MCP</a> (or skip this: the dashboard can run the released package with <code>uv</code>).</li>
+  <li>Connect your account: <code>uvx --from 'mfp-mcp[autorefresh]' mfp-mcp auth</code> and paste your MyFitnessPal session cookie, as the MCP's README shows.</li>
+  <li>Reload this page.</li></ol></div>
+{{end}}
+
+{{/* A saved message: the question, or the answer with its tool calls. */}}
+{{define "chat-message"}}
+{{if eq .Message.Role "user"}}<div class="msg user">{{.Message.Text}}</div>
+{{else}}
+<div class="msg bot"><div class="av">{{template "icon-leaf"}}</div><div class="body">{{template "chat-reply-body" .}}</div></div>
+{{end}}
+{{end}}
+
+{{define "chat-reply-body"}}
+{{with .Message.Tools}}<div class="tools">{{range .}}<span{{if .Error}} class="bad"{{end}}>{{.Label}}{{with .Detail}} · {{.}}{{end}}</span>{{end}}</div>{{end}}
+{{if .Message.Text}}<div class="bubble md">{{markdown .Message.Text}}</div>
+{{else if .Live}}<div class="bubble"><span class="typing"><i></i><i></i><i></i></span></div>{{end}}
+{{with .Message.Error}}<div class="err">{{.}}</div>{{end}}
+{{if and .Message.Model (not .Live)}}<div class="by">{{.Chat.ModelLabel .Message.Model}}</div>{{end}}
+{{end}}

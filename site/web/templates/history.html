@@ -1,0 +1,122 @@
+{{define "history"}}
+{{template "activity" .Activity}}
+{{template "card-timelog" .TimeLog}}
+<div class="hist-cols">
+  {{template "card-feed" .Activity}}
+  {{template "card-skips" .Skips}}
+</div>
+{{end}}
+
+{{/* The heatmap. Changing the mode, picking a day or "Show older" answers with this card and the
+     feed card (swapped in out of band). */}}
+{{define "activity"}}
+{{$view := .}}
+<div class="card" hx-disinherit="*" id="card-activity" hx-get="/history/activity" hx-vals="{{vals "mode" .Heatmap.Mode "day" .Selected "days" .Shown}}" hx-trigger="tasks-changed from:body, time-changed from:body, checklist-changed from:body" hx-swap="outerHTML">
+  <div class="card-head"><h2>Activity</h2>
+    <div class="seg">{{range .Heatmap.Modes}}<button class="{{if eq .Key $view.Heatmap.Mode}}on{{end}}" hx-get="/history/activity" hx-vals="{{vals "mode" .Key "day" $view.Selected}}" hx-target="#card-activity" hx-swap="outerHTML">{{.Label}}</button>{{end}}</div></div>
+  {{with .Heatmap}}
+  <div class="hm-wrap" data-scroll-end>
+    <div class="hm-months" style="grid-template-columns:repeat({{.Columns}},11px)">{{range .Months}}<span style="grid-column:{{.Column}}">{{.Name}}</span>{{end}}</div>
+    <div class="hm-grid" style="grid-template-columns:repeat({{.Columns}},11px)">{{range .Cells}}<button class="hm-cell l{{.Level}}{{if .Selected}} sel{{end}}" style="grid-row:{{.Row}};grid-column:{{.Column}}" title="{{.Label}}"
+      hx-get="/history/activity" hx-vals="{{vals "mode" $view.Heatmap.Mode "day" (toggleDay .Day .Selected)}}" hx-target="#card-activity" hx-swap="outerHTML"></button>{{end}}</div>
+  </div>
+  <div class="hm-foot"><span class="small muted">{{.Summary}}</span>
+    <span class="hm-legend small muted">Less <i class="hm-cell l0"></i><i class="hm-cell l1"></i><i class="hm-cell l2"></i><i class="hm-cell l3"></i><i class="hm-cell l4"></i> More</span></div>
+  {{end}}
+</div>
+{{if .Partial}}{{template "card-feed" .}}{{end}}
+{{end}}
+
+{{define "card-feed"}}
+{{$view := .}}
+<div class="card" id="card-feed"{{if .Partial}} hx-swap-oob="true"{{end}}>
+  <div class="card-head"><h2>{{if .Selected}}{{longDay .SelectedDay}}{{else}}Recent activity{{end}}</h2>
+    {{if .Selected}}<button class="edit-btn" hx-get="/history/activity" hx-vals="{{vals "mode" .Heatmap.Mode}}" hx-target="#card-activity" hx-swap="outerHTML">Show all days</button>{{end}}</div>
+  {{range .Days}}
+  <div class="hist-day"><h3><span>{{shortDay .Day}}</span><span class="small muted">{{join .Stats " · "}}</span></h3>
+    {{if .Reviews}}<div class="feed-item ev-anki"><span class="ev-icon">🗂</span><span>Reviewed <b>{{.Reviews}}</b> Anki {{plural .Reviews "card" "cards"}}</span></div>{{end}}
+    {{range .Entries}}
+    <div class="feed-item ev-{{.Kind}}"><span class="ev-icon">{{.Icon}}</span><span>{{.Label}} <b>{{.Description}}</b>{{if gt .Count 1}} <span class="badge">×{{.Count}}</span>{{end}}{{with .Project}} <span class="badge">{{.}}</span>{{end}}{{with .Reason}} · <span class="why">{{.}}</span>{{end}}</span></div>
+    {{else}}{{if not .Reviews}}<div class="small muted">No task activity.</div>{{end}}{{end}}
+  </div>
+  {{else}}
+  <p class="muted">{{if .Selected}}Nothing happened this day.{{else}}No activity yet.{{end}}</p>
+  {{end}}
+  {{if .HasMore}}<button class="sm spaced-top" hx-get="/history/activity" hx-vals="{{vals "mode" .Heatmap.Mode "days" .MoreDays}}" hx-target="#card-activity" hx-swap="outerHTML">Show older</button>{{end}}
+</div>
+{{end}}
+
+{{define "card-skips"}}
+<div class="card" hx-disinherit="*" id="card-skips" hx-get="/history/skips" hx-trigger="tasks-changed from:body, checklist-changed[!this.contains(event.target)] from:body" hx-swap="outerHTML">
+  <div class="card-head"><h2>Skipped &amp; why</h2></div>
+  {{range .Days}}
+  <div class="hist-day"><h3><span>{{longDay .Day}}</span>
+      <span class="small muted">{{if .HasChecklist}}checklist {{.Done}} done · {{.Skipped}} skipped{{if .Complete}} · complete ✓{{end}}{{end}}</span></h3>
+    {{range .ChecklistSkips}}<div class="hist-item">{{.Name}} · {{template "reason-button" .Reason}}</div>{{end}}
+    {{range .TaskSkips}}
+    <div class="hist-item{{if .Dismissed}} dismiss{{end}}"><b>{{.Description}}</b> <span class="badge">task</span>
+      {{if and (gt .Count 1) (not .FirstDue.IsZero)}} <span class="muted small">{{.Count}} copies, {{monthDay .FirstDue}}–{{monthDay .LastDue}}</span>{{end}}
+      · {{template "reason-button" .Reason}}</div>
+    {{end}}
+  </div>
+  {{else}}
+  <p class="muted">Nothing skipped yet. When you skip a checklist item or a task, the day and your reason show up here.</p>
+  {{end}}
+</div>
+{{end}}
+
+{{/* The time log: one week of Timewarrior entries, to add, change or delete. Changes answer
+     with nothing but time-changed, and the card reloads itself. */}}
+{{define "card-timelog"}}
+{{$log := .}}
+<div class="card spaced" hx-disinherit="*" id="card-timelog" hx-get="/history/time-log?week={{.Week}}" hx-trigger="time-changed from:body" hx-swap="outerHTML">
+  <div class="card-head"><h2>Time log</h2>
+    <div class="weeknav">
+      <button class="icon" hx-get="/history/time-log?week={{.Previous}}" hx-target="#card-timelog" hx-swap="outerHTML" title="Previous week">◀</button>
+      <span class="small">{{shortDay .Monday}} – {{shortDay .Sunday}}</span>
+      <button class="icon" hx-get="/history/time-log?week={{.Next}}" hx-target="#card-timelog" hx-swap="outerHTML" title="Next week"{{if eq .Week 0}} disabled{{end}}>▶</button>
+      {{if ne .Week 0}}<button class="edit-btn" hx-get="/history/time-log" hx-target="#card-timelog" hx-swap="outerHTML">This week</button>{{end}}</div></div>
+  <form class="tl-add" hx-post="/time" hx-swap="none">
+    <input class="txt" type="date" name="day" value="{{.AddDay}}" required>
+    <input class="txt" type="time" name="start" required> – <input class="txt" type="time" name="end" required>
+    <select class="txt" name="task" data-fills="tags" title="Fills in the same tags the task's timer uses, so the time counts toward it">
+      <option value="">Pick a task…</option>
+      {{range .TaskGroups}}{{if .Choices}}<optgroup label="{{.Label}}">{{range .Choices}}<option value="{{.Tags}}">{{.Label}}</option>{{end}}</optgroup>{{end}}{{end}}
+    </select>
+    <input class="txt" name="tags" list="tl-tags" placeholder="what (task name, extra tags after commas)" required>
+    <button class="sm primary">Log time</button>
+    <datalist id="tl-tags">{{range .Names}}<option value="{{.}}">{{end}}</datalist>
+  </form>
+  {{if not .Available}}
+  <p class="muted small">Timewarrior isn't available. Start the dashboard with <code>nix run</code>.</p>
+  {{else if .Problem}}
+  <p class="err">Timewarrior: {{.Problem}}</p>
+  {{else}}
+  {{if .Days}}<div class="small muted spaced-bottom">{{duration .Tracked}} this week</div>{{end}}
+  {{range .Days}}
+  <div class="hist-day"><h3><span>{{shortDay .Day}}</span><span class="small muted">{{duration .Tracked}}</span></h3>
+    {{range .Entries}}
+    {{if eq .Ref $log.Editing}}
+    <form class="tl-edit" hx-post="/time/{{.ID}}" hx-swap="none">
+      <input type="hidden" name="start_was" value="{{.Start}}"><input type="hidden" name="end_was" value="{{.Interval.End}}">
+      {{range .Tags}}<input type="hidden" name="tags_was" value="{{.}}">{{end}}
+      <input class="txt" type="datetime-local" name="start" value="{{.StartInput}}" required>
+      {{if .Running}}<span class="small muted">– still running</span>{{else}}– <input class="txt" type="datetime-local" name="end" value="{{.EndInput}}" required>{{end}}
+      <input class="txt" name="tags" value="{{.TagText}}" required>
+      <span><button class="sm primary">Save</button> <button type="button" class="sm" hx-get="/history/time-log?week={{$log.Week}}" hx-target="#card-timelog" hx-swap="outerHTML">Cancel</button></span>
+    </form>
+    {{else}}
+    <div class="tl-row"><span class="tl-time">{{timeRange .Begin .End .Running}}</span><span class="tl-dur">{{duration .Length}}</span>
+      <span class="tl-tags">{{range .Tags}}<span class="badge">{{.}}</span> {{else}}<span class="muted small">untagged</span>{{end}}</span>
+      <span class="tl-btns">
+        <button class="sm" hx-get="/time/{{.ID}}/edit" hx-vals="{{vals "start" .Start "week" $log.Week}}" hx-target="#card-timelog" hx-swap="outerHTML">Edit</button>
+        <button class="sm ghost" hx-post="/time/{{.ID}}/delete" hx-vals="{{vals "start_was" .Start}}" hx-swap="none" hx-confirm="Delete this time entry?">Delete</button></span></div>
+    {{end}}
+    {{end}}
+  </div>
+  {{else}}
+  <p class="muted small">Nothing tracked this week. Log time above, or press Start on a task.</p>
+  {{end}}
+  {{end}}
+</div>
+{{end}}

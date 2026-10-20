@@ -8,7 +8,7 @@
 /* MCPs tab: MyFitnessPal chat */
 /* Fills the window under the tabs: no card frame, and only the messages scroll (without a visible bar). */
 .chat-card { max-width: 980px; margin: 0 auto; padding: 0; background: none; border: 0; border-radius: 0; display: flex; flex-direction: column;
-  height: calc(100dvh - var(--chat-top, 130px) - 8px); min-height: 420px; }
+  flex: 1; min-height: 420px; width: 100%; }
 .chat-top { display: flex; align-items: center; gap: 12px; padding: 0 4px 14px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
 .chat-badge { width: 40px; height: 40px; border-radius: 12px; background: var(--accent); color: var(--on-accent); display: grid; place-items: center; flex: none; }
 .chat-badge svg { width: 22px; height: 22px; }
@@ -21,7 +21,6 @@
 .chat-log { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 18px; padding: 22px 4px; scroll-behavior: smooth;
   scrollbar-width: none; }
 .chat-log::-webkit-scrollbar { display: none; }
-main:has(#tab-mcp:not([hidden])) { padding-bottom: 0; }
 .msg { max-width: 85%; overflow-wrap: anywhere; line-height: 1.55; animation: msg-in .18s ease-out; }
 @keyframes msg-in { from { opacity: 0; transform: translateY(4px); } }
 .msg.user { align-self: flex-end; background: var(--accent); color: var(--on-accent); border-radius: 18px 18px 4px 18px; padding: 9px 14px; white-space: pre-wrap; }
@@ -61,7 +60,7 @@ main:has(#tab-mcp:not([hidden])) { padding-bottom: 0; }
 .chat-form { padding: 8px 0 6px; }
 .composer { display: flex; gap: 8px; align-items: flex-end; background: var(--panel); border: 1px solid var(--line); box-shadow: 0 2px 10px rgb(0 0 0 / .05); border-radius: 16px; padding: 6px 6px 6px 14px; transition: border-color .15s; }
 .composer:focus-within { border-color: var(--accent); }
-.composer textarea { flex: 1; border: 0; background: none; color: var(--ink); resize: none; font: inherit; padding: 7px 0; min-height: 22px; max-height: 180px; outline: none; scrollbar-width: none; }
+.composer textarea { field-sizing: content; flex: 1; border: 0; background: none; color: var(--ink); resize: none; font: inherit; padding: 7px 0; min-height: 22px; max-height: 180px; outline: none; scrollbar-width: none; }
 .send-btn { width: 36px; height: 36px; border-radius: 50%; border: 0; background: var(--accent); color: var(--on-accent); display: grid; place-items: center; cursor: pointer; flex: none; transition: opacity .15s; }
 .composer textarea::placeholder { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .send-btn:disabled { opacity: .35; cursor: default; }
@@ -69,5 +68,6 @@ main:has(#tab-mcp:not([hidden])) { padding-bottom: 0; }
 .send-btn svg { width: 17px; height: 17px; }
 .send-btn.stop { background: var(--ink); color: var(--panel); }
 .chat-note { margin: 0; padding: 0 0 10px; text-align: center; font-size: 12px; }
-#mcp-setup { padding: 16px 0 0; } #mcp-setup[hidden] { display: none; }
 @media (max-width: 600px) { .sugg { grid-template-columns: 1fr; } .msg { max-width: 94%; } .chat-tools { width: 100%; justify-content: flex-end; } }
+.custom-model { display: inline-flex; gap: 6px; align-items: center; }
+.custom-model .txt { width: 230px; }

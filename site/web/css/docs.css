@@ -1,7 +1,8 @@
 /* Docs tab and rendered Markdown */
 .docs { display: grid; grid-template-columns: 200px 1fr; gap: 20px; }
-.doclist button { display: block; width: 100%; text-align: left; background: none; border: 0; padding: 7px 10px; border-radius: 6px; font: inherit; color: var(--ink); cursor: pointer; }
-.doclist button.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.doclist a { display: block; padding: 7px 10px; border-radius: 6px; color: var(--ink); text-decoration: none; }
+.doclist a:hover { background: var(--chip); }
+.doclist a.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
 .md { overflow-x: auto; }
 .md h1 { font-size: 24px; margin-top: 0; } .md h2 { font-size: 18px; margin-top: 28px; } .md h3 { font-size: 16px; }
 .md table { border-collapse: collapse; margin: 10px 0; font-size: 14px; }

@@ -3,12 +3,12 @@
 ## Layout
 
 - `site/`: the dashboard: a Go server (`cmd/dashboard`, `internal/…`) and a Nix flake. See `docs/dashboard.md`.
-  - `internal/` has one package per area: `store` (plan, checklist, weigh-ins, docs), `taskwarrior`, `timewarrior`, `myfitnesspal`, `anki`, `assistant` (the MCPs tab's AI agents) and `server` (HTTP handlers, one file per area). Dependencies are passed in through `server.Server`, not globals.
+  - `internal/` has one package per area: `store` (plan, checklist, weigh-ins, docs), `taskwarrior`, `timewarrior`, `tasks` (task changes that touch both), `myfitnesspal`, `anki`, `assistant` (the MCPs tab's AI agents), `web` (the pages) and `api` (the small JSON API the Noctalia plugin uses). Dependencies are passed in through `web.UI` and `api.API`, not globals. Errors that should reach the page are `problem` errors, which carry their HTTP status.
   - `mfp_fetch.py` stays Python: it runs inside the MyFitnessPal MCP's Python package.
-- `site/web/`: the page the server serves.
-  - `index.html`: markup only. It loads the CSS and JS files below, in order.
+- `site/web/`: what the pages are made of. The server renders them with `html/template` and they update with [HTMX](https://htmx.org): every card, list and panel has its own URL, and a change answers with the new HTML plus `HX-Trigger` events (`tasks-changed`, `toast`…) that other cards listen for to reload themselves.
+  - `templates/`: one file per tab (`today.html`, `tasks.html`…) plus `page.html` (the frame and shared pieces). They're re-read when they change, so editing one only needs a reload.
   - `css/`: one file per area (`today.css`, `anki.css`, `chat.css`…), with `base.css` first (colour tokens for light and dark, layout) and `components.css` last (buttons, inputs, badges). When two rules match an element equally, the later file wins, so keep that order.
-  - `js/`: plain scripts (not modules) that share one global scope and run in the order `index.html` lists them. `core.js` has the shared state and helpers; each tab has its own file; `main.js` boots the page. Top-level code may only use what earlier files define.
+  - `js/app.js`: the only script: toasts, keyboard shortcuts, dragging Today's cards and remembering open meals. Keep page logic on the server; reach for JS only for what HTMX and CSS can't do.
 - `noctalia-plugin/`: the Noctalia bar plugin. See `docs/noctalia-plugin.md`.
 - `docs/`: the user's own notes (`*.md`, git-ignored), the guides (`README.md`, `dashboard.md`, `noctalia-plugin.md`) and the starter notes in `docs/templates/`.
 

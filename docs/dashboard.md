@@ -69,4 +69,4 @@ Everything stays local. The server binds to 127.0.0.1 only and rejects cross-sit
 
 - `site/cmd/dashboard`: the Go server's entry point; `site/internal/` holds one package per area (Taskwarrior, Timewarrior, MyFitnessPal, Anki, the MCPs tab's AI agents, the HTTP handlers). Standard library only. `nix run` builds it.
 - `site/mfp_fetch.py`: MyFitnessPal reads and writes, run through the MyFitnessPal MCP's Python package.
-- `site/web/`: the page. `index.html` is markup only; styles are in `css/` (one file per area) and scripts in `js/` (one file per tab, plain scripts loaded in order). No build step: edit a file and reload the page.
+- `site/web/`: the pages. `templates/` has the HTML (one file per tab), rendered on the server and updated in place with [HTMX](https://htmx.org); styles are in `css/` (one file per area) and `js/app.js` does the few things HTMX can't (toasts, shortcuts, dragging cards). No build step: edit a file and reload the page.

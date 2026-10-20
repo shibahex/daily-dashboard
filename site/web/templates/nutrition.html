@@ -1,0 +1,116 @@
+{{/* The goals card: today's MyFitnessPal diary once it's synced, the plan's goals before that.
+     While a sync runs it checks back every few seconds (unless a food form is open). */}}
+{{define "card-goals"}}
+<div class="card" hx-disinherit="*" id="card-goals"{{if not .Editing}} hx-get="/cards/goals" hx-trigger="plan-changed[!this.contains(event.target)] from:body, nutrition-changed[!this.contains(event.target)] from:body{{if .Syncing}}, every 5s [!hasOpenPanel(this)]{{end}}"{{end}} hx-swap="outerHTML">
+  {{with .Nutrition}}{{template "nutrition" .}}{{else}}
+  {{template "card-head" dict "Title" "Daily goals" "URL" "/cards/goals" "Editing" .Editing}}
+  {{if .Editing}}
+  <form hx-post="/cards/goals" hx-target="closest .card" hx-swap="outerHTML">
+    <button class="default-submit" name="op" value="" tabindex="-1" aria-hidden="true"></button>
+    {{template "row-editor" .Editor}}
+  </form>
+  {{else}}
+  <div class="goals">{{range .Goals}}<div class="goal"><b>{{.Value}}</b><span>{{.Label}}{{with .Unit}} · {{.}}{{end}}</span></div>{{end}}</div>
+  <p class="small muted note">{{if .LastError}}<span class="err">MyFitnessPal: {{.LastError}}</span> <a class="link" href="/mcps">Set up</a>{{else if .Syncing}}Connecting to MyFitnessPal…{{else}}Change the calorie and macro goals in MyFitnessPal too.{{end}}</p>
+  {{end}}
+  {{end}}
+</div>
+{{end}}
+
+{{define "nutrition"}}
+{{$eaten := .Day.Totals}}{{$goals := .Day.Goals}}
+<div class="card-head"><h2>Nutrition today</h2><span>
+  <button class="edit-btn" hx-get="/food/search?meal={{query .MealNow}}" hx-target="#food-panel">+ Log food</button>
+  <button class="edit-btn" hx-post="/nutrition/sync" hx-target="closest .card" hx-swap="outerHTML" hx-disabled-elt="this" title="Sync with MyFitnessPal now">{{if .Syncing}}Syncing…{{else}}↻ Sync{{end}}</button></span></div>
+<div id="food-panel"></div>
+<div class="nut-cal"><span class="big">{{number $eaten.Calories}}</span><span class="of">/ {{number $goals.Calories}} kcal eaten</span></div>
+<div class="progress"><div class="{{if gt $eaten.Calories .Budget}}over{{else}}d{{end}}" style="width:{{percent $eaten.Calories .Budget}}%"></div></div>
+<div class="nut-eq">{{number $goals.Calories}} goal − {{number $eaten.Calories}} food{{with .Day.ExerciseCalories}} + {{number .}} exercise{{end}} =
+  <b class="{{if lt .Left 0.0}}over{{end}}">{{if lt .Left 0.0}}{{number (negate .Left)}} over{{else}}{{number .Left}} left{{end}}</b></div>
+{{range .Macros}}
+<div class="macro"><div class="top"><span>{{.Label}}</span><span>{{number .Eaten}} / {{number .Goal}} {{.Unit}}</span></div>
+  <div class="progress"><div style="width:{{percent .Eaten .Goal}}%;background:var(--{{.Colour}})"></div></div></div>
+{{end}}
+{{with .Split}}
+<div class="split" title="Where today's calories came from">{{range .}}<div style="width:{{.Percent}}%;background:var(--{{.Key}})"></div>{{end}}</div>
+<div class="split-key">{{range .}}<span><i style="background:var(--{{.Key}})"></i>{{.Label}} {{.Percent}}%</span>{{end}}</div>
+{{end}}
+<div class="limits">{{range .Limits}}
+  <div class="limit{{if .Over}} bad{{else if .Ample}} good{{end}}"><b>{{number .Amount}} <small>{{.Unit}}</small></b><span>{{.Label}}</span>{{if .Goal}}<span>goal {{if .AtLeast}}≥{{else}}≤{{end}} {{number .Goal}}</span>{{end}}</div>
+{{end}}</div>
+<div class="meals">{{range $i, $meal := .Meals}}
+  <details data-meal="{{.Name}}">
+    <summary><span>{{.Name}}</span><span>{{if .Entries}}{{number .Totals.Calories}} kcal · {{number .Totals.Protein}}p {{number .Totals.Carbohydrates}}c {{number .Totals.Fat}}f{{else}}—{{end}}</span></summary>
+    {{range .Entries}}
+    <div class="food"><span class="n">{{.Name}}<small>{{.Amount}}</small></span>
+      <span class="k">{{number .Totals.Calories}} kcal<br>{{number .Totals.Protein}}p {{number .Totals.Carbohydrates}}c {{number .Totals.Fat}}f</span>
+      {{if .EntryID}}<span class="food-btns">
+        <button class="icon" hx-get="/food/{{.EntryID}}/edit" hx-target="#food-slot-{{$i}}" title="Change amount, serving or meal">✎</button>
+        <button class="icon del" hx-post="/food/{{.EntryID}}/delete" hx-target="closest .card" hx-swap="outerHTML" hx-confirm="Remove {{.Name}} from today's MyFitnessPal diary?" title="Remove">✕</button></span>{{end}}
+    </div>
+    {{end}}
+    <div class="meal-add"><button hx-get="/food/search?meal={{query .Name}}" hx-target="#food-slot-{{$i}}">+ Add to {{.Name}}</button></div>
+    <div class="food-slot" id="food-slot-{{$i}}"></div>
+  </details>
+{{end}}</div>
+<p class="small muted note">From MyFitnessPal · updated {{.SyncedAgo}}. Goals are set in MyFitnessPal.{{with .LastError}} <span class="err">Last sync failed: {{.}}</span>{{end}}</p>
+{{end}}
+
+{{define "food-search"}}
+<div class="panel food-panel">
+  <form class="row" hx-post="/food/search" hx-target="closest .food-panel" hx-swap="outerHTML" hx-disabled-elt="find button">
+    <input type="hidden" name="meal" value="{{.Meal}}">
+    <input class="txt grow" name="query" value="{{.Query}}" placeholder="Search MyFitnessPal foods, e.g. greek yogurt" maxlength="100" required autofocus>
+    <button class="sm primary">Search</button>
+    <button type="button" class="sm" hx-get="/panel/close" hx-target="closest .food-panel" hx-swap="outerHTML">Cancel</button>
+  </form>
+  {{if .Error}}<p class="err small flush">{{.Error}}</p>
+  {{else if .Results}}
+  <div class="fp-results">{{range .Results}}
+    <button hx-post="/food/pick" hx-vals="{{vals "food" .Encoded "meal" $.Meal "query" $.Query}}" hx-target="closest .food-panel" hx-swap="outerHTML">
+      <span>{{.Food.Name}}{{if .Food.Verified}} ✓{{end}}<small>{{.Food.Brand}}{{if and .Food.Brand .Serving}} · {{end}}{{.Serving}}</small></span>
+      <span class="k">{{template "food-macros" .Per}}</span></button>
+  {{end}}</div>
+  {{else if .Query}}<p class="small muted flush">Nothing found. Try other words.</p>{{end}}
+</div>
+{{end}}
+
+{{define "food-macros"}}{{number .Calories}} kcal · {{number .Protein}}p {{number .Carbs}}c {{number .Fat}}f{{end}}
+
+{{define "food-pick"}}
+<div class="panel food-panel">
+  <form hx-post="/food/add" hx-target="closest .card" hx-swap="outerHTML" hx-disabled-elt="find button">
+    <input type="hidden" name="food" value="{{.Encoded}}"><input type="hidden" name="query" value="{{.Query}}">
+    <div class="pick-title"><b>{{.Food.Name}}</b>{{with .Food.Brand}} <span class="small muted">{{.}}</span>{{end}}</div>
+    <div class="row">
+      <input class="txt num" name="quantity" type="number" min="0.01" step="any" value="{{.Quantity}}" title="Number of servings" autofocus> ×
+      <select class="txt" name="serving">{{range $i, $s := .Servings}}<option value="{{$i}}"{{if eq $i $.Serving}} selected{{end}}>{{.Label}}</option>{{end}}</select>
+      to <select class="txt" name="meal">{{range .Meals}}<option{{if eq . $.Meal}} selected{{end}}>{{.}}</option>{{end}}</select>
+    </div>
+    <div class="row spread">
+      {{template "food-preview" .}}
+      <span><button type="button" class="sm" hx-post="/food/search" hx-include="closest form" hx-target="closest .food-panel" hx-swap="outerHTML">Back</button>
+        <button class="sm primary">Add</button></span>
+    </div>
+  </form>
+</div>
+{{end}}
+
+{{define "food-preview"}}<span class="fp-preview" hx-post="/food/preview" hx-include="closest form" hx-trigger="input from:closest form delay:200ms, change from:closest form" hx-swap="outerHTML">≈ {{template "food-macros" .Preview}}</span>{{end}}
+
+{{define "food-edit"}}
+<div class="panel food-panel">
+  {{if .Error}}<p class="err small flush">{{.Error}}</p>
+  <button class="sm" hx-get="/panel/close" hx-target="closest .food-panel" hx-swap="outerHTML">Close</button>
+  {{else}}
+  <form hx-post="/food/{{.Form.EntryID}}" hx-target="closest .card" hx-swap="outerHTML" hx-disabled-elt="find button">
+    <div class="row">
+      <input class="txt num" name="quantity" type="number" min="0.01" step="any" value="{{.Form.Quantity}}" title="Number of servings" autofocus> ×
+      <select class="txt" name="serving">{{range .Form.Servings}}<option value="{{.ID}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>{{end}}</select>
+      in <select class="txt" name="meal">{{range .Form.Meals}}<option value="{{.ID}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>{{end}}</select>
+    </div>
+    <div class="row end"><button type="button" class="sm" hx-get="/panel/close" hx-target="closest .food-panel" hx-swap="outerHTML">Cancel</button><button class="sm primary">Save</button></div>
+  </form>
+  {{end}}
+</div>
+{{end}}

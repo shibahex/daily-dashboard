@@ -3,12 +3,12 @@
 #tab-today .card-head h2 { cursor: grab; user-select: none; }
 #tab-today .card-head h2::before { content: "⠿"; margin-right: 6px; opacity: .35; letter-spacing: 0; }
 #tab-today .card-head h2:hover::before { opacity: .8; }
-#tab-today .card.dragging { opacity: .45; outline: 2px dashed var(--accent); outline-offset: 2px; }
+#tab-today .slot.dragging { opacity: .45; outline: 2px dashed var(--accent); outline-offset: 2px; }
 #tab-today.moving .col { min-height: 120px; border-radius: 10px; outline: 1px dashed var(--line); outline-offset: 4px; }
 .layout-reset { display: block; margin: 16px auto 0; }
 @media (max-width: 1000px) { #tab-today .card-head h2::before { display: none; } #tab-today .card-head h2 { cursor: auto; } }
 /* The inline order styles are for the one-column phone layout; on wide screens the DOM order (your layout) wins. */
-@media (min-width: 1001px) { #tab-today .col > .card { order: 0 !important; } }
+@media (min-width: 1001px) { #tab-today .col > .slot { order: 0 !important; } }
 .goals { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
 .goal { background: var(--chip); border-radius: 8px; padding: 8px 10px; min-width: 0; }
 .goal b { display: block; font-size: 18px; }
@@ -53,3 +53,8 @@ ul.notes { margin: 0; padding-left: 18px; } ul.notes li { margin: 4px 0; }
 .w-log { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
 svg.spark { width: 100%; height: 60px; display: block; margin-top: 10px; }
 @media (max-width: 700px) { .goals { grid-template-columns: repeat(2, 1fr); } }
+.weekday { flex: 0 0 96px; }
+.editor input.txt.wide { width: 100%; }
+.tracking { color: var(--accent); margin-bottom: 8px; }
+.time-totals { display: flex; gap: 24px; margin-bottom: 10px; }
+.time-label { margin: 6px 0; }

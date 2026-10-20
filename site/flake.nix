@@ -15,12 +15,12 @@
         exec python3 ${pkgs.timewarrior}/share/doc/timew/ext/on-modify.timewarrior "$@"
       '';
 
-      # The Go server (cmd/dashboard). Standard library only, so there are no dependencies to vendor.
+      # The Go server (cmd/dashboard). Its one dependency is goldmark, for Markdown.
       server = pkgs.buildGoModule {
         pname = "health-dashboard-server";
         version = "0.1.0";
         src = ./.;
-        vendorHash = null;
+        vendorHash = "sha256-Xv4CTILTM7Ys4nlB1CKgrQxUJj4LQz23k9v9dWnhHYE=";
         subPackages = [ "cmd/dashboard" ];
       };
 
@@ -30,7 +30,7 @@
         runtimeInputs = [ pkgs.timewarrior pkgs.uv ];
         text = ''
           # Run from the site folder so the server uses the live files, not a store copy.
-          if [ ! -f web/index.html ]; then
+          if [ ! -f web/templates/page.html ]; then
             echo "Run this from the site/ folder (cd there, then: nix run)" >&2
             exit 1
           fi

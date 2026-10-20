@@ -27,3 +27,19 @@ input.txt:focus, select.txt:focus, textarea.txt:focus { outline: 2px solid var(-
   padding: 8px 16px; border-radius: 8px; font-size: 14px; transition: .2s; pointer-events: none; max-width: calc(100% - 32px); }
 #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 #toast.bad { background: var(--warn); color: #fff; }
+/* A <summary> that looks like a small button (Show copies, Skip) */
+summary.sm-button { list-style: none; display: inline-block; font-size: 13px; padding: 4px 10px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); cursor: pointer; }
+summary.sm-button::-webkit-details-marker { display: none; }
+summary.sm-button:hover { border-color: var(--accent); }
+summary.sm-button.ghost { border-color: transparent; color: var(--muted); }
+details[open] > summary.sm-button { background: var(--chip); }
+/* The default button of a row editor: Enter in a row saves instead of moving it */
+.default-submit { position: absolute; width: 0; height: 0; padding: 0; border: 0; opacity: 0; pointer-events: none; }
+.htmx-request.sm, .htmx-request .send-btn { opacity: .6; }
+/* Spacing and layout helpers */
+.spaced { margin-top: 16px; } .spaced-top { margin-top: 10px; } .spaced-bottom { margin-bottom: 6px; }
+.flush { margin: 0; } .flush-top { margin: 0 0 10px; } .flush-bottom { margin: 10px 0 0; } .note { margin: 8px 0 0; }
+.spread { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.wrap { overflow-wrap: anywhere; } .grow { flex: 1; }
+.row.end { justify-content: flex-end; }
+.progress.tight { margin: 3px 0 0; }

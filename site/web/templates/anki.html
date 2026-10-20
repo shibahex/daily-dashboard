@@ -1,0 +1,125 @@
+{{define "icon-cards"}}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="13" height="14" rx="2"/><path d="M8 3h11a2 2 0 0 1 2 2v12"/></svg>{{end}}
+
+{{define "anki"}}
+<div class="anki-top">
+  <div class="chat-badge">{{template "icon-cards"}}</div>
+  <div class="chat-title"><b>Anki</b><span class="chat-status{{if not .Status.Connected}} off{{end}}"><i></i>{{if .Status.Connected}}Connected{{else if .Status.Running}}AnkiConnect isn't answering{{else}}Anki isn't open{{end}}</span></div>
+  <span class="chat-tools">
+    <button class="pill" hx-post="/anki/sync" hx-swap="none" hx-disabled-elt="this" title="Sync with AnkiWeb"{{if not .Status.Connected}} disabled{{end}}>↻ Sync</button>
+    <button class="pill" hx-post="/anki/open" hx-swap="none" title="Open the Anki app">Open Anki</button></span>
+</div>
+{{template "anki-body" .Body}}
+{{end}}
+
+{{/* Until Anki answers, the setup steps check back every few seconds. */}}
+{{define "anki-body"}}
+<div hx-disinherit="*" id="anki-body"{{if not .Status.Connected}} hx-get="/anki/body" hx-trigger="every 8s" hx-swap="outerHTML"{{end}}>
+  {{if not .Status.Connected}}{{template "anki-setup" .Status}}
+  {{else if .Problem}}<p class="err">{{.Problem}}</p>
+  {{else}}
+  <div class="anki-grid">
+    {{template "anki-decks" .Decks}}
+    <div class="card" id="anki-add">
+      <div class="card-head"><h2>Add card</h2></div>
+      {{template "anki-add" .AddForm}}
+    </div>
+  </div>
+  <div class="card" id="anki-browse">
+    <form class="anki-search" id="anki-search" hx-get="/anki/notes" hx-target="#anki-notes" hx-swap="outerHTML" hx-push-url="false">
+      <input class="txt" name="q" value="{{.Browse.Query}}" placeholder='Search, e.g. deck:Japanese  tag:verbs  "is:due"'>
+      <button class="sm">Search</button></form>
+    {{template "anki-notes" .Browse}}
+  </div>
+  {{end}}
+</div>
+{{end}}
+
+{{define "anki-setup"}}
+<div class="mcp-setup"><b>Connect Anki</b><ol>
+  {{if .Installed}}{{if not .Running}}<li>Open Anki. <button class="sm primary" hx-post="/anki/open" hx-swap="none">Open Anki</button></li>{{end}}
+  {{else}}<li>Install <a class="link" href="https://apps.ankiweb.net" target="_blank" rel="noopener">Anki</a>.</li>{{end}}
+  <li>In Anki, go to <b>Tools → Add-ons → Get Add-ons…</b>, enter <code>{{or .Addon "2055492159"}}</code> (AnkiConnect) and press OK.</li>
+  <li>Restart Anki, then keep it open while you use this (it's how the dashboard and the Anki MCP reach your cards).</li></ol></div>
+{{end}}
+
+{{define "review-chart"}}<div class="anki-chart" title="Reviews, last {{len .}} days">{{range .}}<div class="{{if not .Reviews}}zero{{end}}" style="height:{{.Height}}%" title="{{isoDay .Day}}: {{.Reviews}}"></div>{{end}}</div>{{end}}
+
+{{define "deck-counts"}}<span class="counts"><span class="{{if .New}}c-new{{else}}z{{end}}" title="New">{{.New}}</span><span class="{{if .Learn}}c-learn{{else}}z{{end}}" title="Learning">{{.Learn}}</span><span class="{{if .Review}}c-due{{else}}z{{end}}" title="Due">{{.Review}}</span></span>{{end}}
+
+{{define "anki-decks"}}
+{{$view := .}}
+<div class="card" hx-disinherit="*" id="anki-decks" hx-get="/anki/decks" hx-trigger="anki-changed from:body" hx-swap="outerHTML">
+  <div class="card-head"><h2>Decks</h2><span class="small muted">{{.DueToday}} due today</span></div>
+  <div class="anki-stats"><div><div class="big">{{.Overview.ReviewedToday}}</div><div class="lbl">reviewed today</div></div>{{template "review-chart" .LastDays}}</div>
+  {{with .Overview.Decks}}<div class="deck-head"><span>New</span><span>Learn</span><span>Due</span></div>{{end}}
+  {{range .Overview.Decks}}
+  <div class="deck" style="padding-left:{{multiply .Depth 16}}px"><span class="name">{{.ShortName}}<small>{{number (float ($view.Overview.CardsIn .))}} cards</small></span>
+    {{template "deck-counts" .}}
+    <button class="sm" hx-post="/anki/study" hx-vals="{{vals "deck" .Name}}" hx-swap="none" title="Open this deck in Anki">Study</button></div>
+  {{else}}<p class="muted small">No decks yet. Add a card to create one.</p>{{end}}
+</div>
+{{end}}
+
+{{define "anki-add"}}
+<form class="anki-form" hx-post="/anki/notes" hx-swap="outerHTML" hx-disabled-elt="find .primary" data-ctrl-enter>
+  <div class="row2">
+    <label>Deck<select class="txt" name="deck">{{range .Decks}}<option{{if eq . $.Deck}} selected{{end}}>{{.}}</option>{{end}}<option value="__new">+ New deck…</option></select></label>
+    <label>Type<select class="txt" name="model" hx-get="/anki/add-form" hx-include="closest form" hx-target="closest form" hx-swap="outerHTML">{{range .Models}}<option{{if eq . $.Model}} selected{{end}}>{{.}}</option>{{end}}</select></label>
+  </div>
+  <label class="new-deck">New deck name <input class="txt" name="new_deck" placeholder="use :: for a subdeck, e.g. Japanese::Verbs"></label>
+  {{range $i, $name := .Fields}}<label>{{$name}}<textarea class="txt" name="field" rows="{{if $i}}3{{else}}2{{end}}"></textarea></label>{{end}}
+  <label>Tags<input class="txt" name="tags" placeholder="space separated, optional"></label>
+  <div class="anki-form-foot"><span class="small muted">Ctrl+Enter to add</span><button class="sm primary">Add card</button></div>
+</form>
+{{end}}
+
+{{define "anki-notes"}}
+<div hx-disinherit="*" id="anki-notes" hx-get="/anki/notes" hx-include="#anki-search" hx-trigger="anki-changed from:body" hx-swap="outerHTML">
+  <div class="small muted notes-count">{{.Count}}</div>
+  {{if .Problem}}<p class="err">{{.Problem}}</p>
+  {{else}}
+  {{range .Notes}}{{template "anki-note" .}}{{else}}<p class="muted small">No notes match.</p>{{end}}
+  {{end}}
+</div>
+{{end}}
+
+{{define "anki-note"}}
+<div class="note{{if .Suspended}} suspended{{end}}" id="note-{{.ID}}"><div class="qa">
+    <div class="q">{{or .Question "(empty)"}}</div>
+    {{with .Answer}}<div class="a">{{.}}</div>{{end}}
+    <div class="meta"><span class="badge">{{.Deck}}</span>{{if ne .ModelName "Basic"}}<span class="badge">{{.ModelName}}</span>{{end}}
+      {{if .Suspended}}<span class="badge warn">suspended</span>{{end}}{{range .Tags}}<span class="badge">#{{.}}</span>{{end}}</div></div>
+  <span class="acts">
+    <button class="icon" hx-get="/anki/notes/{{.ID}}/edit" hx-target="#note-{{.ID}}" hx-swap="outerHTML" title="Edit">✎</button>
+    <button class="icon" hx-post="/anki/notes/{{.ID}}/suspend" hx-swap="none" title="{{if .Suspended}}Unsuspend{{else}}Suspend (hide from reviews){{end}}">{{if .Suspended}}▶{{else}}⏸{{end}}</button>
+    <button class="icon" hx-post="/anki/notes/{{.ID}}/browse" hx-swap="none" title="Open in Anki's browser">↗</button>
+    <button class="icon del" hx-post="/anki/notes/{{.ID}}/delete" hx-swap="none" hx-confirm="Delete “{{truncate .Question 60}}” and its cards from Anki?" title="Delete">✕</button></span>
+</div>
+{{end}}
+
+{{define "anki-note-edit"}}
+<form class="anki-note-edit" id="note-{{.ID}}" hx-post="/anki/notes/{{.ID}}" hx-swap="none" hx-disabled-elt="find .primary">
+  {{range .EditableFields}}<label>{{.Name}}<textarea class="txt" name="field">{{.Value}}</textarea></label>{{end}}
+  <label>Tags<input class="txt" name="tags" value="{{.TagText}}"></label>
+  <div class="foot"><button type="button" class="sm" hx-get="/anki/notes" hx-include="#anki-search" hx-target="#anki-notes" hx-swap="outerHTML">Cancel</button><button class="sm primary">Save</button></div>
+</form>
+{{end}}
+
+{{/* ---------- the Today card ---------- */}}
+{{define "card-anki"}}
+<div class="card" hx-disinherit="*" id="card-anki" hx-get="/cards/anki" hx-trigger="anki-changed from:body, every 300s [!document.hidden]" hx-swap="outerHTML">
+  <div class="card-head"><h2>Anki</h2><a class="edit-btn" href="/anki">Open tab →</a></div>
+  {{if not .Status.Connected}}
+  <p class="small muted flush-top">{{if .Status.Running}}Anki is open, but AnkiConnect isn't answering.{{else}}Anki isn't open.{{end}}</p>
+  {{if .Status.Installed}}<button class="sm primary" hx-post="/anki/open" hx-swap="none">Open Anki</button>{{end}}
+  {{else}}
+  <div class="anki-today"><div><span class="big">{{.Due}}</span> <span class="muted">due</span></div>
+    <div class="deck">{{template "deck-counts" .}}</div></div>
+  <div class="anki-stats"><div><b>{{.ReviewedToday}}</b> <span class="lbl">today</span><br><b>{{.Streak}}</b> <span class="lbl">day streak</span></div>{{template "review-chart" .LastDays}}</div>
+  {{range .Busiest}}
+  <div class="deck"><span class="name">{{.Name}}</span><span class="counts"><span class="c-due">{{.Due}}</span></span>
+    <button class="sm" hx-post="/anki/study" hx-vals="{{vals "deck" .Name}}" hx-swap="none" title="Open this deck in Anki">Study</button></div>
+  {{else}}<p class="small muted spaced-top">All done for today. 🎉</p>{{end}}
+  {{end}}
+</div>
+{{end}}

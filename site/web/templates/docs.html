@@ -1,0 +1,6 @@
+{{define "docs"}}
+<div class="docs">
+  <div class="doclist">{{range .Docs}}<a href="/docs?doc={{query .Name}}"{{if .Open}} class="on"{{end}}>{{.Title}}</a>{{end}}</div>
+  <div class="card md">{{.Content}}</div>
+</div>
+{{end}}

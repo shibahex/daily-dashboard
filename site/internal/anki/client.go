@@ -20,14 +20,6 @@ const (
 	defaultURL       = "http://127.0.0.1:8765"
 )
 
-// AllowedActions are the AnkiConnect actions the page may call through the server.
-var AllowedActions = map[string]bool{
-	"findNotes": true, "notesInfo": true, "areSuspended": true, "suspend": true, "unsuspend": true,
-	"updateNoteFields": true, "updateNoteTags": true, "deleteNotes": true, "addNote": true,
-	"canAddNotes": true, "modelFieldNames": true, "createDeck": true, "getTags": true, "sync": true,
-	"guiDeckOverview": true, "guiBrowse": true, "cardsInfo": true,
-}
-
 // ErrUnreachable means AnkiConnect didn't answer (Anki closed, or the add-on missing).
 var ErrUnreachable = errors.New("Anki isn't reachable")
 

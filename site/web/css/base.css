@@ -26,8 +26,8 @@ h1 { font-size: 22px; margin: 0; letter-spacing: -0.01em; }
 .date { color: var(--muted); }
 .streak { font-size: 13px; padding: 3px 10px; border-radius: 12px; background: var(--accent-soft); color: var(--accent); font-weight: 600; }
 nav { max-width: 1180px; margin: 0 auto; padding: 0 16px; display: flex; gap: 4px; border-bottom: 1px solid var(--line); }
-nav button { background: none; border: 0; padding: 10px 14px; font: inherit; color: var(--muted); cursor: pointer; border-bottom: 2px solid transparent; }
-nav button.on { color: var(--ink); border-color: var(--accent); font-weight: 600; }
+nav a { padding: 10px 14px; color: var(--muted); text-decoration: none; border-bottom: 2px solid transparent; }
+nav a.on { color: var(--ink); border-color: var(--accent); font-weight: 600; }
 main { max-width: 1180px; margin: 0 auto; padding: 20px 16px 60px; }
 .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; align-items: start; }
 .col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
@@ -53,6 +53,11 @@ select.pill { appearance: none; padding-right: 28px; background-image: linear-gr
 .seg button { font: inherit; font-size: 13px; background: none; border: 0; padding: 4px 11px; color: var(--muted); cursor: pointer; }
 .seg button + button { border-left: 1px solid var(--line); }
 .seg button.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+/* Radio buttons drawn as a segmented control */
+.seg label { font-size: 13px; padding: 4px 11px; color: var(--muted); cursor: pointer; }
+.seg label + label { border-left: 1px solid var(--line); }
+.seg label input { display: none; }
+.seg label:has(input:checked) { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
 .card-head { flex-wrap: wrap; }
 .panel { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 8px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); font-size: 14px; }
 .panel label { display: inline-flex; align-items: center; gap: 6px; }
@@ -61,3 +66,10 @@ select.pill { appearance: none; padding-right: 28px; background-image: linear-gr
 .progress { height: 6px; background: var(--chip); border-radius: 3px; overflow: hidden; margin: 4px 0 10px; display: flex; }
 .progress .d { background: var(--accent); } .progress .s { background: var(--skip); opacity: .6; }
 .progress .over { background: var(--warn); }
+/* The chat fills the window below the tabs; only its messages scroll. */
+body:has(main.fill) { display: flex; flex-direction: column; height: 100dvh; }
+body:has(main.fill) > header, body:has(main.fill) > nav { width: 100%; }
+main.fill { flex: 1; min-height: 0; width: 100%; display: flex; flex-direction: column; padding-bottom: 0; }
+nav { overflow-x: auto; scrollbar-width: none; }
+nav a { white-space: nowrap; }
+@media (max-width: 520px) { nav { gap: 0; } nav a { padding: 10px 9px; } }

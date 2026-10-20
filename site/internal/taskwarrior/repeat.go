@@ -1,24 +1,19 @@
 package taskwarrior
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
+	"strconv"
 	"time"
 )
 
-// RepeatRule is a repeat schedule from the page:
-//
-//	{"type": "days", "every": 2, "start": "2026-10-15"}         every 2 days
-//	{"type": "weekly", "days": [4], "every": 2, "start": ...}    every other Thursday (0 = Sunday)
-//	{"type": "monthly", "start": ...}                            the same day each month
+// RepeatRule is a repeat schedule: every 2 days, every other Thursday, the same day each month.
 type RepeatRule struct {
-	Type       string
-	Every      int
-	Days       []int // weekdays for "weekly", 0 = Sunday
-	Start      time.Time
-	badWeekday bool // a day that isn't 0-6 (only an error for "weekly" rules)
+	Type  string // "days", "weekly" or "monthly"
+	Every int
+	Days  []int // weekdays for "weekly", 0 = Sunday
+	Start time.Time
 }
 
 // Series is one Taskwarrior repeating series: Taskwarrior has one period per series, so
@@ -30,53 +25,42 @@ type Series struct {
 
 const dateLayout = "2006-01-02"
 
-// ParseRepeatRule reads and checks a rule sent by the page.
-func ParseRepeatRule(raw json.RawMessage, today time.Time) (RepeatRule, error) {
-	var input struct {
-		Type  string            `json:"type"`
-		Every json.RawMessage   `json:"every"`
-		Days  []json.RawMessage `json:"days"`
-		Start string            `json:"start"`
+// RepeatForm is a repeat schedule as the page's form sends it.
+type RepeatForm struct {
+	Type  string
+	Every string
+	Days  []string
+	Start string // YYYY-MM-DD; empty is today
+}
+
+// Rule reads and checks the form.
+func (f RepeatForm) Rule(today time.Time) (RepeatRule, error) {
+	rule := RepeatRule{Type: f.Type, Every: 1, Start: midnight(today)}
+	if f.Type != "days" && f.Type != "weekly" && f.Type != "monthly" {
+		return RepeatRule{}, errors.New("bad rule type")
 	}
-	if len(raw) == 0 {
-		raw = json.RawMessage("{}") // no rule at all: fails below as "bad rule type"
-	}
-	if json.Unmarshal(raw, &input) != nil {
-		return RepeatRule{}, errors.New("bad rule")
-	}
-	rule := RepeatRule{Type: input.Type, Every: 1, Start: today}
-	if len(input.Every) > 0 {
-		every, ok := wholeNumber(input.Every)
-		if !ok || every < 1 || every > 60 {
+	if f.Every != "" {
+		every, err := strconv.Atoi(f.Every)
+		if err != nil || every < 1 || every > 60 {
 			return RepeatRule{}, errors.New("bad interval")
 		}
 		rule.Every = every
 	}
-	if input.Start != "" {
-		start, err := time.ParseInLocation(dateLayout, input.Start, time.Local)
+	if f.Start != "" {
+		start, err := time.ParseInLocation(dateLayout, f.Start, time.Local)
 		if err != nil {
 			return RepeatRule{}, errors.New("bad start date")
 		}
 		rule.Start = start
 	}
-	for _, d := range input.Days {
-		day, ok := wholeNumber(d)
-		if !ok || day < 0 || day > 6 {
-			rule.badWeekday = true
-			continue
+	for _, text := range f.Days {
+		day, err := strconv.Atoi(text)
+		if err != nil || day < 0 || day > 6 {
+			return RepeatRule{}, errors.New("bad weekday")
 		}
 		rule.Days = append(rule.Days, day)
 	}
 	return rule, nil
-}
-
-func wholeNumber(raw json.RawMessage) (int, bool) {
-	var n json.Number
-	if json.Unmarshal(raw, &n) != nil {
-		return 0, false
-	}
-	i, err := n.Int64()
-	return int(i), err == nil
 }
 
 // Series works out the series for the rule. The first due date is never in the past, so no
@@ -96,7 +80,7 @@ func (r RepeatRule) Series(today time.Time) ([]Series, error) {
 		return []Series{{FirstDue: start.Format(dateLayout), Recur: recur}}, nil
 
 	case "weekly":
-		if len(r.Days) == 0 || r.badWeekday || r.Every > 8 {
+		if len(r.Days) == 0 || r.Every > 8 {
 			return nil, errors.New("pick at least one weekday")
 		}
 		recur := "weekly"
@@ -140,4 +124,31 @@ func uniqueSorted(days []int) []int {
 	}
 	sort.Ints(out)
 	return out
+}
+
+// Upcoming lists the rule's next dates, at most `limit` of them, for a preview.
+func (r RepeatRule) Upcoming(today time.Time, limit int) []time.Time {
+	series, err := r.Series(today)
+	if err != nil {
+		return nil
+	}
+	var dates []time.Time
+	for _, one := range series {
+		first, _ := time.ParseInLocation(dateLayout, one.FirstDue, time.Local)
+		for i := 0; i < limit; i++ {
+			switch r.Type {
+			case "days":
+				dates = append(dates, first.AddDate(0, 0, i*r.Every))
+			case "weekly":
+				dates = append(dates, first.AddDate(0, 0, 7*i*r.Every))
+			case "monthly":
+				dates = append(dates, first.AddDate(0, i, 0))
+			}
+		}
+	}
+	sort.Slice(dates, func(i, j int) bool { return dates[i].Before(dates[j]) })
+	if len(dates) > limit {
+		dates = dates[:limit]
+	}
+	return dates
 }

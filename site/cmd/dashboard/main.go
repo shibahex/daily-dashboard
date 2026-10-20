@@ -15,13 +15,16 @@ import (
 	"time"
 
 	"dashboard/internal/anki"
+	"dashboard/internal/api"
 	"dashboard/internal/assistant"
 	"dashboard/internal/config"
+	"dashboard/internal/httpx"
 	"dashboard/internal/myfitnesspal"
-	"dashboard/internal/server"
 	"dashboard/internal/store"
+	"dashboard/internal/tasks"
 	"dashboard/internal/taskwarrior"
 	"dashboard/internal/timewarrior"
+	"dashboard/internal/web"
 )
 
 const defaultPort = 1628
@@ -40,24 +43,29 @@ func main() {
 		paths.DataFile("mfp.json"),
 	)
 	providers := assistant.NewProviders(assistant.NewModelCatalog(filepath.Join(paths.Data, "assistant")))
+	timeLog := timewarrior.NewClient()
+	taskService := tasks.NewService(taskwarrior.NewClient(), timeLog)
 
-	dashboard := &server.Server{
-		Port:          port,
+	mux := http.NewServeMux()
+	jsonAPI := &api.API{Store: files, Tasks: taskService, Time: timeLog}
+	jsonAPI.Routes(mux)
+	pages := &web.UI{
 		Paths:         paths,
 		Store:         files,
-		Tasks:         taskwarrior.NewClient(),
-		Time:          timewarrior.NewClient(),
+		Tasks:         taskService,
+		Time:          timeLog,
 		MyFitnessPal:  mfp,
 		Anki:          anki.NewClientFromEnv(),
 		Providers:     providers,
 		Conversations: assistant.NewConversations(paths.DataFile("chat.json"), providers),
-		Runner:        assistant.NewRunner(),
+		Chat:          assistant.NewRunner(),
 	}
+	pages.Routes(mux)
 
 	listener := listen(port)
 	go mfp.RunForever()
 	fmt.Printf("Health dashboard: http://localhost:%d  (%s)\n", port, time.Now().Format("2006-01-02"))
-	log.Fatal(http.Serve(listener, dashboard.Handler()))
+	log.Fatal(http.Serve(listener, httpx.OnlyLocalHost(port, mux)))
 }
 
 func portFromArgs() int {
@@ -71,14 +79,14 @@ func portFromArgs() int {
 	return port
 }
 
-// findSiteDir is $DASHBOARD_SITE, or the current folder; it must contain the page.
+// findSiteDir is $DASHBOARD_SITE, or the current folder; it must contain the page templates.
 func findSiteDir() string {
 	dir := os.Getenv("DASHBOARD_SITE")
 	if dir == "" {
 		dir, _ = os.Getwd()
 	}
 	dir, _ = filepath.Abs(dir)
-	if _, err := os.Stat(filepath.Join(dir, "web", "index.html")); err != nil {
+	if _, err := os.Stat(filepath.Join(dir, "web", "templates", "page.html")); err != nil {
 		log.Fatal("Run this from the site/ folder (cd there, then: nix run), or set DASHBOARD_SITE")
 	}
 	return dir

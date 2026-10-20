@@ -1,6 +1,10 @@
 package taskwarrior
 
-import "regexp"
+import (
+	"encoding/json"
+	"regexp"
+	"time"
+)
 
 // Task is one task as `task export` prints it. Taskwarrior adds fields freely (UDAs,
 // annotations, ...), so it stays a map; the methods read the common ones.
@@ -96,3 +100,42 @@ func AllUUIDs(candidates []string) bool {
 	}
 	return true
 }
+
+// ---------- times ----------
+
+// timestampLayout is how Taskwarrior writes times: UTC, to the second.
+const timestampLayout = "20060102T150405Z"
+
+// ParseTime reads "20261020T140000Z" into local time.
+func ParseTime(s string) (time.Time, bool) {
+	t, err := time.Parse(timestampLayout, s)
+	return t.Local(), err == nil
+}
+
+func (t Task) timeField(name string) (time.Time, bool) { return ParseTime(t.field(name)) }
+
+func (t Task) DueTime() (time.Time, bool)       { return t.timeField("due") }
+func (t Task) EndTime() (time.Time, bool)       { return t.timeField("end") }
+func (t Task) EntryTime() (time.Time, bool)     { return t.timeField("entry") }
+func (t Task) StartTime() (time.Time, bool)     { return t.timeField("start") }
+func (t Task) ScheduledTime() (time.Time, bool) { return t.timeField("scheduled") }
+func (t Task) WaitTime() (time.Time, bool)      { return t.timeField("wait") }
+
+func (t Task) Recur() string { return t.field("recur") }
+
+// IsActive reports whether the task was started (and is still pending).
+func (t Task) IsActive() bool { return t.field("start") != "" && t.Status() == "pending" }
+
+func (t Task) Urgency() float64 {
+	switch u := t["urgency"].(type) {
+	case float64:
+		return u
+	case json.Number:
+		f, _ := u.Float64()
+		return f
+	}
+	return 0
+}
+
+// When is when the note was added.
+func (a Annotation) When() (time.Time, bool) { return ParseTime(a.Entry) }

@@ -1,0 +1,282 @@
+{{/* The Tasks tab. The filter form drives the list: typing, switching views or any task change
+     reloads it. A row's panels (editor, Done, Skip...) open in its slot, one at a time. */}}
+{{define "tasks"}}
+<div class="card">
+  <div class="card-head"><h2>New task</h2></div>
+  {{template "task-add-form" .}}
+</div>
+<div class="card spaced">
+  <form hx-disinherit="*" id="task-filter" hx-get="/tasks/list" hx-target="#task-list" hx-trigger="input changed delay:200ms, change, tasks-changed from:body" hx-push-url="false">
+    <div class="card-head">
+      <div class="seg">
+        {{range taskViews}}<label><input type="radio" name="view" value="{{.ID}}"{{if eq .ID $.List.View}} checked{{end}}>{{.Label}}</label>{{end}}
+      </div>
+      <button type="button" class="edit-btn" hx-post="/tasks/undo" hx-swap="none" title="Undo the last Taskwarrior change (task undo)">↶ Undo last change</button>
+    </div>
+    <input class="txt filter" type="search" name="q" value="{{.List.Query}}" placeholder="Filter by name, project, tag or note…">
+    <label class="small muted toggle auto-toggle"><input type="checkbox" name="auto" value="1"> Show repeat copies removed without a reason</label>
+  </form>
+  <div id="task-list">{{template "task-list" .List}}</div>
+</div>
+{{end}}
+
+{{define "task-add-form"}}
+<form class="add" hx-post="/tasks" hx-swap="outerHTML">
+  <input class="txt" name="description" placeholder="What needs doing?" required maxlength="300">
+  <input class="txt" name="project" placeholder="project" list="projects">
+  <input class="txt" name="tags" placeholder="tags">
+  <input class="txt" name="due" placeholder="due (today, fri, 2026-10-20)">
+  <select class="txt" name="priority"><option value="">priority</option><option value="H">High</option><option value="M">Medium</option><option value="L">Low</option></select>
+  <select class="txt" name="recur"><option value="">doesn't repeat</option><option value="daily">daily</option><option value="2d">every 2 days</option><option value="weekly">weekly</option><option value="biweekly">every 2 weeks</option><option value="monthly">monthly</option></select>
+  <button class="sm primary">Add</button>
+  <datalist id="projects">{{range .Projects}}<option value="{{.}}">{{end}}</datalist>
+</form>
+{{end}}
+
+{{define "task-list"}}
+{{if eq .View "pending"}}
+  {{range .Sections}}
+  <div class="section-title{{if .Warn}} warn{{end}}">{{.Title}} · {{len .Rows}}</div>
+  {{range .Rows}}{{template "task-row" .}}{{end}}
+  {{else}}<p class="muted">No pending tasks{{if .Query}} match{{end}}.</p>{{end}}
+{{else if eq .View "repeating"}}
+  {{with .Repeating}}
+  <div class="section-title">{{len .}} repeating</div>
+  {{range .}}{{template "repeating-row" .}}{{end}}
+  {{else}}<p class="muted">No repeating tasks{{if .Query}} match{{end}}. Use “Make it repeat” when editing a task, or pick a repeat when adding one.</p>{{end}}
+{{else}}
+  {{with .Closed}}
+  {{if and (eq .Status "deleted") .HiddenCopies (not .ShowAutomatic)}}<p class="small muted">{{.HiddenCopies}} repeat {{plural .HiddenCopies "copy" "copies"}} removed without a reason {{plural .HiddenCopies "is" "are"}} hidden.</p>{{end}}
+  {{if .Groups}}
+  <div class="section-title">{{.Total}} {{.Status}}{{if ne (len .Groups) .Total}} · {{len .Groups}} tasks{{end}}</div>
+  {{range .Groups}}{{template "closed-group" .}}{{end}}
+  {{if .More}}<button class="sm spaced-top" hx-get="/tasks/list" hx-include="#task-filter" hx-vals="{{vals "limit" (add .Limit 50)}}" hx-target="#task-list">Show {{.More}} more</button>{{end}}
+  {{else}}<p class="muted">No {{.Status}} tasks{{if $.Query}} match{{end}}.</p>{{end}}
+  {{end}}
+{{end}}
+{{end}}
+
+{{/* One pending task (a repeating task's oldest pending copy stands for all of them). */}}
+{{define "task-row"}}
+<div class="task" id="task-{{.UUID}}">
+  <div class="title" hx-get="/tasks/{{.UUID}}/editor" hx-target="#slot-{{.UUID}}" title="Click to edit">{{.Description}}</div>
+  <div class="meta"><span>{{.DueLabel}}</span>{{template "task-badges" .}}{{if gt .MissedCount 1}}<span class="badge warn">{{.MissedCount}} missed</span>{{end}}</div>
+  <div class="actions">
+    {{if .Active}}
+    <button class="sm primary" hx-post="/tasks/{{.UUID}}/done" hx-swap="none">Done</button>
+    {{else}}
+    <button class="sm primary" hx-get="/tasks/{{.UUID}}/done" hx-target="#slot-{{.UUID}}"{{if gt .Copies 1}} title="Completes the oldest copy"{{end}}>Done</button>
+    {{end}}
+    <button class="sm" hx-get="/tasks/{{.UUID}}/done-on" hx-target="#slot-{{.UUID}}" title="Mark done on an earlier day">Done on…</button>
+    {{if .CanCatchUp}}<button class="sm" hx-get="/tasks/{{.UUID}}/catch-up" hx-target="#slot-{{.UUID}}">Catch up</button>{{end}}
+    {{if .Active}}<button class="sm" hx-post="/tasks/{{.UUID}}/stop" hx-swap="none">Stop</button>
+    {{else}}<button class="sm" hx-post="/tasks/{{.UUID}}/start" hx-swap="none">Start</button>{{end}}
+    <button class="sm" hx-get="/tasks/{{.UUID}}/editor" hx-target="#slot-{{.UUID}}">Edit</button>
+    {{with .Skip}}<button class="sm ghost" hx-get="/tasks/{{$.UUID}}/skip?uuids={{.UUIDs}}&amp;kind={{.Kind}}" hx-target="#slot-{{$.UUID}}">{{.Label}}</button>{{end}}
+  </div>
+  <div class="task-slot" id="slot-{{.UUID}}"></div>
+</div>
+{{end}}
+
+{{define "task-badges"}}
+{{with .PriorityLabel}}<span class="badge pri-{{$.Priority}}">{{.}}</span>{{end}}
+{{with .Project}}<span class="badge">{{.}}</span>{{end}}
+{{with .Recur}}<span class="badge">↻ {{.}}</span>{{end}}
+{{if .Active}}<span class="badge active">active</span>{{end}}
+{{with .Annotations}}<span class="badge" title="{{$.NotesTooltip}}">✎ {{len .}}</span>{{end}}
+{{range .Tags}}<span class="badge">+{{.}}</span>{{end}}
+{{end}}
+
+{{define "repeating-row"}}
+{{$task := .Representative}}
+<div class="task">
+  <div class="title" hx-get="/tasks/{{$task.UUID}}/editor" hx-target="#slot-{{$task.UUID}}" title="Click to edit">{{$task.Description}}</div>
+  <div class="meta"><span>{{.Series.Summary}}{{if .HasNext}} · next {{shortDay .Next}}{{end}}</span>
+    {{with $task.Project}}<span class="badge">{{.}}</span>{{end}}
+    {{if .Missed}}<span class="badge warn">{{.Missed}} missed</span>{{end}}
+    {{range $task.Tags}}<span class="badge">+{{.}}</span>{{end}}</div>
+  <div class="actions"><button class="sm" hx-get="/tasks/{{$task.UUID}}/editor" hx-target="#slot-{{$task.UUID}}">Edit schedule &amp; details</button></div>
+  <div class="task-slot" id="slot-{{$task.UUID}}"></div>
+</div>
+{{end}}
+
+{{/* A completed or deleted task, or every copy of a repeating one. */}}
+{{define "closed-group"}}
+{{if .IsSeries}}
+{{$latest := .Latest}}{{$oldest := .Oldest}}
+<div class="task">
+  <div class="title">{{$latest.Description}} <span class="badge">×{{len .Copies}}</span></div>
+  <div class="meta"><span>{{$latest.Verb}} {{len .Copies}} times · last {{shortDay $latest.Ended}}{{if $oldest.HasEnded}}, first {{shortDay $oldest.Ended}}{{end}}</span>{{with $latest.Project}}<span class="badge">{{.}}</span>{{end}}</div>
+  <details class="copies-toggle"><summary class="sm-button">Show copies</summary>
+    <div class="copies">{{range .Copies}}{{$copy := .}}
+      <div class="copy"><span>{{shortDay .Ended}}{{with .WasDue}} <span class="muted small">(was due {{shortDay .}})</span>{{end}}{{with .Reason}} · <span class="why small">{{.Label}} · {{template "reason-button" (reasonFor . $copy.UUID)}}</span>{{end}}</span>
+        <button class="sm" hx-post="/tasks/{{.UUID}}/reopen" hx-swap="none">{{.ReopenLabel}}</button></div>
+    {{end}}</div>
+  </details>
+</div>
+{{else}}
+{{template "closed-row" .Latest}}
+{{end}}
+{{end}}
+
+{{define "closed-row"}}
+<div class="task" id="task-{{.UUID}}">
+  <div class="title" hx-get="/tasks/{{.UUID}}/editor" hx-target="#slot-{{.UUID}}" title="Click to edit">{{.Description}}</div>
+  <div class="meta"><span>{{.Verb}}{{if .HasEnded}} {{shortDay .Ended}}{{end}}</span>{{template "task-badges" .}}
+    {{with .Reason}}<span class="why small">{{.Label}} · {{template "reason-button" (reasonFor . $.UUID)}}</span>{{end}}</div>
+  <div class="actions">
+    <button class="sm" hx-post="/tasks/{{.UUID}}/reopen" hx-swap="none">{{.ReopenLabel}}</button>
+    <button class="sm" hx-get="/tasks/{{.UUID}}/editor" hx-target="#slot-{{.UUID}}">Edit</button>
+  </div>
+  <div class="task-slot" id="slot-{{.UUID}}"></div>
+</div>
+{{end}}
+
+{{/* ---------- the Today card ---------- */}}
+{{define "card-tasks"}}
+<div class="card" hx-disinherit="*" id="card-tasks" hx-get="/cards/tasks" hx-trigger="tasks-changed from:body, every 120s [!document.hidden &amp;&amp; !hasOpenPanel(this)]" hx-swap="outerHTML">
+  <div class="card-head"><h2>Due &amp; overdue tasks</h2></div>
+  {{range .Rows}}{{template "task-row" .}}{{else}}<p class="muted">Nothing due today. 🎉</p>{{end}}
+</div>
+{{end}}
+
+{{/* ---------- panels ---------- */}}
+{{define "close-button"}}<button type="button" class="sm" hx-get="/panel/close" hx-target="closest .task-slot">{{or . "Cancel"}}</button>{{end}}
+
+{{define "took-input"}}<input class="txt num" name="took" value="30" placeholder="30m" title="Minutes or hours: 30, 45m, 1h, 1h 30m. Leave blank to not log time.">{{end}}
+
+{{define "task-done"}}
+<form class="panel done" hx-post="/tasks/{{.UUID}}/done" hx-swap="none" hx-disabled-elt="find button">
+  <label>Took {{template "took-input"}}</label>
+  <span class="small muted">e.g. 45m, 1h 30m; blank = don't log</span>
+  <span><button class="sm primary">Done</button> {{template "close-button"}}</span>
+</form>
+{{end}}
+
+{{define "task-done-on"}}
+<form class="panel done-on" hx-post="/tasks/{{.UUID}}/done-on" hx-swap="none" hx-disabled-elt="find button">
+  <label>Done on <input class="txt" type="date" name="day" value="{{.Day}}" max="{{.Today}}"></label>
+  <label>at <input class="txt" type="time" name="time" value="{{.Time}}"></label>
+  <label>took {{template "took-input"}} <span class="small muted">(blank = don't log time)</span></label>
+  <span><button class="sm primary">Mark done</button> {{template "close-button"}}</span>
+</form>
+{{end}}
+
+{{define "task-skip"}}
+<form class="reason" hx-post="/tasks/skip" hx-swap="none" hx-disabled-elt="find button">
+  <input type="hidden" name="uuids" value="{{.UUIDs}}"><input type="hidden" name="kind" value="{{if .Dismiss}}dismiss{{else}}skip{{end}}">
+  <input class="txt" name="reason" maxlength="300" placeholder="Why? e.g. sick, worked late, rest day (optional)" autofocus>
+  <button class="sm primary">{{.Button}}</button>{{template "close-button"}}
+</form>
+{{end}}
+
+{{define "catch-up"}}
+<div class="panel catchup">
+  <div class="small muted">Mark each missed day as done (on that day) or skip it.
+    Time per session {{template "took-input"}} <span>(blank = don't log time)</span></div>
+  {{range .Rows}}{{template "catch-up-row" .}}{{end}}
+  <div class="rep-actions">
+    <form class="cu-btns" hx-post="/tasks/catch-up/skip-rest" hx-target="closest .task-slot">
+      <input type="hidden" name="parent" value="{{.Parent}}">
+      <input class="txt" name="reason" maxlength="300" placeholder="Why? (optional)">
+      <button class="sm ghost">Skip all remaining</button>
+    </form>
+    <button class="sm" hx-post="/tasks/catch-up/close" hx-target="closest .task-slot">Close</button>
+  </div>
+</div>
+{{end}}
+
+{{define "catch-up-row"}}
+<div class="cu-row{{if or .Done .Skipped}} handled{{end}}" id="cu-{{.UUID}}">
+  <span>{{shortDay .Due}}</span>
+  <span class="cu-btns">
+  {{if .Done}}<span class="ok">✓ done{{if .Minutes}} · {{minutes .Minutes}}{{end}}</span>{{with .Warning}} <span class="err small">{{.}}</span>{{end}}
+  {{else if .Skipped}}<span class="why">↷ skipped · {{template "reason-button" (reasonFor .Skipped .UUID)}}</span>
+  {{else}}
+    <button class="sm primary" hx-post="/tasks/{{.UUID}}/catch-up/done" hx-include="closest .catchup" hx-target="#cu-{{.UUID}}" hx-swap="outerHTML">Done that day</button>
+    <details class="inline-reason"><summary class="sm-button ghost">Skip</summary>
+      <form hx-post="/tasks/{{.UUID}}/catch-up/skip" hx-target="#cu-{{.UUID}}" hx-swap="outerHTML">
+        <input class="txt" name="reason" maxlength="300" placeholder="Why? (optional)"><button class="sm primary">Skip</button>
+      </form>
+    </details>
+  {{end}}
+  </span>
+</div>
+{{end}}
+
+{{/* A skip reason you can click to change. */}}
+{{define "reason-button"}}<button class="why-edit{{if not .Reason}} empty{{end}}" hx-get="/reasons/edit" hx-vals="{{vals "uuids" .UUIDs "day" .Day "item" .Item "reason" .Reason}}" hx-swap="outerHTML" title="Edit reason">{{or .Reason "+ add a reason"}}</button>{{end}}
+
+{{define "reason-form"}}
+<form class="why-box" hx-post="/reasons" hx-swap="outerHTML">
+  <input type="hidden" name="uuids" value="{{.UUIDs}}"><input type="hidden" name="day" value="{{.Day}}"><input type="hidden" name="item" value="{{.Item}}">
+  <input class="txt" name="reason" value="{{.Reason}}" maxlength="300" placeholder="Why? (optional)" autofocus>
+  <button class="sm primary">Save</button>
+  <button type="button" class="sm" hx-get="/reasons" hx-include="closest form" hx-target="closest form" hx-swap="outerHTML">Cancel</button>
+</form>
+{{end}}
+
+{{/* ---------- the editor ---------- */}}
+{{define "task-editor"}}
+{{$task := .Task}}
+<form class="task-editor" hx-post="/tasks/{{$task.UUID}}" hx-target="#slot-{{$task.UUID}}">
+  <label class="wide"><span>Description</span><input class="txt" name="description" value="{{$task.Description}}" maxlength="300" required autofocus></label>
+  <label><span>Project</span><input class="txt" name="project" value="{{$task.Project}}" placeholder="e.g. study"></label>
+  <label><span>Tags</span><input class="txt" name="tags" value="{{join $task.Tags " "}}" placeholder="space separated"></label>
+  <label><span>Priority</span><select class="txt" name="priority">
+    {{range priorities}}<option value="{{.ID}}"{{if eq .ID $task.Priority}} selected{{end}}>{{.Label}}</option>{{end}}</select></label>
+  {{if .IsFinished}}
+  <label><span>{{.EndLabel}}</span><input class="txt" name="end" value="{{.Dates.End}}" placeholder="2026-10-12T20:00"></label>
+  {{else if not .IsTemplate}}
+  <label><span>{{if .IsCopy}}Due (this copy){{else}}Due{{end}}</span><input class="txt" name="due" value="{{.Dates.Due}}" placeholder="today, fri, 2026-10-20"></label>
+  <label><span>Scheduled</span><input class="txt" name="scheduled" value="{{.Dates.Scheduled}}" placeholder="when to start"></label>
+  <label><span>Hide until</span><input class="txt" name="wait" value="{{.Dates.Wait}}" placeholder="hidden until this date"></label>
+  {{end}}
+  {{with .Repeat}}{{template "task-repeat" .}}{{end}}
+  {{if .IsCopy}}
+  <div class="wide scope"><span>Apply name, project, tags and priority to</span>
+    <label><input type="radio" name="scope" value="all" checked> every repeat of this task</label>
+    <label><input type="radio" name="scope" value="one"> just this copy</label></div>
+  {{else if .IsTemplate}}<input type="hidden" name="scope" value="all">{{end}}
+  <div class="wide notes-edit"><span>Notes</span>
+    {{range .Notes}}
+    <div class="anno"><span class="small muted">{{with .Added}}{{shortDay .}}{{end}}</span> <span>{{.Text}}</span>
+      <button type="button" class="icon del" hx-post="/tasks/{{$task.UUID}}/notes/remove" hx-vals="{{vals "remove" .Text}}" hx-target="#slot-{{$task.UUID}}" title="Remove note">✕</button></div>
+    {{else}}<div class="small muted">No notes yet.</div>{{end}}
+    <div class="anno-add"><input class="txt" name="note" placeholder="Add a note…" maxlength="500" data-enter-next>
+      <button type="button" class="sm" hx-post="/tasks/{{$task.UUID}}/notes" hx-target="#slot-{{$task.UUID}}">Add note</button></div>
+  </div>
+  <div class="wide foot"><span class="small muted">{{with .Added}}added {{shortDay .}} · {{end}}<code>{{.ShortUUID}}</code></span>
+    <span>{{template "close-button"}} <button class="sm primary">Save</button></span></div>
+</form>
+{{end}}
+
+{{/* The Repeat section: the schedule in words, or the form to change it (redrawn on every
+     change, with the next dates as a preview). */}}
+{{define "task-repeat"}}
+<div class="wide repeat" hx-disinherit="*" id="repeat-{{.UUID}}"{{if .Editing}} hx-post="/tasks/{{.UUID}}/repeat" hx-trigger="change" hx-target="this" hx-swap="outerHTML"{{end}}>
+  <span>Repeat</span>
+  {{if not .Editing}}
+  <div class="rep-summary"><b>{{.Summary}}</b>{{if .HasNext}} <span class="small muted">· next {{shortDay .Next}}</span>{{end}}
+    <button type="button" class="sm" hx-post="/tasks/{{.UUID}}/repeat" hx-target="#repeat-{{.UUID}}" hx-swap="outerHTML">{{if .Repeats}}Change schedule{{else}}Make it repeat{{end}}</button></div>
+  {{else}}
+  <div class="rep-form">
+    <div class="seg rep-type">
+      {{range repeatTypes}}<label><input type="radio" name="repeat_type" value="{{.ID}}"{{if eq .ID $.Type}} checked{{end}}>{{.Label}}</label>{{end}}
+    </div>
+    {{if eq .Type "days"}}<div class="rep-row">Every <input class="txt num" type="number" min="1" max="60" name="every_days" value="{{.EveryDays}}"> day(s)</div>{{end}}
+    {{if eq .Type "weekly"}}<div class="rep-row"><span class="daypick">{{range .Weekdays}}<label><input type="checkbox" name="repeat_day" value="{{.Number}}"{{if .Checked}} checked{{end}}>{{.Name}}</label>{{end}}</span>
+      every <select class="txt" name="every_weeks">{{range .WeekChoices}}<option value="{{.Every}}"{{if eq .Every $.EveryWeeks}} selected{{end}}>{{.Label}}</option>{{end}}</select></div>{{end}}
+    {{if eq .Type "monthly"}}<div class="rep-row">On the same day each month as the start date.</div>{{end}}
+    <div class="rep-row">Starting <input class="txt" type="date" name="repeat_start" value="{{.Start}}"></div>
+    <div class="rep-preview small">{{if .Problem}}<span class="err">{{.Problem}}</span>{{else}}Next: {{range $i, $d := .Preview}}{{if $i}}, {{end}}{{shortDay $d}}{{end}}…{{end}}</div>
+    <div class="rep-actions">
+      {{if .Repeats}}<button type="button" class="sm ghost" hx-post="/tasks/{{.UUID}}/schedule/stop" hx-target="#slot-{{.UUID}}" hx-confirm="Stop repeating this task? Its pending copies are removed too.">Stop repeating</button>{{else}}<span></span>{{end}}
+      <span><button type="button" class="sm" hx-post="/tasks/{{.UUID}}/repeat" hx-vals="{{vals "close" "1"}}" hx-target="#repeat-{{.UUID}}" hx-swap="outerHTML">Cancel</button>
+        <button type="button" class="sm primary" hx-post="/tasks/{{.UUID}}/schedule" hx-target="#slot-{{.UUID}}"{{if .Problem}} disabled{{end}}>Save schedule</button></span>
+    </div>
+    <div class="small muted">Saving rebuilds the repeating series in Taskwarrior; missed copies of the old schedule are removed.</div>
+  </div>
+  {{end}}
+</div>
+{{end}}

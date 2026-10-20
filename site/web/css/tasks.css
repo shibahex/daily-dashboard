@@ -1,6 +1,6 @@
 /* Tasks tab: task rows, editor, repeat schedules, catch-up */
-.task .title[data-open] { cursor: pointer; }
-.task .title[data-open]:hover { color: var(--accent); }
+.task .title[hx-get] { cursor: pointer; }
+.task .title[hx-get]:hover { color: var(--accent); }
 .badge.pri-H { background: var(--warn-soft); color: var(--warn); }
 .badge.pri-M { background: var(--skip-soft); color: var(--skip); }
 .task-editor { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px 12px; margin-top: 10px; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); }
@@ -25,8 +25,9 @@ form.add input[name=tags] { flex: 0 1 120px; }
 .rep-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 14px; }
 .rep-row .num { width: 70px; }
 .daypick { display: inline-flex; gap: 4px; flex-wrap: wrap; }
-.daypick button { font: inherit; font-size: 13px; width: 44px; padding: 5px 0; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--muted); cursor: pointer; }
-.daypick button.on { background: var(--accent); border-color: var(--accent); color: var(--panel); font-weight: 600; }
+.daypick label { font-size: 13px; width: 44px; padding: 5px 0; text-align: center; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--muted); cursor: pointer; }
+.daypick label input { display: none; }
+.daypick label:has(input:checked) { background: var(--accent); border-color: var(--accent); color: var(--panel); font-weight: 600; }
 .rep-actions { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
 .rep-preview { color: var(--accent); }
 .copies { margin-top: 8px; border-left: 2px solid var(--line); padding-left: 10px; }
@@ -41,3 +42,11 @@ form.add { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
 form.add input[name=description] { flex: 1 1 240px; }
 form.add input[name=project], form.add input[name=due] { flex: 0 1 140px; }
 .filter { width: 100%; margin: 8px 0; }
+/* "Show repeat copies removed without a reason" only applies to Deleted. */
+#task-filter:not(:has(input[value=deleted]:checked)) .auto-toggle { display: none; }
+.copies-toggle { margin-top: 8px; }
+.inline-reason { display: inline-flex; }
+.inline-reason[open] summary { display: none; }
+.inline-reason form { display: inline-flex; gap: 6px; flex-wrap: wrap; }
+.cu-row.handled { opacity: .85; }
+.rep-form .seg { align-self: flex-start; }

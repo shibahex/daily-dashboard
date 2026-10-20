@@ -1,0 +1,59 @@
+{{define "page"}}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.Title}} · Daily Dashboard</title>
+<link rel="stylesheet" href="/static/css/base.css">
+<link rel="stylesheet" href="/static/css/today.css">
+<link rel="stylesheet" href="/static/css/nutrition.css">
+<link rel="stylesheet" href="/static/css/tasks.css">
+<link rel="stylesheet" href="/static/css/history.css">
+<link rel="stylesheet" href="/static/css/docs.css">
+<link rel="stylesheet" href="/static/css/anki.css">
+<link rel="stylesheet" href="/static/css/chat.css">
+<link rel="stylesheet" href="/static/css/components.css">
+<script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.4/dist/htmx.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/htmx-ext-sse@2.2.2/sse.js"></script>
+<script src="/static/js/app.js" defer></script>
+</head>
+<body hx-boost="true">
+<header>
+  <div class="left"><h1>Daily Dashboard</h1><span class="date">{{longDay .Today}}</span></div>
+  <span hx-get="/streak" hx-trigger="load, checklist-changed from:body, plan-changed from:body" hx-swap="innerHTML"></span>
+</header>
+<nav>
+  {{range $tab := tabs}}<a href="{{$tab.URL}}"{{if eq $tab.ID $.Tab}} class="on"{{end}}>{{$tab.Label}}</a>{{end}}
+</nav>
+<main id="tab-{{.Tab}}"{{if .Fill}} class="fill"{{end}}>
+{{.Content}}
+</main>
+<div id="toast"></div>
+</body>
+</html>
+{{end}}
+
+{{define "streak"}}{{if .}}<span class="streak">🔥 {{.}}-day streak</span>{{end}}{{end}}
+
+{{/* A list of rows with up, down and remove buttons. Every button posts the rows as they are
+     to the card's URL with an operation (op), and the card answers with the edited list. */}}
+{{define "row-editor"}}
+<div class="editor">
+  {{$editor := .}}{{$last := len .Rows}}
+  {{range $i, $row := .Rows}}
+  <div class="row">
+    {{range $c, $column := $editor.Columns}}<input class="txt{{if $column.Narrow}} narrow{{end}}" name="c{{$c}}" value="{{index $row $c}}" placeholder="{{$column.Placeholder}}">{{end}}
+    <button class="icon" name="op" value="up:{{$i}}" title="Move up"{{if eq $i 0}} disabled{{end}}>↑</button>
+    <button class="icon" name="op" value="down:{{$i}}" title="Move down"{{if eq (add $i 1) $last}} disabled{{end}}>↓</button>
+    <button class="icon del" name="op" value="remove:{{$i}}" title="Remove">✕</button>
+  </div>
+  {{end}}
+  <div class="foot"><button class="sm" name="op" value="add">+ {{.AddLabel}}</button>
+    <span><button type="button" class="sm" hx-get="{{.URL}}" hx-target="closest .card" hx-swap="outerHTML">Cancel</button> <button class="sm primary" name="op" value="">Save</button></span></div>
+</div>
+{{end}}
+
+{{/* The card head with its title and, for cards that have one, an Edit/Close button. */}}
+{{define "card-head"}}
+<div class="card-head"><h2>{{.Title}}</h2>{{if .URL}}{{if .Editing}}<button class="edit-btn" hx-get="{{.URL}}" hx-target="closest .card" hx-swap="outerHTML">Close</button>{{else}}<button class="edit-btn" hx-get="{{.URL}}?edit=1" hx-target="closest .card" hx-swap="outerHTML">Edit</button>{{end}}{{end}}</div>
+{{end}}

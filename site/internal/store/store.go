@@ -2,8 +2,6 @@
 package store
 
 import (
-	"encoding/json"
-	"errors"
 	"os"
 	"path/filepath"
 	"sort"
@@ -12,13 +10,9 @@ import (
 
 	"dashboard/internal/config"
 	"dashboard/internal/jsonfile"
+	"dashboard/internal/problem"
 	"dashboard/internal/text"
 )
-
-// PlanSections must all be present in a saved plan.
-var PlanSections = []string{"goals", "weight", "checklist", "schedule", "sessions", "notes"}
-
-var ErrPlanMissingSections = errors.New("plan is missing sections")
 
 // Store guards the files that are read, changed and written back (plan, checklist, weights),
 // so two requests at once can't lose each other's changes.
@@ -46,22 +40,6 @@ func (s *Store) PlanJSON() ([]byte, error) {
 		}
 	}
 	return os.ReadFile(s.paths.Plan())
-}
-
-// SavePlan replaces plan.json, keeping the sections in the order the page sent them.
-func (s *Store) SavePlan(plan json.RawMessage) error {
-	var sections map[string]json.RawMessage
-	if json.Unmarshal(plan, &sections) != nil {
-		return ErrPlanMissingSections
-	}
-	for _, name := range PlanSections {
-		if _, ok := sections[name]; !ok {
-			return ErrPlanMissingSections
-		}
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return jsonfile.Write(s.paths.Plan(), plan)
 }
 
 // PlanChecklist is the plan's list of daily checklist items.
@@ -99,6 +77,22 @@ func (s *Store) SaveChecklistDay(day string, items map[string]any) error {
 		trimmed[text.Truncate(name, 80)] = state
 	}
 	days[day] = cleanItems(trimmed)
+	return jsonfile.Write(s.checklistFile(), days)
+}
+
+// SetSkipReason changes why a checklist item was skipped on a day.
+func (s *Store) SetSkipReason(day, item, reason string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	days := s.Checklist()
+	if state, _ := checkState(days[day][item]); state == nil || state == "done" {
+		return problem.Invalidf("that item wasn't skipped that day")
+	}
+	if reason = text.Truncate(text.Collapse(reason), 300); reason != "" {
+		days[day][item] = map[string]any{"state": "skip", "note": reason}
+	} else {
+		days[day][item] = "skip"
+	}
 	return jsonfile.Write(s.checklistFile(), days)
 }
 
@@ -174,6 +168,14 @@ func (s *Store) MergeWeighIns(weighIns []Weight, today string) error {
 		return err
 	}
 	return s.tickWeighIn(today)
+}
+
+// TickWeighIn ticks the plan's "Weigh in" checklist item for the day, unless it's already
+// ticked or skipped.
+func (s *Store) TickWeighIn(day string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.tickWeighIn(day)
 }
 
 func (s *Store) tickWeighIn(day string) error {

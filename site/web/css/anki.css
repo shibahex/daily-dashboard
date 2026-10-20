@@ -1,6 +1,6 @@
 /* Anki tab */
 /* Anki tab */
-#tab-anki { max-width: 1100px; margin: 0 auto; }
+#tab-anki { max-width: 1100px; }
 .anki-top { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
 .anki-grid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 16px; margin-bottom: 16px; align-items: start; }
 @media (max-width: 860px) { .anki-grid { grid-template-columns: minmax(0, 1fr); } }
@@ -43,3 +43,6 @@ a.edit-btn { text-decoration: none; }
 #card-anki .anki-stats { margin-bottom: 8px; }
 #card-anki .anki-stats b { font-size: 16px; }
 #card-anki .anki-chart { height: 36px; }
+/* The new deck box shows when "+ New deck…" is picked. */
+.anki-form:not(:has(option[value="__new"]:checked)) .new-deck { display: none; }
+.notes-count { margin-bottom: 4px; }

@@ -9,6 +9,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -16,15 +17,6 @@ import (
 
 	"dashboard/internal/text"
 )
-
-// Update is one line the page receives while an answer streams.
-type Update struct {
-	Type   string `json:"type"` // "text", "break", "tool", "tool_error"
-	Text   string `json:"text,omitempty"`
-	Label  string `json:"label,omitempty"`
-	Detail string `json:"detail,omitempty"`
-	Error  bool   `json:"error,omitempty"`
-}
 
 // Outcome is how an answer ended.
 type Outcome struct {
@@ -61,10 +53,9 @@ func (r *Runner) currentCmd() *exec.Cmd {
 	return r.current
 }
 
-// Answer sends the message to the provider and streams the answer to send. It adds the message
-// and the reply to the conversation (the caller saves it). It keeps going if the page closes,
-// so the answer is still saved.
-func (r *Runner) Answer(provider Provider, conversation *Conversation, req Request, send func(Update)) (Outcome, error) {
+// Answer sends the message to the provider and calls progress with the reply so far each time
+// it grows. It adds the message and the reply to the conversation (the caller saves it).
+func (r *Runner) Answer(provider Provider, conversation *Conversation, req Request, progress func(reply Message)) (Outcome, error) {
 	if !r.busy.CompareAndSwap(false, true) {
 		return Outcome{}, ErrBusy
 	}
@@ -100,7 +91,9 @@ func (r *Runner) Answer(provider Provider, conversation *Conversation, req Reque
 		line, readErr := lines.ReadBytes('\n')
 		if len(bytes.TrimSpace(line)) > 0 {
 			for _, event := range provider.ParseLine(line) {
-				turn.apply(event, conversation, send)
+				if turn.apply(event, conversation) {
+					progress(turn.snapshot())
+				}
 			}
 		}
 		if readErr == io.EOF {
@@ -135,7 +128,8 @@ func newTurn(provider Provider, model string, at float64) *turn {
 	}
 }
 
-func (t *turn) apply(event Event, conversation *Conversation, send func(Update)) {
+// apply adds an event to the reply, and reports whether the reply changed.
+func (t *turn) apply(event Event, conversation *Conversation) bool {
 	switch event.Kind {
 	case EventSession:
 		if event.Text != "" {
@@ -147,25 +141,32 @@ func (t *turn) apply(event Event, conversation *Conversation, send func(Update))
 		}
 		t.newParagraph = false
 		t.reply.Text += event.Text
-		send(Update{Type: "text", Text: event.Text})
+		return true
 	case EventBreak:
 		t.newParagraph = true
-		send(Update{Type: "break"})
 	case EventTool:
 		tool := Tool{Label: ToolLabel(event.ToolName), Detail: ToolDetail(event.ToolInput)}
 		t.toolIndex[event.ToolID] = len(t.reply.Tools)
 		t.reply.Tools = append(t.reply.Tools, tool)
 		t.changedDiary = t.changedDiary || ChangesDiary(event.ToolName)
 		t.changedAnki = t.changedAnki || ChangesAnki(event.ToolName)
-		send(Update{Type: "tool", Label: tool.Label, Detail: tool.Detail})
+		return true
 	case EventToolError:
 		if i, ok := t.toolIndex[event.ToolID]; ok {
 			t.reply.Tools[i].Error = true
-			send(Update{Type: "tool_error", Label: t.reply.Tools[i].Label, Detail: t.reply.Tools[i].Detail, Error: true})
+			return true
 		}
 	case EventError:
 		t.errorMessage = event.Text
 	}
+	return false
+}
+
+// snapshot is a copy of the reply so far, safe to read while the turn goes on.
+func (t *turn) snapshot() Message {
+	reply := t.reply
+	reply.Tools = slices.Clone(t.reply.Tools)
+	return reply
 }
 
 // finish decides the reply's error: "Stopped", a reported error, or a crash with no answer.

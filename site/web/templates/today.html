@@ -1,0 +1,160 @@
+{{/* The Today tab: three columns of cards you can drag by their titles. Each card reloads
+     itself when another card changes something it shows (the events in hx-trigger). */}}
+{{define "today"}}
+<div class="grid">
+  {{range .Columns}}
+  <div class="col">{{range .}}<div class="slot" style="order:{{.PhoneOrder}}" data-card="{{.ID}}">{{.HTML}}</div>{{end}}</div>
+  {{end}}
+</div>
+{{if .LayoutMoved}}<button class="edit-btn layout-reset" hx-post="/layout/reset">Reset card layout</button>{{end}}
+{{end}}
+
+{{define "card-session"}}
+<div class="card" hx-disinherit="*" id="card-session"{{if not .Editing}} hx-get="/cards/session" hx-trigger="plan-changed[!this.contains(event.target)] from:body"{{end}} hx-swap="outerHTML">
+  {{template "card-head" dict "Title" "Today's training" "URL" "/cards/session" "Editing" .Editing}}
+  {{if .Editing}}
+  <form hx-post="/cards/session" hx-target="closest .card" hx-swap="outerHTML">
+    <div class="editor">
+      <label class="lbl">Title</label><input class="txt wide" name="title" value="{{.Session.Title}}">
+      <label class="lbl">Note</label><input class="txt wide" name="note" value="{{.Session.Note}}">
+      <label class="lbl">Exercises</label>
+    </div>
+    <button class="default-submit" name="op" value="" tabindex="-1" aria-hidden="true"></button>
+    {{template "row-editor" .Exercise}}
+    {{if .Planned}}<p class="small muted">Editing “{{.Key}}”. It's used every {{join .UsedOn ", "}}.</p>{{end}}
+  </form>
+  {{else}}
+  <h3>{{.Session.Title}}</h3>
+  {{with .Session.Exercises}}<table class="ex">{{range .}}<tr><td>{{index . 0}}</td><td>{{index . 1}}</td></tr>{{end}}</table>{{end}}
+  {{with .Session.Note}}<p class="muted note">{{.}}</p>{{end}}
+  {{end}}
+</div>
+{{end}}
+
+{{define "card-checklist"}}
+<div class="card" hx-disinherit="*" id="card-checklist"{{if not .Editing}} hx-get="/cards/checklist" hx-trigger="checklist-changed[!this.contains(event.target)] from:body, plan-changed[!this.contains(event.target)] from:body"{{end}} hx-swap="outerHTML">
+  {{template "card-head" dict "Title" "Daily checklist" "URL" "/cards/checklist" "Editing" .Editing}}
+  {{if .Editing}}
+  <form hx-post="/cards/checklist" hx-target="closest .card" hx-swap="outerHTML">
+    <button class="default-submit" name="op" value="" tabindex="-1" aria-hidden="true"></button>
+    {{template "row-editor" .ItemsEditor}}
+  </form>
+  {{else}}
+  <div class="small muted">{{add .Done .Skipped}} of {{.Total}} done{{if .Skipped}} ({{.Skipped}} skipped){{end}}{{if and .Complete .Total}} · day complete ✓{{end}}</div>
+  <div class="progress"><div class="d" style="width:{{.DonePercent}}%"></div><div class="s" style="width:{{.SkippedPercent}}%"></div></div>
+  {{range .Items}}
+  <div class="check-wrap">
+    <div class="check{{with .State}} {{.}}{{end}}">
+      <label><input type="checkbox" name="done" value="1"{{if eq .State "done"}} checked{{end}}
+        hx-post="/checklist/set" hx-vals="{{vals "item" .Name}}" hx-target="#card-checklist" hx-swap="outerHTML"><span>{{.Name}}</span></label>
+      {{if eq .State "skip"}}
+      <button class="skip-btn" hx-post="/checklist/set" hx-vals="{{vals "item" .Name "state" "none"}}" hx-target="#card-checklist" hx-swap="outerHTML" title="Un-skip">skipped</button>
+      {{else}}
+      <button class="skip-btn" hx-post="/checklist/set" hx-vals="{{vals "item" .Name "state" "skip"}}" hx-target="#card-checklist" hx-swap="outerHTML" title="Skip today. Still counts toward the day.">skip</button>
+      {{end}}
+    </div>
+    {{if eq .State "skip"}}{{if .NoteOpen}}
+    <form class="note-edit" hx-post="/checklist/set" hx-target="#card-checklist" hx-swap="outerHTML">
+      <input type="hidden" name="item" value="{{.Name}}"><input type="hidden" name="state" value="skip">
+      <input class="txt" name="note" maxlength="300" placeholder="Why are you skipping? (optional)" value="{{.Note}}" autofocus>
+      <button class="sm primary">Save</button>
+    </form>
+    {{else}}
+    <button class="note-line" hx-get="/cards/checklist?note={{query .Name}}" hx-target="#card-checklist" hx-swap="outerHTML" title="Edit reason">{{if .Note}}↳ {{.Note}}{{else}}+ add a reason{{end}}</button>
+    {{end}}{{end}}
+  </div>
+  {{end}}
+  <div class="history" title="Last 14 days">{{range .LastTwoWeeks}}<i class="{{if ge .Ratio 1.0}}full{{else if gt .Ratio 0.0}}part{{end}}{{if .Today}} today{{end}}" title="{{shortDay .Day}}: {{percentText .Ratio}}"></i>{{end}}</div>
+  {{end}}
+</div>
+{{end}}
+
+{{define "card-weight"}}
+<div class="card" hx-disinherit="*" id="card-weight"{{if not .Editing}} hx-get="/cards/weight" hx-trigger="checklist-changed[!this.contains(event.target)] from:body, plan-changed[!this.contains(event.target)] from:body"{{end}} hx-swap="outerHTML">
+  {{template "card-head" dict "Title" "Weight" "URL" "/cards/weight" "Editing" .Editing}}
+  {{if .Editing}}
+  <form class="editor" hx-post="/cards/weight" hx-target="closest .card" hx-swap="outerHTML">
+    <label class="lbl">Starting weight (lb)</label><input class="txt" name="start" value="{{pounds .Plan.Start}}">
+    <label class="lbl">Start date</label><input class="txt" name="startDate" type="date" value="{{.Plan.StartDate}}">
+    <label class="lbl">Target</label><input class="txt" name="target" value="{{.Plan.Target}}">
+    <label class="lbl">Lowest ever (lb)</label><input class="txt" name="best" value="{{pounds .Plan.Best}}">
+    <div class="foot"><span></span><span><button type="button" class="sm" hx-get="/cards/weight" hx-target="closest .card" hx-swap="outerHTML">Cancel</button> <button class="sm primary">Save</button></span></div>
+  </form>
+  {{else}}
+  <div class="w-now"><span class="big">{{pounds .Current}} lb</span>{{if .HasWeighIns}}<span class="small muted">weighed {{if .WeighedToday}}today{{else}}{{monthDay .LastWeighIn}}{{end}}</span>{{end}}</div>
+  <div class="w-stats">
+    <div class="goal"><b class="{{if lt .Change 0.0}}delta-down{{else if gt .Change 0.0}}delta-up{{end}}">{{if eq .Change 0.0}}±0{{else if lt .Change 0.0}}▼ {{pounds (abs .Change)}}{{else}}▲ {{pounds .Change}}{{end}}</b><span>since {{monthDay .StartDate}}</span></div>
+    <div class="goal"><b>{{.Plan.Target}}</b><span>target</span></div>
+    <div class="goal"><b>{{pounds .Plan.Best}}</b><span>lowest</span></div>
+  </div>
+  {{with .Trend}}
+  <svg class="spark" viewBox="0 0 300 60" preserveAspectRatio="none"><path d="{{.Path}}" fill="none" stroke="var(--accent)" stroke-width="2" vector-effect="non-scaling-stroke"/></svg>
+  <div class="small muted spread"><span>{{monthDay .From}}</span><span>{{monthDay .To}}</span></div>
+  {{else}}
+  <p class="small muted note">Log a few weigh-ins to see your trend.</p>
+  {{end}}
+  <form class="weight-row w-log" hx-post="/weight" hx-target="closest .card" hx-swap="outerHTML">
+    <input class="txt" name="lb" type="number" step="0.1" placeholder="Today" value="{{if .TodayLB}}{{pounds .TodayLB}}{{end}}"><span class="muted">lb</span>
+    <button class="sm primary">{{if .TodayLB}}Update{{else}}Log{{end}}</button>
+    {{if .TodayLB}}<button class="sm ghost" name="remove" value="1">Remove</button>{{end}}
+  </form>
+  {{end}}
+</div>
+{{end}}
+
+{{define "card-week"}}
+<div class="card" hx-disinherit="*" id="card-week"{{if not .Editing}} hx-get="/cards/week" hx-trigger="plan-changed[!this.contains(event.target)] from:body"{{end}} hx-swap="outerHTML">
+  {{template "card-head" dict "Title" "This week" "URL" "/cards/week" "Editing" .Editing}}
+  {{if .Editing}}
+  <form class="editor" hx-post="/cards/week" hx-target="closest .card" hx-swap="outerHTML">
+    {{$sessions := .Sessions}}
+    {{range .Days}}{{$day := .}}
+    <div class="row"><span class="weekday">{{.Day}}</span>
+      <select class="txt grow" name="{{.Day}}">{{range $sessions}}<option value="{{.Key}}"{{if eq .Key $day.Key}} selected{{end}}>{{.Title}}</option>{{end}}</select></div>
+    {{end}}
+    <div class="row add-session"><input class="txt" name="title" placeholder="New session name (e.g. Mountain bike)">
+      <button class="sm" hx-post="/cards/week/sessions">Add</button></div>
+    <div class="foot"><span class="small muted">Edit a session's exercises from “Today's training” on its day.</span>
+      <span><button type="button" class="sm" hx-get="/cards/week" hx-target="closest .card" hx-swap="outerHTML">Cancel</button> <button class="sm primary">Save</button></span></div>
+  </form>
+  {{else}}
+  <table class="ex week">{{range .Days}}<tr{{if .IsToday}} class="cur"{{end}}><td>{{.Day}}</td><td>{{.Session}}</td></tr>{{end}}</table>
+  {{end}}
+</div>
+{{end}}
+
+{{define "card-notes"}}
+<div class="card" id="card-notes">
+  {{template "card-head" dict "Title" "Reminders" "URL" "/cards/notes" "Editing" .Editing}}
+  {{if .Editing}}
+  <form hx-post="/cards/notes" hx-target="closest .card" hx-swap="outerHTML">
+    <button class="default-submit" name="op" value="" tabindex="-1" aria-hidden="true"></button>
+    {{template "row-editor" .Editor}}
+  </form>
+  {{else if .Notes}}
+  <ul class="notes">{{range .Notes}}<li>{{.}}</li>{{end}}</ul>
+  {{else}}
+  <p class="muted">No reminders yet.</p>
+  {{end}}
+</div>
+{{end}}
+
+{{define "card-time"}}
+<div class="card" hx-disinherit="*" id="card-time" hx-get="/cards/time" hx-trigger="time-changed from:body, tasks-changed from:body{{if .Running}}, every 30s [!document.hidden]{{end}}" hx-swap="outerHTML">
+  <div class="card-head"><h2>Time tracked</h2></div>
+  {{if not .Available}}
+  <p class="muted small">Timewarrior isn't available. Start the dashboard with <code>nix run</code> from the site folder.</p>
+  {{else}}
+  {{with .Running}}<div class="small tracking">● Tracking <b>{{.Label}}</b> · {{duration .Tracked}}</div>{{end}}
+  <div class="time-totals"><div><div class="big">{{duration .Today}}</div><div class="small muted">today</div></div>
+    <div><div class="big">{{duration .Week}}</div><div class="small muted">this week</div></div></div>
+  {{range .Labels}}
+  <div class="time-label"><div class="small spread"><span class="wrap">{{.Label}}</span><span class="muted">{{duration .Tracked}}</span></div>
+    <div class="progress tight"><div class="d" style="width:{{.Percent}}%"></div></div></div>
+  {{else}}
+  <p class="small muted flush">Nothing tracked this week. Press <b>Start</b> on a task to start the clock; <b>Stop</b> or <b>Done</b> stops it.</p>
+  {{end}}
+  <p class="flush-bottom"><a href="/history#card-timelog" class="small link">Edit or add time →</a></p>
+  {{end}}
+</div>
+{{end}}

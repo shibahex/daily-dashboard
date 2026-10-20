@@ -3,7 +3,6 @@
 package assistant
 
 import (
-	"encoding/json"
 	"os/exec"
 	"regexp"
 
@@ -52,14 +51,6 @@ type Model struct {
 	ID          string
 	Label       string
 	Description string
-}
-
-// MarshalJSON writes [id, label] or [id, label, description], the shape the page reads.
-func (m Model) MarshalJSON() ([]byte, error) {
-	if m.Description == "" {
-		return json.Marshal([]string{m.ID, m.Label})
-	}
-	return json.Marshal([]string{m.ID, m.Label, m.Description})
 }
 
 // ModelNamePattern is what a model name may look like ("claude-opus-5-5", "gpt-5.5").
@@ -144,23 +135,4 @@ func (ps Providers) Default() Provider {
 		}
 	}
 	return ps[0]
-}
-
-// ProviderInfo is a provider as the page lists it.
-type ProviderInfo struct {
-	ID         string  `json:"id"`
-	Label      string  `json:"label"`
-	Installed  bool    `json:"installed"`
-	Available  bool    `json:"available"`
-	SignInHint string  `json:"signin"`
-	Models     []Model `json:"models"`
-}
-
-func (ps Providers) Info() []ProviderInfo {
-	infos := make([]ProviderInfo, 0, len(ps))
-	for _, p := range ps {
-		infos = append(infos, ProviderInfo{ID: p.ID(), Label: p.Label(), Installed: p.Installed(),
-			Available: p.Available(), SignInHint: p.SignInHint(), Models: p.Models()})
-	}
-	return infos
 }
