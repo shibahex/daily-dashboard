@@ -17,7 +17,8 @@
 
       dashboard = pkgs.writeShellApplication {
         name = "health-dashboard";
-        runtimeInputs = [ pkgs.python3 pkgs.timewarrior ];
+        # uv runs mfp_fetch.py in the myfitnesspal-mcp project for the MyFitnessPal sync.
+        runtimeInputs = [ pkgs.python3 pkgs.timewarrior pkgs.uv ];
         text = ''
           # Run from the site folder so the server uses the live files, not a store copy.
           if [ ! -f server.py ]; then
@@ -54,7 +55,7 @@
 
       # `nix develop` gives you timew/python3 in a shell, e.g. for `timew summary :week`.
       devShells.${system}.default = pkgs.mkShell {
-        packages = [ pkgs.python3 pkgs.timewarrior ];
+        packages = [ pkgs.python3 pkgs.timewarrior pkgs.uv ];
       };
     };
 }

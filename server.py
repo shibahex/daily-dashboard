@@ -8,6 +8,7 @@ Restarts itself when this file changes, so edits never leave a stale server runn
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import threading
@@ -15,6 +16,8 @@ import time
 from datetime import date, datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+
+import assistant
 
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 1628
 SITE = Path(__file__).resolve().parent
@@ -38,10 +41,29 @@ PLAN_KEYS = {"goals", "weight", "checklist", "schedule", "sessions", "notes"}
 CHECK_STATES = {"done", "skip"}
 lock = threading.Lock()
 
+# MyFitnessPal, through the MyFitnessPal MCP (mfp-mcp) and its saved login (see mfp_fetch.py).
+# A local checkout is used if there is one; otherwise uv fetches the released package.
+MFP_DIR = Path(os.environ.get("MFP_MCP_DIR", "~/Documents/gitLibs/myfitnesspal-mcp")).expanduser()
+MFP_PACKAGE = "mfp-mcp[autorefresh]"
+MFP_REPO = "https://github.com/Mason-Levyy/myfitnesspal-mcp"
+MFP_BROWSER = Path("~/.local/share/myfitnesspal-mcp/playwright-browsers/chromium-1243/chrome-linux64/chrome").expanduser()
+MFP_CACHE = DATA / "mfp.json"
+MFP_EVERY = 600       # background sync, seconds
+MFP_STALE = 300       # a page load older than this triggers a sync
+mfp_lock = threading.Lock()
+MFP_ID_RE = re.compile(r"^\d{1,20}$")
 
-def run_task(args):
-    # stdin closed: if Taskwarrior ever asks a question, it fails instead of hanging.
-    p = subprocess.run(TASK + args, capture_output=True, text=True, timeout=30, stdin=subprocess.DEVNULL)
+
+task_lock = threading.Lock()
+
+
+def run_task(args, stdin_text=None):
+    # stdin closed (or fed fixed input): if Taskwarrior ever asks a question, it fails instead of hanging.
+    io = {"stdin": subprocess.DEVNULL} if stdin_text is None else {"input": stdin_text}
+    # One at a time: every `task` run creates missing copies of repeating tasks, and two
+    # running at once (parallel page requests) would both create the same copy.
+    with task_lock:
+        p = subprocess.run(TASK + args, capture_output=True, text=True, timeout=30, **io)
     return p.returncode, p.stdout, p.stderr
 
 
@@ -203,6 +225,142 @@ def clean_check(v):
     return None
 
 
+def uv_cmd():
+    return ["uv"] if shutil.which("uv") else ["nix", "run", "nixpkgs#uv", "--"]
+
+
+def mfp_local():
+    return (MFP_DIR / "pyproject.toml").exists()
+
+
+def mfp_env():
+    env = {}
+    if "MFP_BROWSER_PATH" not in os.environ and MFP_BROWSER.exists():
+        env["MFP_BROWSER_PATH"] = str(MFP_BROWSER)  # for the headless session refresh
+    return env
+
+
+def mfp_mcp_server():
+    """How an AI agent starts the MyFitnessPal MCP server: {command, args, env}."""
+    uv = uv_cmd()
+    args = (["run", "--python", "3.12", "--managed-python", "--directory", str(MFP_DIR), "--extra", "autorefresh", "mfp-mcp"]
+            if mfp_local() else ["tool", "run", "--python", "3.12", "--managed-python", "--from", MFP_PACKAGE, "mfp-mcp"])
+    server = {"command": uv[0], "args": uv[1:] + args}
+    if mfp_env():
+        server["env"] = mfp_env()
+    return server
+
+
+def mfp_setup():
+    """Is the MyFitnessPal MCP signed in? Its login lives in ~/.config/myfitnesspal-mcp."""
+    cfg = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "myfitnesspal-mcp" / "cookies.json"
+    return {"source": "local" if mfp_local() else "package", "dir": str(MFP_DIR) if mfp_local() else None,
+            "signed_in": bool(os.environ.get("MFP_COOKIE")) or cfg.exists(), "repo": MFP_REPO}
+
+
+def run_mfp(req, timeout=150):
+    """Run mfp_fetch.py with a request like {"op": "fetch"} where the MyFitnessPal MCP
+    package is installed. Returns (data, error)."""
+    if not mfp_setup()["signed_in"]:
+        return None, "MyFitnessPal isn't connected yet. Set up the MyFitnessPal MCP (see the MCPs tab)."
+    env = {**os.environ, **mfp_env()}
+    where = (["--directory", str(MFP_DIR), "--extra", "autorefresh"] if mfp_local()
+             else ["--no-project", "--with", MFP_PACKAGE])
+    cmd = uv_cmd() + ["run", "--quiet", "--python", "3.12", "--managed-python", *where,
+                      "python", str(SITE / "mfp_fetch.py"), json.dumps(req)]
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, stdin=subprocess.DEVNULL, env=env)
+    except subprocess.TimeoutExpired:
+        return None, "MyFitnessPal took too long to answer"
+    except FileNotFoundError:
+        return None, "uv isn't available (start the dashboard with nix run)"
+    try:
+        out = json.loads(p.stdout.strip().splitlines()[-1])
+    except (IndexError, json.JSONDecodeError):
+        return None, (p.stderr.strip().splitlines() or ["MyFitnessPal sync failed"])[-1]
+    return (None, out["error"]) if "error" in out else (out, None)
+
+
+def sync_mfp():
+    """Fetch today's food, goals and weigh-ins; merge the weigh-ins into the weight log."""
+    if not mfp_lock.acquire(blocking=False):
+        with mfp_lock:  # one is already running: wait for it instead of starting another
+            return read_json(MFP_CACHE, {})
+    try:
+        return store_mfp(*run_mfp({"op": "fetch", "date": date.today().isoformat()}))
+    finally:
+        mfp_lock.release()
+
+
+def write_mfp(req):
+    """A diary change (add/edit/delete food, weigh-in). mfp_fetch.py answers with the
+    refreshed day, which becomes the cache. Returns (cache, error)."""
+    with mfp_lock:
+        data, err = run_mfp(req)
+        return (store_mfp(data, None) if data else read_json(MFP_CACHE, {})), err
+
+
+def store_mfp(data, err):
+    cache = read_json(MFP_CACHE, {})
+    if data:
+        cache = {"data": data, "fetched_at": time.time(), "error": None}
+        merge_mfp_weights(data.get("weights", []))
+    else:
+        cache = {**cache, "error": err, "failed_at": time.time()}
+    write_json(MFP_CACHE, cache)
+    return cache
+
+
+def merge_mfp_weights(mfp_weights):
+    """MyFitnessPal wins for days it has a weigh-in; days only logged here are kept.
+    A weigh-in today also ticks the "Weigh in" checklist item."""
+    today = date.today().isoformat()
+    with lock:
+        weights = {w["date"]: w for w in read_json(WEIGHTS, [])}
+        for w in mfp_weights:
+            weights[w["date"]] = {"date": w["date"], "lb": w["lb"]}
+        write_json(WEIGHTS, sorted(weights.values(), key=lambda w: w["date"]))
+        if today in {w["date"] for w in mfp_weights}:
+            item = next((i for i in read_json(PLAN, {}).get("checklist", []) if "weigh" in i.lower()), None)
+            days = read_json(CHECKLIST, {})
+            if item and not days.get(today, {}).get(item):
+                days.setdefault(today, {})[item] = "done"
+                write_json(CHECKLIST, days)
+
+
+def mfp_status():
+    cache = read_json(MFP_CACHE, {})
+    data = cache.get("data")
+    stale = not data or data.get("day") != date.today().isoformat() or time.time() - cache.get("fetched_at", 0) > MFP_STALE
+    return cache, stale
+
+
+def mfp_loop():
+    while True:
+        try:
+            sync_mfp()
+        except Exception as e:  # never let the background thread die
+            print("MyFitnessPal sync failed:", e, flush=True)
+        time.sleep(MFP_EVERY)
+
+
+# ---------- MCPs tab: chat with an AI agent ----------
+# See assistant.py. One answer at a time; the conversation (which AI, its session id and the
+# messages) is kept in data/chat.json until "New chat".
+CHAT = DATA / "chat.json"
+CHAT_DIR = DATA / "assistant"
+chat_lock = threading.Lock()
+chat_proc = None
+chat_stopped = False  # Stop was pressed (CLIs exit with codes like 143 on SIGTERM, not a signal)
+
+
+def load_chat():
+    chat = read_json(CHAT, {"messages": []})
+    if chat.get("provider") not in assistant.PROVIDERS:
+        chat["provider"] = next((p["id"] for p in assistant.provider_list() if p["installed"]), "claude")
+    return chat
+
+
 def load_checklist():
     data = read_json(CHECKLIST, {})
     return {day: {k: c for k, v in items.items() if (c := clean_check(v))} for day, items in data.items()}
@@ -220,6 +378,88 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(data)
+
+    def chat(self, message):
+        """Stream the AI's answer as NDJSON lines: {type: text|break|tool|tool_error|done}."""
+        global chat_proc, chat_stopped
+        if not 0 < len(message) <= 4000:
+            return self.send(400, {"error": "type a message"})
+        chat = load_chat()
+        pid = chat["provider"]
+        if not assistant.base_cmd(pid):
+            return self.send(400, {"error": f"{assistant.PROVIDERS[pid]['label']} isn't installed"})
+        if not chat_lock.acquire(blocking=False):
+            return self.send(409, {"error": "still answering the last message"})
+        try:
+            cmd, cwd, env = assistant.build(pid, message, chat.get("session_id"), mfp_mcp_server(), DOCS,
+                                            CHAT_DIR, date.today().strftime("%A, %B %-d, %Y"))
+            chat["messages"].append({"role": "user", "text": message, "at": time.time()})
+            reply = {"role": "assistant", "provider": pid, "text": "", "tools": [], "at": time.time()}
+
+            self.send_response(200)
+            self.send_header("Content-Type", "application/x-ndjson")
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            gone = False
+
+            def emit(obj):
+                nonlocal gone
+                if gone:
+                    return
+                try:
+                    self.wfile.write((json.dumps(obj) + "\n").encode())
+                    self.wfile.flush()
+                except (BrokenPipeError, ConnectionResetError):
+                    gone = True  # page closed: keep going so the answer is still saved
+
+            chat_stopped = False
+            chat_proc = subprocess.Popen(cmd, cwd=cwd, env=env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                         stderr=subprocess.PIPE, text=True, bufsize=1)
+            changed, error, tools, gap = False, None, {}, False
+            for line in chat_proc.stdout:
+                try:
+                    ev = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                for kind, *a in assistant.parse(pid, ev):
+                    if kind == "session" and a[0]:
+                        chat["session_id"] = a[0]
+                    elif kind == "text":
+                        reply["text"] += ("\n\n" if gap and reply["text"] else "") + a[0]
+                        gap = False
+                        emit({"type": "text", "text": a[0]})
+                    elif kind == "break":
+                        gap = True
+                        emit({"type": "break"})
+                    elif kind == "tool":
+                        tool = {"label": assistant.tool_label(a[1]), "detail": assistant.tool_detail(a[2])}
+                        tools[a[0]] = tool
+                        reply["tools"].append(tool)
+                        changed = changed or assistant.changes_diary(a[1])
+                        emit({"type": "tool", **tool})
+                    elif kind == "tool_error" and a[0] in tools:
+                        tools[a[0]]["error"] = True
+                        emit({"type": "tool_error", **tools[a[0]]})
+                    elif kind == "error":
+                        error = a[0]
+            chat_proc.wait()
+            err = chat_proc.stderr.read().strip()
+            if chat_stopped or (chat_proc.returncode or 0) < 0:
+                error = "Stopped"
+            elif error or chat_proc.returncode:
+                print(f"{pid} exited {chat_proc.returncode}: {err[-2000:]}", flush=True)
+                if error or not reply["text"]:
+                    error = assistant.friendly_error(pid, error or (err.splitlines() or [f"{assistant.PROVIDERS[pid]['label']} exited with code {chat_proc.returncode}"])[-1])
+            if error:
+                reply["error"] = error
+            chat["messages"].append(reply)
+            write_json(CHAT, chat)
+            if changed:
+                sync_mfp()  # the Today card shows the change right away
+            emit({"type": "done", "changed": changed, "error": error})
+        finally:
+            chat_proc = None
+            chat_lock.release()
 
     def host_ok(self):
         if self.headers.get("Host") not in ALLOWED_HOSTS:
@@ -272,6 +512,15 @@ class Handler(BaseHTTPRequestHandler):
                                       "kind": "dismiss" if text.startswith("Dismissed") else "skip",
                                       "note": text.split(":", 1)[1].strip() if ":" in text else "", "at": a.get("entry")})
             return self.send(200, {"skips": skips})
+        if path == "/api/chat":
+            return self.send(200, {**load_chat(), "busy": chat_lock.locked(),
+                                   "providers": assistant.provider_list(), "mcp": mfp_setup()})
+        if path == "/api/mfp":
+            # Cached so the page loads instantly; a stale cache refreshes in the background.
+            cache, stale = mfp_status()
+            if stale and not mfp_lock.locked():
+                threading.Thread(target=sync_mfp, daemon=True).start()
+            return self.send(200, {**cache, "syncing": stale or mfp_lock.locked()})
         if path == "/api/time":
             # Intervals since Monday (or the past year with ?range=year), from Timewarrior.
             # ?from=YYYY-MM-DD&to=YYYY-MM-DD picks any range (to is inclusive).
@@ -515,6 +764,30 @@ class Handler(BaseHTTPRequestHandler):
                 code, out, err = run_task(["rc.bulk=0"] + uuids + ["delete"])
             return self.send(200 if code == 0 else 500, {"ok": code == 0, "error": err.strip()})
 
+        if self.path == "/api/tasks/skip_note":
+            # Change the reason on already skipped/dismissed tasks. Rewritten through
+            # export/import so the annotation keeps its date (History groups by it).
+            uuids = body.get("uuids", [])
+            if not isinstance(uuids, list) or not 0 < len(uuids) <= 500 or not all(UUID_RE.match(str(u)) for u in uuids):
+                return self.send(400, {"error": "bad uuids"})
+            note = " ".join(str(body.get("note", "")).split())[:300]
+            code, out, err = run_task([str(u) for u in uuids] + ["export"])
+            if code != 0:
+                return self.send(500, {"error": err.strip() or "task export failed"})
+            changed = []
+            for t in json.loads(out or "[]"):
+                for a in t.get("annotations", []):
+                    text = a.get("description", "")
+                    if text.startswith(("Skipped", "Dismissed")):
+                        label = "Dismissed" if text.startswith("Dismissed") else "Skipped"
+                        a["description"] = f"{label}: {note}" if note else label
+                        changed.append(t)
+                        break
+            if not changed:
+                return self.send(400, {"error": "no skip reason found on those tasks"})
+            code, out, err = run_task(["import", "-"], json.dumps(changed))
+            return self.send(200 if code == 0 else 500, {"ok": code == 0, "error": err.strip()})
+
         if self.path == "/api/checklist":
             day = str(body.get("date", ""))
             items = body.get("items", {})
@@ -534,6 +807,70 @@ class Handler(BaseHTTPRequestHandler):
                 write_json(PLAN, plan)
             return self.send(200, {"ok": True})
 
+        if self.path == "/api/chat":
+            return self.chat(str(body.get("message", "")).strip())
+        if self.path == "/api/chat/new":
+            if chat_lock.locked():
+                return self.send(409, {"error": "wait for the current answer, or press Stop"})
+            provider = str(body.get("provider") or load_chat()["provider"])
+            if provider not in assistant.PROVIDERS:
+                return self.send(400, {"error": "unknown AI"})
+            write_json(CHAT, {"provider": provider, "messages": []})
+            return self.send(200, {"ok": True})
+        if self.path == "/api/chat/stop":
+            global chat_stopped
+            if chat_proc and chat_proc.poll() is None:
+                chat_stopped = True
+                chat_proc.terminate()
+            return self.send(200, {"ok": True})
+
+        if self.path == "/api/mfp/refresh":
+            cache = sync_mfp()
+            return self.send(200, {**cache, "syncing": False})
+
+        if self.path in ("/api/mfp/search", "/api/mfp/entry"):
+            # Read-only lookups for the food forms: search results, or one entry's edit options.
+            if self.path.endswith("search"):
+                q = " ".join(str(body.get("query", "")).split())
+                if not 0 < len(q) <= 100:
+                    return self.send(400, {"error": "type what to search for"})
+                req = {"op": "search", "query": q}
+            else:
+                if not MFP_ID_RE.match(str(body.get("entry_id", ""))):
+                    return self.send(400, {"error": "bad entry"})
+                req = {"op": "entry", "entry_id": str(body["entry_id"])}
+            data, err = run_mfp(req, timeout=90)
+            return self.send(200 if data else 502, data or {"ok": False, "error": err})
+
+        if self.path in ("/api/mfp/add", "/api/mfp/edit", "/api/mfp/delete"):
+            op = self.path.rsplit("/", 1)[1]
+            req = {"op": op, "date": date.today().isoformat()}
+            try:
+                q = float(body.get("quantity", 1))
+            except (TypeError, ValueError):
+                q = -1
+            ids = {"add": ("food_id", "weight_id"), "edit": ("entry_id", "weight_id"), "delete": ("entry_id",)}[op]
+            if not all(MFP_ID_RE.match(str(body.get(k, ""))) for k in ids):
+                return self.send(400, {"error": "bad food or entry"})
+            req.update({k: str(body[k]) for k in ids})
+            if op in ("add", "edit"):
+                if not 0 < q <= 1000:
+                    return self.send(400, {"error": "amount must be more than 0"})
+                req["quantity"] = q
+            if op == "add":
+                meal = " ".join(str(body.get("meal", "")).split())
+                if not 0 < len(meal) <= 40:
+                    return self.send(400, {"error": "pick a meal"})
+                req["meal"] = meal
+            if op == "edit":
+                if not re.match(r"^\d{1,2}$", str(body.get("meal_id", ""))):
+                    return self.send(400, {"error": "pick a meal"})
+                req["meal_id"] = str(body["meal_id"])
+            cache, err = write_mfp(req)
+            if err:
+                return self.send(502, {"ok": False, "error": err})
+            return self.send(200, {**cache, "ok": True, "syncing": False})
+
         if self.path == "/api/weights":
             day, lb = str(body.get("date", "")), body.get("lb")
             if not DATE_RE.match(day) or not (lb is None or (isinstance(lb, (int, float)) and 50 < lb < 700)):
@@ -543,18 +880,26 @@ class Handler(BaseHTTPRequestHandler):
                 if lb is not None:
                     weights.append({"date": day, "lb": round(float(lb), 1)})
                 write_json(WEIGHTS, sorted(weights, key=lambda w: w["date"]))
-            return self.send(200, {"ok": True})
+            # Send it to MyFitnessPal too, so both have the same weigh-ins.
+            warning = ""
+            if lb is not None:
+                _, err = write_mfp({"op": "weight", "date": day, "lb": round(float(lb), 1)})
+                if err:
+                    warning = "Saved here, but not in MyFitnessPal: " + err
+            return self.send(200, {"ok": True, "warning": warning})
 
         self.send(404, {"error": f"unknown endpoint {self.path}"})
 
 
 def reload_on_change():
     me = Path(__file__).resolve()
-    start = me.stat().st_mtime
+    watched = [me, me.with_name("assistant.py")]
+    stamp = lambda: [f.stat().st_mtime for f in watched]
+    start = stamp()
     while True:
         time.sleep(1)
         try:
-            if me.stat().st_mtime != start:
+            if stamp() != start:
                 print("server.py changed, restarting…", flush=True)
                 os.execv(sys.executable, [sys.executable, str(me), str(PORT)])
         except FileNotFoundError:
@@ -572,5 +917,6 @@ if __name__ == "__main__":
     else:
         sys.exit(f"Port {PORT} is busy ({err.strerror}). Is the dashboard already running? Try: ./run.sh <other-port>")
     threading.Thread(target=reload_on_change, daemon=True).start()
+    threading.Thread(target=mfp_loop, daemon=True).start()
     print(f"Health dashboard: http://localhost:{PORT}  ({date.today()})", flush=True)
     server.serve_forever()
