@@ -77,7 +77,7 @@ var codexOffFeatures = []string{
 // firstMessage puts the instructions in front of a conversation's first message, for CLIs
 // without a system-prompt flag.
 func firstMessage(req Request) string {
-	if req.SessionID != "" {
+	if req.SessionID != "" || req.Instructions == "" {
 		return req.Message
 	}
 	return req.Instructions + "\n\n---\n\n" + req.Message

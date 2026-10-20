@@ -10,10 +10,13 @@
   <div class="chat-top">
     <div class="chat-badge">{{template "icon-leaf"}}</div>
     <div class="chat-title"><b>MCPs</b><span class="chat-status{{if not .Ready}} off{{end}}"><i></i>{{if .StatusLink}}<a class="link" href="{{.StatusLink}}">{{.Status}}</a>{{else}}{{.Status}}{{end}}</span></div>
-    <div class="mcp-toggles" title="Which MCP servers the AI can use">{{range .MCPs}}
-      <button class="pill mcp-toggle{{if .Enabled}} on{{end}}{{if .Ready}} ready{{end}}" hx-post="/mcps/toggle" hx-vals="{{vals "mcp" .ID}}" hx-target="#chat-card" hx-swap="outerHTML"{{if $.Busy}} disabled{{end}}
+    <div class="mcp-toggles">{{range .MCPs}}
+      <button class="pill mcp-toggle{{if .Enabled}} on{{end}}{{if .Ready}} ready{{end}}" role="switch" aria-checked="{{.Enabled}}" hx-post="/mcps/toggle" hx-vals="{{vals "mcp" .ID}}" hx-target="#chat-card" hx-swap="outerHTML"{{if $.Busy}} disabled{{end}}
         title="{{if .Enabled}}Turn off{{else}}Turn on{{end}} the {{.Label}} MCP{{if not .Ready}}{{if eq .ID "anki"}} (not connected: see the Anki tab){{else}} (needs setup){{end}}{{end}}"><i></i>{{.Label}}</button>
-    {{end}}</div>
+    {{end}}
+      <button class="pill mcp-toggle ready{{if .Instructions}} on{{end}}" role="switch" aria-checked="{{.Instructions}}" hx-post="/mcps/instructions" hx-target="#chat-card" hx-swap="outerHTML"{{if $.Busy}} disabled{{end}}
+        title="{{if .Instructions}}On: the AI gets the dashboard's instructions plus your notes, plan and data. Turn off to use it as it is, with just the MCPs{{else}}Off: the AI gets no instructions or notes, just the MCPs. Turn on to give it the dashboard's prompt and your data{{end}}"><i></i>Instructions</button>
+    </div>
     <span class="chat-tools">
       <select class="pill" name="provider" title="Which AI answers" hx-post="/mcps/provider" hx-target="#chat-card" hx-swap="outerHTML"{{if .Messages}} hx-confirm="Start a new chat with the AI you picked?"{{end}}{{if .Busy}} disabled{{end}}>
         {{range .Providers}}<option value="{{.ID}}"{{if .Selected}} selected{{end}}{{if not .Available}} disabled{{end}}>{{.Label}}{{if not .Installed}}{{if .Available}} (via Nix){{else}} (not installed){{end}}{{end}}</option>{{end}}

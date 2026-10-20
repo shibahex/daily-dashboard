@@ -18,6 +18,9 @@ type Conversation struct {
 	Messages  []Message         `json:"messages"`
 	MCPs      *[]string         `json:"mcps,omitempty"`   // turned-on MCP servers; nil = all
 	Models    map[string]string `json:"models,omitempty"` // chosen model per provider ("" = default)
+
+	// NoInstructions runs the CLI as it is: no dashboard prompt, notes or data, just the MCPs.
+	NoInstructions bool `json:"no_instructions,omitempty"`
 }
 
 // Message is one chat bubble.
@@ -105,13 +108,14 @@ func (cs *Conversations) Save(c *Conversation) error {
 	return jsonfile.Write(cs.path, c)
 }
 
-// StartNew replaces the conversation with an empty one for provider, keeping the MCP and model
-// choices.
+// StartNew replaces the conversation with an empty one for provider, keeping the MCP, model
+// and instructions choices.
 func (cs *Conversations) StartNew(provider string) error {
 	old := cs.Load()
 	mcps := old.EnabledMCPs()
 	if old.MCPs != nil {
 		mcps = *old.MCPs
 	}
-	return cs.Save(&Conversation{Provider: provider, Messages: []Message{}, MCPs: &mcps, Models: old.Models})
+	return cs.Save(&Conversation{Provider: provider, Messages: []Message{}, MCPs: &mcps, Models: old.Models,
+		NoInstructions: old.NoInstructions})
 }

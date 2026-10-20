@@ -115,13 +115,17 @@ func (run *agentRun) prepare() (assistant.Request, error) {
 		}
 		servers = append(servers, assistant.NamedServer{Name: name, Server: server})
 	}
+	instructions := ""
+	if !run.conversation.NoInstructions {
+		instructions = assistant.Instructions(time.Now(), assistant.Context(ws.Paths.Docs, ws.Paths.Plan(), ws.Paths.Data), servers, run.caps)
+	}
 
 	return assistant.Request{
 		Message:      run.message,
 		SessionID:    run.conversation.SessionID,
 		Model:        run.conversation.Model(),
 		Servers:      servers,
-		Instructions: assistant.Instructions(time.Now(), assistant.Context(ws.Paths.Docs, ws.Paths.Plan(), ws.Paths.Data), servers, run.caps),
+		Instructions: instructions,
 		Caps:         run.caps,
 		WorkDir:      run.configDir(),
 		InnerWorkDir: sandbox.HomeDir + "/run-config",

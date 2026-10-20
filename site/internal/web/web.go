@@ -179,6 +179,7 @@ func (ui *UI) Routes(mux *http.ServeMux) {
 	change("/mcps/provider", ui.chooseProvider)
 	change("/mcps/model", ui.chooseModel)
 	change("/mcps/toggle", ui.toggleMCP)
+	change("/mcps/instructions", ui.toggleInstructions)
 
 	// Docs
 	page("/docs", ui.docsPage)

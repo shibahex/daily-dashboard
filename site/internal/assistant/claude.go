@@ -64,8 +64,10 @@ func (c *claude) Invocation(req Request) (Invocation, error) {
 		"-p", "--output-format", "stream-json", "--verbose", "--include-partial-messages",
 		"--restricted", "--strict-mcp-config", "--mcp-config", req.inside(configPath),
 		"--tools", strings.Join(tools, ","), "--permission-mode", "dontAsk",
-		"--append-system-prompt", req.Instructions,
 	)
+	if req.Instructions != "" {
+		args = append(args, "--append-system-prompt", req.Instructions)
+	}
 	if len(allowed) > 0 {
 		args = append(append(args, "--allowedTools"), allowed...)
 	}

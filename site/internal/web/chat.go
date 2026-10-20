@@ -58,6 +58,7 @@ type chatView struct {
 	Ready        bool   // every turned-on MCP works
 	Blocked      bool   // MCPs are on, but none works: nothing to chat with
 	NoAI         bool   // the user's policy allows no AI at all
+	Instructions bool   // the dashboard's prompt, notes and data go with each chat
 }
 
 // allowedMCPs is the conversation's turned-on MCPs that the user's policy allows.
@@ -142,6 +143,7 @@ func (ui *UI) chatView(r *http.Request, customModel bool) chatView {
 		MyFitnessPal: ui.ws(r).MyFitnessPal.Client().Setup(),
 		Anki:         ui.ws(r).Anki().Status(),
 		Messages:     conversation.Messages,
+		Instructions: !conversation.NoInstructions,
 	}
 	for _, p := range ui.Providers {
 		if !policy.AllowsProvider(p.ID()) {
@@ -394,6 +396,13 @@ func (ui *UI) toggleMCP(w http.ResponseWriter, r *http.Request) {
 			enabled = []string{}
 		}
 		conversation.MCPs = &enabled
+	})
+}
+
+// toggleInstructions turns the dashboard's prompt (with the user's notes and data) on or off.
+func (ui *UI) toggleInstructions(w http.ResponseWriter, r *http.Request) {
+	ui.changeConversation(r, w, func(conversation *assistant.Conversation) {
+		conversation.NoInstructions = !conversation.NoInstructions
 	})
 }
 

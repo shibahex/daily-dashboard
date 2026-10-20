@@ -212,3 +212,20 @@ func TestClaudeSubscriptionToken(t *testing.T) {
 		t.Fatalf("API key: %v", got)
 	}
 }
+
+func TestNoInstructionsSendsTheBareCLI(t *testing.T) {
+	c := newClaude(nil)
+	c.program = "sh"
+	req := testRequest(t)
+	req.Instructions = ""
+	inv, err := c.Invocation(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if slices.Contains(inv.Args, "--append-system-prompt") {
+		t.Errorf("no instructions should send no system prompt: %q", inv.Args)
+	}
+	if got := firstMessage(req); got != req.Message {
+		t.Errorf("first message = %q, want just the message", got)
+	}
+}
