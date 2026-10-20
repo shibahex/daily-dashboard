@@ -33,7 +33,17 @@ func RequireAdmin(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-const SessionCookie = "session"
+// SessionCookie is the cookie's name: "__Host-session" when people reach the dashboard over
+// HTTPS (UseSecureCookies), which browsers only accept from a secure page for exactly this host.
+var (
+	SessionCookie = "session"
+	secureCookies bool
+)
+
+// UseSecureCookies marks the session cookie Secure, for a dashboard reached over HTTPS.
+func UseSecureCookies() {
+	SessionCookie, secureCookies = "__Host-session", true
+}
 
 // SessionFrom is the request's session cookie ("" when there's none).
 func SessionFrom(r *http.Request) string {
@@ -47,13 +57,14 @@ func SessionFrom(r *http.Request) string {
 // SameSite=Strict out of requests other sites start.
 func SetSessionCookie(w http.ResponseWriter, secret string) {
 	http.SetCookie(w, &http.Cookie{
-		Name: SessionCookie, Value: secret, Path: "/",
+		Name: SessionCookie, Value: secret, Path: "/", Secure: secureCookies,
 		MaxAge: int(SessionLength / time.Second), HttpOnly: true, SameSite: http.SameSiteStrictMode,
 	})
 }
 
 func ClearSessionCookie(w http.ResponseWriter) {
-	http.SetCookie(w, &http.Cookie{Name: SessionCookie, Value: "", Path: "/", MaxAge: -1, HttpOnly: true, SameSite: http.SameSiteStrictMode})
+	http.SetCookie(w, &http.Cookie{Name: SessionCookie, Value: "", Path: "/", Secure: secureCookies, MaxAge: -1,
+		HttpOnly: true, SameSite: http.SameSiteStrictMode})
 }
 
 // tokenFrom is the token in "Authorization: Bearer <token>".

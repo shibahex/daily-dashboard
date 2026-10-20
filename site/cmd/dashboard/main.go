@@ -34,10 +34,18 @@ func main() {
 	port := portFromArgs()
 	siteDir := findSiteDir()
 	config.LoadEnvFile(filepath.Join(siteDir, ".env"))
+	var account *auth.Auth
+	network, err := config.NetworkFromEnv(port)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if network.HTTPS() {
+		auth.UseSecureCookies()
+	}
 	paths := config.NewPaths(siteDir)
 	paths.MakePrivate()
 
-	account, err := auth.New(paths.Data)
+	account, err = auth.New(paths.Data)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -74,14 +82,14 @@ func main() {
 	}
 	pages.Routes(mux)
 
-	listener := listen(port)
+	listener := listen(network.Listen)
 	go mfp.RunForever()
-	fmt.Printf("Health dashboard: http://localhost:%d  (%s)\n", port, time.Now().Format("2006-01-02"))
+	fmt.Printf("Health dashboard: %s  (listening on %s, %s)\n", network.BaseURL(), network.Listen, time.Now().Format("2006-01-02"))
 	if code := account.SetupCode(); code != "" {
-		fmt.Printf("Create your account: http://localhost:%d/setup?code=%s\n", port, code)
+		fmt.Printf("Create the first (admin) account: %s/setup?code=%s\n", network.BaseURL(), code)
 	}
 	server := &http.Server{
-		Handler:           httpx.OnlyLocalHost(port, httpx.Secure(account.Guard(mux))),
+		Handler:           httpx.RealIP(network.TrustedProxies, httpx.OnlyHosts(network.AllowedHosts(), httpx.Secure(account.Guard(mux)))),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	log.Fatal(server.Serve(listener))
@@ -111,10 +119,9 @@ func findSiteDir() string {
 	return dir
 }
 
-// listen binds 127.0.0.1 only. After a restart the old socket can take a moment to free up,
-// so it retries for a few seconds.
-func listen(port int) net.Listener {
-	address := fmt.Sprintf("127.0.0.1:%d", port)
+// listen binds the address (127.0.0.1 unless DASHBOARD_LISTEN says otherwise). After a restart
+// the old socket can take a moment to free up, so it retries for a few seconds.
+func listen(address string) net.Listener {
 	var lastErr error
 	for attempt := 0; attempt < 20; attempt++ {
 		listener, err := net.Listen("tcp", address)
@@ -124,6 +131,6 @@ func listen(port int) net.Listener {
 		lastErr = err
 		time.Sleep(250 * time.Millisecond)
 	}
-	log.Fatalf("Port %d is busy (%v). Is the dashboard already running? Try: ./run.sh <other-port>", port, lastErr)
+	log.Fatalf("%s is busy (%v). Is the dashboard already running? Try: ./run.sh <other-port>", address, lastErr)
 	return nil
 }
