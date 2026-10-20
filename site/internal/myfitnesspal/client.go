@@ -200,12 +200,25 @@ func (c Client) Connect(token string) error {
 	defer cancel()
 	cmd := c.command(ctx, "mfp-mcp", "auth")
 	cmd.Stdin = strings.NewReader(token + "\n")
+	// Unbuffered, so the output keeps its order: buffered stdout ("Validating…") would
+	// otherwise land after the reason on stderr and hide it.
+	cmd.Env = append(cmd.Env, "PYTHONUNBUFFERED=1")
 	var output bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &output, &output
 	if err := cmd.Run(); err != nil {
-		return problem.Invalidf("MyFitnessPal didn't accept that token: " + text.LastLine(output.String(), err.Error()))
+		return problem.Invalidf("MyFitnessPal didn't accept that token: " + authFailure(output.String(), err))
 	}
 	return nil
+}
+
+// authFailure is the reason `mfp-mcp auth` gives for refusing a token.
+func authFailure(output string, err error) string {
+	for _, line := range strings.Split(output, "\n") {
+		if _, reason, found := strings.Cut(line, "didn't authenticate:"); found {
+			return strings.TrimSpace(reason)
+		}
+	}
+	return text.LastLine(output, err.Error())
 }
 
 // Disconnect forgets the user's MyFitnessPal login.
