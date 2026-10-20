@@ -1,0 +1,17 @@
+/* Setup, login and the Account page */
+.sign-in { max-width: 420px; padding-top: 10vh; }
+.sign-in h1 { margin-bottom: 8px; }
+.sign-in form, .account form { display: flex; flex-direction: column; gap: 14px; }
+.sign-in label, .account label { display: flex; flex-direction: column; gap: 4px; font-size: 14px; font-weight: 600; }
+.sign-in label small { font-weight: 400; }
+.sign-in .txt, .account .txt { width: 100%; }
+.sign-in-btn { padding: 8px 12px; font-size: 15px; }
+.sign-in-error { margin: 0; padding: 8px 12px; border-radius: 6px; background: var(--warn-soft); color: var(--warn); }
+.sign-in code { font-size: 13px; }
+.account { display: flex; flex-direction: column; gap: 16px; max-width: 560px; }
+.account h2 { margin: 0 0 4px; font-size: 17px; }
+.account .row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+.account .token { font-family: ui-monospace, monospace; font-size: 13px; }
+header .right { display: flex; align-items: center; gap: 12px; }
+header .account-link { color: var(--muted); text-decoration: none; font-size: 14px; }
+header .account-link:hover, header .account-link.on { color: var(--ink); }

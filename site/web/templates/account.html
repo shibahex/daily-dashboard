@@ -1,0 +1,77 @@
+{{/* Setup and login: their own small page, without the tabs (you aren't signed in yet). */}}
+{{define "sign-in"}}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{if .Setup}}Create your account{{else}}Log in{{end}} · Daily Dashboard</title>
+<link rel="stylesheet" href="/static/css/base.css">
+<link rel="stylesheet" href="/static/css/account.css">
+<link rel="stylesheet" href="/static/css/components.css">
+</head>
+<body>
+<main class="sign-in">
+  <form class="card" method="post" action="{{if .Setup}}/setup{{else}}/login{{end}}">
+    <h1>{{if .Setup}}Create your account{{else}}Log in{{end}}</h1>
+    {{if .Setup}}<p class="muted">Your dashboard is only for you. The password keeps other programs and people on this computer out of your food, notes and tasks.</p>{{end}}
+    {{with .Error}}<p class="sign-in-error" role="alert">{{.}}</p>{{end}}
+    {{if .Setup}}
+    <label>Setup code
+      <input class="txt" name="code" value="{{.Code}}" required autocomplete="off" spellcheck="false">
+      <small class="muted">The link printed in the terminal fills this in. It's also in <code>site/data/setup-code</code>.</small></label>
+    {{end}}
+    <label>Username
+      <input class="txt" name="username" value="{{.Username}}" required maxlength="32" pattern="[A-Za-z0-9._\-]+" autocomplete="username" autocapitalize="none" spellcheck="false"{{if not .Username}} autofocus{{end}}></label>
+    <label>Password
+      <input class="txt" type="password" name="password" required{{if .Setup}} minlength="12" maxlength="256" autocomplete="new-password"{{else}} autocomplete="current-password"{{end}}{{if .Username}} autofocus{{end}}>
+      {{if .Setup}}<small class="muted">At least 12 characters. A few random words is easy to remember and hard to guess.</small>{{end}}</label>
+    {{if .Setup}}
+    <label>Password again
+      <input class="txt" type="password" name="confirm" required minlength="12" maxlength="256" autocomplete="new-password"></label>
+    {{end}}
+    <button class="primary sm sign-in-btn">{{if .Setup}}Create account{{else}}Log in{{end}}</button>
+    {{if not .Setup}}<p class="muted small">Forgot it? Stop the dashboard, delete <code>site/data/account.json</code> and start it again to make a new account. Your data stays.</p>{{end}}
+  </form>
+</main>
+</body>
+</html>
+{{end}}
+
+{{define "account"}}{{template "account-card" .}}{{end}}
+
+{{define "account-card"}}
+<div class="account" id="account-card">
+  <div class="card">
+    <h2>Signed in as {{.Username}}</h2>
+    <p class="muted">{{.Sessions}} {{plural .Sessions "browser" "browsers"}} signed in. Sessions last 30 days.</p>
+    <div class="row">
+      <button class="sm" hx-post="/account/logout" hx-swap="none">Log out</button>
+      {{if gt .Sessions 1}}<button class="sm" hx-post="/account/logout-others" hx-target="#account-card" hx-swap="outerHTML">Log out everywhere else</button>{{end}}
+    </div>
+  </div>
+
+  <form class="card" hx-post="/account/password" hx-target="#account-card" hx-swap="outerHTML">
+    <h2>Change password</h2>
+    {{with .Error}}<p class="sign-in-error" role="alert">{{.}}</p>{{end}}
+    {{with .Saved}}<p class="ok">{{.}}</p>{{end}}
+    <input type="text" name="username" value="{{.Username}}" autocomplete="username" hidden>
+    <label>Current password <input class="txt" type="password" name="current" required autocomplete="current-password"></label>
+    <label>New password <input class="txt" type="password" name="password" required minlength="12" maxlength="256" autocomplete="new-password"></label>
+    <label>New password again <input class="txt" type="password" name="confirm" required minlength="12" maxlength="256" autocomplete="new-password"></label>
+    <div><button class="sm primary">Change password</button></div>
+  </form>
+
+  <div class="card">
+    <h2>Bar plugin token</h2>
+    <p class="muted">The Noctalia plugin uses this instead of a password. Paste it into the plugin's settings (<b>API token</b>). It only works for the plugin's small API, not the pages.</p>
+    {{if .NewToken}}
+    <p>Your new token. Copy it now: it's only shown once.</p>
+    <input class="txt token" value="{{.NewToken}}" readonly data-select-all>
+    {{end}}
+    <div class="row">
+      <button class="sm" hx-post="/account/token" hx-target="#account-card" hx-swap="outerHTML"{{if .HasToken}} hx-confirm="Make a new token? The old one stops working."{{end}}>{{if .HasToken}}Replace token{{else}}Make a token{{end}}</button>
+      {{if .HasToken}}<button class="sm ghost" hx-post="/account/token/remove" hx-target="#account-card" hx-swap="outerHTML" hx-confirm="Remove the token? The bar plugin stops working until it has a new one.">Remove token</button>{{end}}
+    </div>
+  </div>
+</div>
+{{end}}

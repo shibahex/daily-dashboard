@@ -22,7 +22,7 @@ type Store struct {
 }
 
 func New(paths config.Paths) *Store {
-	os.MkdirAll(paths.Data, 0o755)
+	os.MkdirAll(paths.Data, 0o700)
 	return &Store{paths: paths}
 }
 
@@ -35,7 +35,7 @@ func (s *Store) PlanJSON() ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-		if err := os.WriteFile(s.paths.Plan(), example, 0o644); err != nil {
+		if err := os.WriteFile(s.paths.Plan(), example, 0o600); err != nil {
 			return nil, err
 		}
 	}
@@ -230,7 +230,7 @@ func (s *Store) SeedDocs() {
 		target := filepath.Join(s.paths.Docs, filepath.Base(template))
 		if _, err := os.Stat(target); os.IsNotExist(err) {
 			if content, err := os.ReadFile(template); err == nil {
-				os.WriteFile(target, content, 0o644)
+				os.WriteFile(target, content, 0o600)
 			}
 		}
 	}

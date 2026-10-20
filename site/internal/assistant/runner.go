@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -71,6 +72,9 @@ func (r *Runner) Answer(provider Provider, conversation *Conversation, req Reque
 
 	cmd := exec.Command(invocation.Args[0], invocation.Args[1:]...)
 	cmd.Dir, cmd.Env = invocation.Dir, invocation.Env
+	if invocation.Stdin != "" {
+		cmd.Stdin = strings.NewReader(invocation.Stdin)
+	}
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	stdout, err := cmd.StdoutPipe()

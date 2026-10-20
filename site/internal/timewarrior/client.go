@@ -103,7 +103,8 @@ var rangeWords = map[string]bool{"-": true, "from": true, "to": true, "for": tru
 	"after": true, "since": true, "until": true, "ago": true, "in": true, "on": true}
 
 // CleanTags checks tags for `timew track` and `retag`: 1-10 of them, each up to 100 characters,
-// not looking like a hint (:x), an id (@1) or a range word.
+// not looking like a hint (:x), an id (@1), a setting (rc.x=y, which timew applies instead of
+// saving) or a range word.
 func CleanTags(tags []string) ([]string, error) {
 	if len(tags) == 0 || len(tags) > 10 {
 		return nil, errors.New("add at least one tag (usually the task name)")
@@ -111,7 +112,7 @@ func CleanTags(tags []string) ([]string, error) {
 	cleaned := make([]string, 0, len(tags))
 	for _, tag := range tags {
 		tag = text.Collapse(tag)
-		if tag == "" || len([]rune(tag)) > 100 || strings.ContainsAny(tag[:1], ":@") || rangeWords[strings.ToLower(tag)] {
+		if tag == "" || len([]rune(tag)) > 100 || !isPlainTag(tag) {
 			if tag == "" {
 				tag = "(empty)"
 			}
@@ -120,4 +121,29 @@ func CleanTags(tags []string) ([]string, error) {
 		cleaned = append(cleaned, tag)
 	}
 	return cleaned, nil
+}
+
+// isPlainTag is false for a tag timew would read as something else: a hint (:fill), an id
+// (@1), a setting (rc.x=y) or a range word.
+func isPlainTag(tag string) bool {
+	return !strings.ContainsAny(tag[:1], ":@") && !strings.HasPrefix(strings.ToLower(tag), "rc.") &&
+		!rangeWords[strings.ToLower(tag)]
+}
+
+// TaskTags makes tags from a task's text (description, project, tags) safe for `timew track`.
+// Unlike CleanTags it never refuses: a task named ":fill" still gets its time, as the tag
+// "_:fill", rather than timew reading it as a hint that moves other entries.
+func TaskTags(tags []string) []string {
+	cleaned := []string{}
+	for _, tag := range tags {
+		tag = text.Truncate(text.Collapse(tag), 100)
+		if tag == "" || len(cleaned) == 10 {
+			continue
+		}
+		if !isPlainTag(tag) {
+			tag = "_" + tag
+		}
+		cleaned = append(cleaned, tag)
+	}
+	return cleaned
 }

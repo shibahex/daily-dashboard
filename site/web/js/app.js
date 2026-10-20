@@ -54,6 +54,11 @@ document.addEventListener("change", event => {
   field.focus();
 });
 
+// A new plugin token is selected when clicked, ready to copy.
+document.addEventListener("focusin", event => {
+  if (event.target.matches("input[data-select-all]")) event.target.select();
+});
+
 // ---------- panels and scrolling ----------
 
 // Cards don't refresh themselves on a timer while a form or panel is open in them.

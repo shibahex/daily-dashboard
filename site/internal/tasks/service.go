@@ -213,7 +213,7 @@ func (s *Service) CompleteAt(uuid string, end time.Time, minutes int) (warning s
 		return "", nil
 	}
 	start := end.Add(-time.Duration(minutes) * time.Minute)
-	track := append([]string{"track", start.Format(localMinute), "-", end.Format(localMinute)}, task.TimewarriorTags()...)
+	track := append([]string{"track", start.Format(localMinute), "-", end.Format(localMinute)}, timewarrior.TaskTags(task.TimewarriorTags())...)
 	if result := s.time.Run(track...); !result.OK() {
 		return "Completed, but the time wasn't logged: " + result.FirstErrorLine("timew error"), nil
 	}

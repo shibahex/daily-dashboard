@@ -20,8 +20,11 @@ Item {
   readonly property bool autoStart: cfg.autoStart ?? defaults.autoStart ?? true
   readonly property string openCommand: cfg.openCommand ?? defaults.openCommand ?? "chromium --app={url}"
   readonly property string port: (baseUrl.match(/:(\d+)$/) || [])[1] || "1628"
+  // Made on the dashboard's Account page; the API refuses requests without it.
+  readonly property string token: String(cfg.token ?? defaults.token ?? "").trim()
 
   property bool online: false
+  property bool reachable: false       // the server answered, even if it refused the request (e.g. no token yet)
   property bool loaded: false          // at least one successful refresh
   property string lastError: ""
   property string todayKey: dayKey(new Date())
@@ -39,7 +42,7 @@ Item {
   readonly property int doneCount: checklistItems.filter(i => i.state === "done").length
   readonly property int skipCount: checklistItems.filter(i => i.state === "skip").length
   readonly property bool dayComplete: checklistItems.length > 0 && doneCount + skipCount === checklistItems.length
-  readonly property bool serverStarting: serverProc.running && !online
+  readonly property bool serverStarting: serverProc.running && !reachable
   readonly property bool ownsServer: serverProc.running   // false when it was started from a terminal
 
   function expandHome(p) { return String(p).replace(/^~(?=\/|$)/, Quickshell.env("HOME")); }
@@ -82,12 +85,15 @@ Item {
     const xhr = new XMLHttpRequest();
     xhr.onreadystatechange = () => {
       if (xhr.readyState !== XMLHttpRequest.DONE) return;
+      reachable = xhr.status !== 0;
       let data = null;
       try { data = JSON.parse(xhr.responseText || "null"); } catch (e) {}
       if (xhr.status >= 200 && xhr.status < 300 && !(data && data.ok === false)) cb(null, data);
+      else if (xhr.status === 401) cb(token ? "The API token was refused: make a new one on the dashboard's Account page" : "Open the dashboard, create your account, then make an API token on its Account page and paste it in the plugin settings", data);
       else cb(xhr.status === 0 ? "Dashboard not reachable" : ((data && data.error) || ("HTTP " + xhr.status)), data);
     };
     xhr.open(method, baseUrl + path);
+    if (token) xhr.setRequestHeader("Authorization", "Bearer " + token);
     if (method === "POST") {
       xhr.setRequestHeader("Content-Type", "application/json");
       xhr.setRequestHeader("X-Dashboard", "1");
@@ -235,6 +241,7 @@ Item {
         Logger.w("HealthDashboard", "server exited", code, serverErr.text);
       }
       root.online = false;
+      root.reachable = false;
       pollTimer.restart();
     }
   }

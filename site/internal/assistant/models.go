@@ -62,7 +62,7 @@ func fetchClaudeModels(workDir string) []Model {
 	if program == nil {
 		return nil
 	}
-	os.MkdirAll(workDir, 0o755)
+	os.MkdirAll(workDir, 0o700)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 	args := append(program[1:], "-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--tools", "")

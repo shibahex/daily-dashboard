@@ -70,7 +70,7 @@ Item {
         NText { text: "Today"; pointSize: Style.fontSizeL; font.weight: Style.fontWeightBold; color: Color.mOnSurface }
         NText {
           Layout.fillWidth: true
-          text: !main ? "" : main.online ? (main.dayComplete ? "· day complete ✓" : "") : (main.serverStarting ? "· starting server…" : "· offline")
+          text: !main ? "" : main.online ? (main.dayComplete ? "· day complete ✓" : "") : (main.serverStarting ? "· starting server…" : main.reachable ? "· not connected" : "· offline")
           pointSize: Style.fontSizeS
           color: main && main.online && main.dayComplete ? Color.mPrimary : Color.mOnSurfaceVariant
         }
@@ -98,7 +98,7 @@ Item {
             pointSize: Style.fontSizeS
           }
           NButton {
-            visible: main && !main.serverStarting
+            visible: main && !main.reachable && !main.serverStarting
             text: "Start server"
             icon: "player-play"
             onClicked: main.startServer()

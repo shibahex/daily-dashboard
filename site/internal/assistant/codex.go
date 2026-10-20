@@ -3,10 +3,14 @@ package assistant
 import (
 	"encoding/json"
 	"errors"
+	"strings"
 )
 
-// codex runs OpenAI's Codex CLI: `codex exec --json` in a read-only sandbox, with the MCP
-// servers passed as -c config overrides.
+// codex runs OpenAI's Codex CLI: `codex exec --json` with the MCP servers passed as -c config
+// overrides. Its shell stays, in the read-only sandbox (no network). Codex can't be limited
+// to a list of tools, so codexOffFeatures turns off every feature that reaches the web or
+// other accounts, and the user's own config.toml (with its MCP servers and plugins) is ignored.
+// A future Codex version could add a feature this list doesn't know about.
 type codex struct{ cli }
 
 func newCodex() *codex {
@@ -24,27 +28,44 @@ func (c *codex) Invocation(req Request) (Invocation, error) {
 	}
 	// -c values are TOML; JSON strings and string arrays are valid TOML too.
 	toml := func(v any) string { b, _ := json.Marshal(v); return string(b) }
-	overrides := []string{"-c", `approval_policy="never"`}
+	overrides := []string{"-c", `approval_policy="never"`, "-c", `web_search="disabled"`}
+	for _, feature := range codexOffFeatures {
+		overrides = append(overrides, "-c", "features."+feature+"=false")
+	}
 	for _, s := range req.Servers {
 		prefix := "mcp_servers." + s.Name + "."
 		overrides = append(overrides, "-c", prefix+"command="+toml(s.Server.Command), "-c", prefix+"args="+toml(s.Server.Args))
 		for key, value := range s.Server.Env {
 			overrides = append(overrides, "-c", prefix+"env."+key+"="+toml(value))
 		}
+		if blocked := BlockedTools[s.Name]; len(blocked) > 0 {
+			overrides = append(overrides, "-c", prefix+"disabled_tools="+toml(blocked))
+		}
 	}
 
-	args := append(program, "exec", "--json", "--skip-git-repo-check", "-C", req.RepoDir, "-s", "read-only")
+	args := append(program, "exec", "--json", "--skip-git-repo-check", "--ignore-user-config", "--ignore-rules",
+		"-C", req.WorkDir, "-s", "read-only")
 	if req.Model != "" {
 		args = append(args, "--model", req.Model)
 	}
 	args = append(args, overrides...)
-	message := firstMessage(req)
-	if req.SessionID != "" {
-		args = append(args, "resume", req.SessionID, message)
+	// The message goes in on stdin ("-"): Codex reads one that starts with "-" as a flag even
+	// after "--".
+	if req.SessionID != "" && !strings.HasPrefix(req.SessionID, "-") {
+		args = append(args, "resume", req.SessionID, "-")
 	} else {
-		args = append(args, message)
+		args = append(args, "-")
 	}
-	return Invocation{Args: args, Dir: req.RepoDir}, nil
+	return Invocation{Args: args, Dir: req.WorkDir, Stdin: firstMessage(req)}, nil
+}
+
+// codexOffFeatures are the Codex features that reach the web or accounts other than the
+// user's: browsing and computer use, connected apps and plugins, and installing things.
+var codexOffFeatures = []string{
+	"apps", "browser_use", "browser_use_external", "browser_use_full_cdp_access", "computer_use",
+	"in_app_browser", "in_app_local_automation", "plugins", "remote_plugin", "plugin_sharing",
+	"skill_mcp_dependency_install", "skill_search", "tool_suggest", "workspace_dependencies",
+	"image_generation", "hooks",
 }
 
 // firstMessage puts the instructions in front of a conversation's first message, for CLIs

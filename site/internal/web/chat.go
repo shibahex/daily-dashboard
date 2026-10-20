@@ -260,8 +260,7 @@ func (ui *UI) sendMessage(w http.ResponseWriter, r *http.Request) {
 		SessionID:    conversation.SessionID,
 		Model:        conversation.Model(),
 		Servers:      servers,
-		Instructions: assistant.Instructions(time.Now(), ui.Paths.Root, servers),
-		RepoDir:      ui.Paths.Root,
+		Instructions: assistant.Instructions(time.Now(), assistant.Context(ui.Paths.Root), servers),
 		WorkDir:      filepath.Join(ui.Paths.Data, "assistant"),
 	}
 	go ui.answer(provider, conversation, request)
@@ -300,7 +299,9 @@ func (ui *UI) enabledServers(conversation *assistant.Conversation) []assistant.N
 		case "myfitnesspal":
 			servers = append(servers, assistant.NamedServer{Name: name, Server: ui.MyFitnessPal.Client().MCPServer()})
 		case "anki":
-			servers = append(servers, assistant.NamedServer{Name: name, Server: ui.Anki.MCPServer()})
+			if server, ok := ui.Anki.MCPServer(); ok {
+				servers = append(servers, assistant.NamedServer{Name: name, Server: server})
+			}
 		}
 	}
 	return servers

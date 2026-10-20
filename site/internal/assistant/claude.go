@@ -7,8 +7,9 @@ import (
 	"path/filepath"
 )
 
-// claude runs Claude Code: `claude -p` with streaming JSON, only the given MCP servers, and
-// read-only file tools.
+// claude runs Claude Code: `claude -p` with streaming JSON and nothing but the given MCP
+// servers. --restricted ignores the user's own settings files, --tools "" removes every
+// built-in tool (files, shell, web), and dontAsk refuses any tool that isn't allowed here.
 type claude struct {
 	cli
 	catalog *ModelCatalog
@@ -32,13 +33,13 @@ func (c *claude) Invocation(req Request) (Invocation, error) {
 	if program == nil {
 		return Invocation{}, errors.New("Claude Code isn't installed")
 	}
-	if err := os.MkdirAll(req.WorkDir, 0o755); err != nil {
+	if err := os.MkdirAll(req.WorkDir, 0o700); err != nil {
 		return Invocation{}, err
 	}
 
 	// --mcp-config file with just the turned-on servers (--strict-mcp-config ignores the user's own).
 	servers := map[string]any{}
-	allowed := []string{}
+	allowed, blocked := []string{}, []string{}
 	for _, s := range req.Servers {
 		server := map[string]any{"type": "stdio", "command": s.Server.Command, "args": s.Server.Args}
 		if len(s.Server.Env) > 0 {
@@ -46,29 +47,37 @@ func (c *claude) Invocation(req Request) (Invocation, error) {
 		}
 		servers[s.Name] = server
 		allowed = append(allowed, "mcp__"+s.Name)
+		for _, tool := range BlockedTools[s.Name] {
+			blocked = append(blocked, "mcp__"+s.Name+"__"+tool)
+		}
 	}
 	configPath := filepath.Join(req.WorkDir, "claude-mcp.json")
 	config, _ := json.Marshal(map[string]any{"mcpServers": servers})
-	if err := os.WriteFile(configPath, config, 0o644); err != nil {
+	if err := os.WriteFile(configPath, config, 0o600); err != nil {
 		return Invocation{}, err
 	}
 
 	args := append(program,
-		"-p", req.Message,
-		"--output-format", "stream-json", "--verbose", "--include-partial-messages",
-		"--strict-mcp-config", "--mcp-config", configPath,
-		"--tools", "Read", "Glob", "Grep",
+		"-p", "--output-format", "stream-json", "--verbose", "--include-partial-messages",
+		"--restricted", "--strict-mcp-config", "--mcp-config", configPath,
+		"--tools", "", "--permission-mode", "dontAsk",
+		"--append-system-prompt", req.Instructions,
 	)
-	args = append(args, "--allowedTools")
-	args = append(args, allowed...)
-	args = append(args, "Read", "Glob", "Grep", "--append-system-prompt", req.Instructions)
+	if len(allowed) > 0 {
+		args = append(append(args, "--allowedTools"), allowed...)
+	}
+	if len(blocked) > 0 {
+		args = append(append(args, "--disallowedTools"), blocked...)
+	}
 	if req.Model != "" {
 		args = append(args, "--model", req.Model)
 	}
 	if req.SessionID != "" {
 		args = append(args, "--resume", req.SessionID)
 	}
-	return Invocation{Args: args, Dir: req.RepoDir}, nil
+	// After --, a message that starts with "-" is still the message, not a flag.
+	args = append(args, "--", req.Message)
+	return Invocation{Args: args, Dir: req.WorkDir}, nil
 }
 
 // claudeLine is the part of Claude Code's stream-json events the dashboard reads.

@@ -32,7 +32,7 @@ func Write(path string, v any) error {
 		return err
 	}
 	tmp := strings.TrimSuffix(path, filepath.Ext(path)) + ".tmp"
-	if err := os.WriteFile(tmp, bytes.TrimRight(buf.Bytes(), "\n"), 0o644); err != nil {
+	if err := os.WriteFile(tmp, bytes.TrimRight(buf.Bytes(), "\n"), 0o600); err != nil {
 		return err
 	}
 	return os.Rename(tmp, path)

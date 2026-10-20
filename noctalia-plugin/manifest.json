@@ -19,6 +19,7 @@
   "metadata": {
     "defaultSettings": {
       "url": "http://localhost:1628",
+      "token": "",
       "siteDir": "",
       "autoStart": true,
       "openCommand": "chromium --app={url}",

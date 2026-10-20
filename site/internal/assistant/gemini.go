@@ -29,38 +29,54 @@ func (g *gemini) Invocation(req Request) (Invocation, error) {
 	if program == nil {
 		return Invocation{}, errors.New("Gemini CLI isn't installed")
 	}
-	if err := os.MkdirAll(req.WorkDir, 0o755); err != nil {
+	if err := os.MkdirAll(req.WorkDir, 0o700); err != nil {
 		return Invocation{}, err
 	}
 
 	// A settings file the dashboard owns, given as Gemini's *system* settings so ~/.gemini is
-	// left alone. Folder trust is off so the MCP servers and auto-approval apply, and only
-	// read-only built-in tools are enabled.
+	// left alone. Folder trust is off so the MCP servers and auto-approval apply. An empty core
+	// list turns off every built-in tool (files, shell, web); the exclude list says the same
+	// again in case a user setting adds core tools back.
 	servers := map[string]any{}
 	names := []string{}
 	for _, s := range req.Servers {
-		servers[s.Name] = s.Server
+		server := map[string]any{"command": s.Server.Command, "args": s.Server.Args}
+		if len(s.Server.Env) > 0 {
+			server["env"] = s.Server.Env
+		}
+		if blocked := BlockedTools[s.Name]; len(blocked) > 0 {
+			server["excludeTools"] = blocked
+		}
+		servers[s.Name] = server
 		names = append(names, s.Name)
 	}
 	settingsPath := filepath.Join(req.WorkDir, "gemini-settings.json")
 	settings, _ := json.Marshal(map[string]any{
-		"security":   map[string]any{"folderTrust": map[string]any{"enabled": false}},
-		"tools":      map[string]any{"core": []string{"read_file", "read_many_files", "glob", "search_file_content", "list_directory"}},
+		"security": map[string]any{"folderTrust": map[string]any{"enabled": false}},
+		"tools": map[string]any{
+			"core": []string{},
+			"exclude": []string{"run_shell_command", "web_fetch", "google_web_search", "read_file", "read_many_files",
+				"write_file", "replace", "glob", "search_file_content", "grep_search", "list_directory", "save_memory"},
+		},
 		"mcpServers": servers,
 	})
-	if err := os.WriteFile(settingsPath, settings, 0o644); err != nil {
+	if err := os.WriteFile(settingsPath, settings, 0o600); err != nil {
 		return Invocation{}, err
 	}
 
-	args := append(program, "-p", firstMessage(req), "-o", "stream-json", "--approval-mode", "yolo")
+	// --prompt=… keeps a message that starts with "-" from being read as a flag; -e none
+	// turns off the user's extensions, which can bring their own tools and hooks.
+	args := append(program, "--prompt="+firstMessage(req), "-o", "stream-json", "--approval-mode", "yolo", "-e", "none")
 	if req.Model != "" {
 		args = append(args, "--model", req.Model)
 	}
 	if len(names) > 0 {
 		args = append(args, "--allowed-mcp-server-names")
 		args = append(args, names...)
+	} else {
+		// With no names Gemini would start every MCP server in the user's own settings.
+		args = append(args, "--allowed-mcp-server-names", "none")
 	}
-	args = append(args, "--include-directories", req.RepoDir)
 	if req.SessionID != "" {
 		// Gemini resumes by "latest" or index, not id; this folder only holds dashboard chats.
 		args = append(args, "--resume", "latest")

@@ -12,15 +12,19 @@
 <link rel="stylesheet" href="/static/css/docs.css">
 <link rel="stylesheet" href="/static/css/anki.css">
 <link rel="stylesheet" href="/static/css/chat.css">
+<link rel="stylesheet" href="/static/css/account.css">
 <link rel="stylesheet" href="/static/css/components.css">
-<script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.4/dist/htmx.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/htmx-ext-sse@2.2.2/sse.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.4/dist/htmx.min.js" integrity="sha384-HGfztofotfshcF7+8n44JQL2oJmowVChPTg48S+jvZoztPfvwD79OC/LTtG6dMp+" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/htmx-ext-sse@2.2.2/sse.js" integrity="sha384-fw+eTlCc7suMV/1w/7fr2/PmwElUIt5i82bi+qTiLXvjRXZ2/FkiTNA/w0MhXnGI" crossorigin="anonymous"></script>
 <script src="/static/js/app.js" defer></script>
 </head>
 <body hx-boost="true">
 <header>
   <div class="left"><h1>Daily Dashboard</h1><span class="date">{{longDay .Today}}</span></div>
-  <span hx-get="/streak" hx-trigger="load, checklist-changed from:body, plan-changed from:body" hx-swap="innerHTML"></span>
+  <div class="right">
+    <span hx-get="/streak" hx-trigger="load, checklist-changed from:body, plan-changed from:body" hx-swap="innerHTML"></span>
+    <a class="account-link{{if eq .Tab "account"}} on{{end}}" href="/account">Account</a>
+  </div>
 </header>
 <nav>
   {{range $tab := tabs}}<a href="{{$tab.URL}}"{{if eq $tab.ID $.Tab}} class="on"{{end}}>{{$tab.Label}}</a>{{end}}

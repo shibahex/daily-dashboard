@@ -17,6 +17,7 @@ import (
 	"dashboard/internal/anki"
 	"dashboard/internal/api"
 	"dashboard/internal/assistant"
+	"dashboard/internal/auth"
 	"dashboard/internal/config"
 	"dashboard/internal/httpx"
 	"dashboard/internal/myfitnesspal"
@@ -34,7 +35,12 @@ func main() {
 	siteDir := findSiteDir()
 	config.LoadEnvFile(filepath.Join(siteDir, ".env"))
 	paths := config.NewPaths(siteDir)
+	paths.MakePrivate()
 
+	account, err := auth.New(paths.Data)
+	if err != nil {
+		log.Fatal(err)
+	}
 	files := store.New(paths)
 	files.SeedDocs()
 	mfp := myfitnesspal.NewSyncer(
@@ -42,6 +48,11 @@ func main() {
 		files,
 		paths.DataFile("mfp.json"),
 	)
+	ankiClient := anki.NewClientFromEnv()
+	ankiClient.Gateway, err = anki.StartGateway(ankiClient)
+	if err != nil {
+		log.Fatalf("starting the Anki gateway: %v", err)
+	}
 	providers := assistant.NewProviders(assistant.NewModelCatalog(filepath.Join(paths.Data, "assistant")))
 	timeLog := timewarrior.NewClient()
 	taskService := tasks.NewService(taskwarrior.NewClient(), timeLog)
@@ -50,12 +61,13 @@ func main() {
 	jsonAPI := &api.API{Store: files, Tasks: taskService, Time: timeLog}
 	jsonAPI.Routes(mux)
 	pages := &web.UI{
+		Auth:          account,
 		Paths:         paths,
 		Store:         files,
 		Tasks:         taskService,
 		Time:          timeLog,
 		MyFitnessPal:  mfp,
-		Anki:          anki.NewClientFromEnv(),
+		Anki:          ankiClient,
 		Providers:     providers,
 		Conversations: assistant.NewConversations(paths.DataFile("chat.json"), providers),
 		Chat:          assistant.NewRunner(),
@@ -65,7 +77,14 @@ func main() {
 	listener := listen(port)
 	go mfp.RunForever()
 	fmt.Printf("Health dashboard: http://localhost:%d  (%s)\n", port, time.Now().Format("2006-01-02"))
-	log.Fatal(http.Serve(listener, httpx.OnlyLocalHost(port, mux)))
+	if code := account.SetupCode(); code != "" {
+		fmt.Printf("Create your account: http://localhost:%d/setup?code=%s\n", port, code)
+	}
+	server := &http.Server{
+		Handler:           httpx.OnlyLocalHost(port, httpx.Secure(account.Guard(mux))),
+		ReadHeaderTimeout: 10 * time.Second,
+	}
+	log.Fatal(server.Serve(listener))
 }
 
 func portFromArgs() int {

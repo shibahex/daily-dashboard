@@ -20,6 +20,8 @@ cd daily-dashboard/site
 nix run            # opens on http://localhost:1628
 ```
 
+The terminal prints a link to create your account: a username and a password of at least 12 characters. The link includes a one-time setup code, so nobody else on your computer can create the account first. If you missed it, the code is also in `site/data/setup-code`.
+
 On first run it creates your private files, which git ignores:
 
 - `docs/*.md`: starter notes copied from `docs/templates/`
@@ -39,6 +41,8 @@ On first run it creates your private files, which git ignores:
 6. **Local settings** (optional): copy `site/.env.example` to `site/.env` for things like a local MCP checkout or API keys.
 
 ## Keeping your data private
+
+The dashboard only answers on your own computer (127.0.0.1), and every page needs you to be logged in, so other programs and other users on the computer can't read or change your data through it. Your files are readable only by you. See [Account and security](dashboard.md#account-and-security).
 
 Everything personal is git-ignored, so you can pull updates or share your fork without publishing anything about yourself: `docs/*.md` (except the guides), `site/plan.json`, `site/data/` (history, weigh-ins, MyFitnessPal cache, chats) and `site/.env`. Only the app, the guides and the templates are tracked.
 

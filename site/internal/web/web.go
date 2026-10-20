@@ -8,6 +8,7 @@ import (
 
 	"dashboard/internal/anki"
 	"dashboard/internal/assistant"
+	"dashboard/internal/auth"
 	"dashboard/internal/config"
 	"dashboard/internal/myfitnesspal"
 	"dashboard/internal/store"
@@ -17,6 +18,7 @@ import (
 
 // UI holds what the pages read and change.
 type UI struct {
+	Auth          *auth.Auth
 	Paths         config.Paths
 	Store         *store.Store
 	Tasks         *tasks.Service
@@ -40,6 +42,18 @@ func (ui *UI) Routes(mux *http.ServeMux) {
 	change := func(pattern string, handler http.HandlerFunc) { mux.HandleFunc("POST "+pattern, fromHTMX(handler)) }
 
 	mux.Handle("GET /static/", http.StripPrefix("/static/", staticFiles(ui.Paths.Web)))
+
+	// Account: setup and login are plain forms (signed out, outside the page frame).
+	page("/setup", ui.setupPage)
+	mux.HandleFunc("POST /setup", ui.createAccount)
+	page("/login", ui.loginPage)
+	mux.HandleFunc("POST /login", ui.login)
+	page("/account", ui.accountPage)
+	change("/account/logout", ui.logout)
+	change("/account/logout-others", ui.logoutOthers)
+	change("/account/password", ui.changePassword)
+	change("/account/token", ui.makeToken)
+	change("/account/token/remove", ui.removeToken)
 
 	// Today
 	page("/{$}", ui.todayPage)

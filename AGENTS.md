@@ -3,7 +3,7 @@
 ## Layout
 
 - `site/`: the dashboard: a Go server (`cmd/dashboard`, `internal/…`) and a Nix flake. See `docs/dashboard.md`.
-  - `internal/` has one package per area: `store` (plan, checklist, weigh-ins, docs), `taskwarrior`, `timewarrior`, `tasks` (task changes that touch both), `myfitnesspal`, `anki`, `assistant` (the MCPs tab's AI agents), `web` (the pages) and `api` (the small JSON API the Noctalia plugin uses). Dependencies are passed in through `web.UI` and `api.API`, not globals. Errors that should reach the page are `problem` errors, which carry their HTTP status.
+  - `internal/` has one package per area: `store` (plan, checklist, weigh-ins, docs), `taskwarrior`, `timewarrior`, `tasks` (task changes that touch both), `myfitnesspal`, `anki`, `assistant` (the MCPs tab's AI agents), `auth` (the account, sessions and the plugin's token; `Guard` wraps every route), `web` (the pages) and `api` (the small JSON API the Noctalia plugin uses). Dependencies are passed in through `web.UI` and `api.API`, not globals. Errors that should reach the page are `problem` errors, which carry their HTTP status.
   - `mfp_fetch.py` stays Python: it runs inside the MyFitnessPal MCP's Python package.
 - `site/web/`: what the pages are made of. The server renders them with `html/template` and they update with [HTMX](https://htmx.org): every card, list and panel has its own URL, and a change answers with the new HTML plus `HX-Trigger` events (`tasks-changed`, `toast`…) that other cards listen for to reload themselves.
   - `templates/`: one file per tab (`today.html`, `tasks.html`…) plus `page.html` (the frame and shared pieces). They're re-read when they change, so editing one only needs a reload.

@@ -35,6 +35,19 @@ func (p Paths) Plan() string                { return filepath.Join(p.Site, "plan
 func (p Paths) PlanExample() string         { return filepath.Join(p.Site, "plan.example.json") }
 func (p Paths) DataFile(name string) string { return filepath.Join(p.Data, name) }
 
+// MakePrivate makes the personal files readable by their owner only: files made before the
+// dashboard had an account were readable by every user on the computer.
+func (p Paths) MakePrivate() {
+	os.MkdirAll(p.Data, 0o700)
+	os.Chmod(p.Data, 0o700)
+	notes, _ := filepath.Glob(filepath.Join(p.Docs, "*.md"))
+	for _, file := range append(notes, p.Plan(), filepath.Join(p.Site, ".env")) {
+		if info, err := os.Stat(file); err == nil && info.Mode().Perm()&0o077 != 0 {
+			os.Chmod(file, 0o600)
+		}
+	}
+}
+
 // LoadEnvFile reads KEY=value lines (see site/.env.example) into the environment.
 // Variables that are already set win, and a leading ~ in a value means the home folder.
 func LoadEnvFile(path string) {

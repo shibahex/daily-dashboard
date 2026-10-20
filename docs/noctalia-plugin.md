@@ -22,4 +22,6 @@ The plugin follows the symlink to find `site/`, so the repo can live anywhere. T
 
 Restart Noctalia, then enable **Health Dashboard** under Settings → Plugins. It's added to the right side of the bar.
 
+Then give it a token. The dashboard's API refuses requests without one. On the dashboard, open **Account** (top right), press **Make a token**, and paste the token into the plugin's settings under **API token**. Making a new token stops the old one from working.
+
 IPC (for keybinds): `noctalia-shell ipc call plugin:health-dashboard toggle` (also `open`, `refresh`, `restart`, `stop` to stop the timer)

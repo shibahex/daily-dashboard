@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	Package = "mfp-mcp[autorefresh]"
+	Package = "mfp-mcp[autorefresh]==0.4.1" // pinned, like the Anki MCP: a new release runs only after review
 	RepoURL = "https://github.com/Mason-Levyy/myfitnesspal-mcp"
 )
 

@@ -32,6 +32,9 @@ type Client struct {
 	URL    string
 	APIKey string // only if one is set in AnkiConnect's config
 	http   *http.Client
+
+	// Gateway is what the agents' Anki MCP talks to instead of AnkiConnect (see Gateway).
+	Gateway *Gateway
 }
 
 // NewClientFromEnv reads ANKI_CONNECT_URL and ANKI_CONNECT_API_KEY.
@@ -81,22 +84,22 @@ func (c Client) callInto(action string, params any, v any) error {
 	return json.Unmarshal(result, v)
 }
 
-// MCPServer is how an AI agent starts the Anki MCP server. It needs Node 22.12+, so it runs
-// on Nix's Node 22 when Nix is there.
-func (c Client) MCPServer() mcp.Server {
+// MCPServer is how an AI agent starts the Anki MCP server. It reaches Anki only through the
+// Gateway, so there's none (false) without one. It needs Node 22.12+, so it runs on Nix's
+// Node 22 when Nix is there.
+func (c Client) MCPServer() (mcp.Server, bool) {
+	if c.Gateway == nil {
+		return mcp.Server{}, false
+	}
 	npx := []string{"npx"}
 	if _, err := exec.LookPath("nix"); err == nil {
 		npx = []string{"nix", "shell", "nixpkgs#nodejs_22", "--command", "npx"}
 	}
-	server := mcp.Server{
+	return mcp.Server{
 		Command: npx[0],
 		Args:    append(npx[1:], "-y", MCPPackage, "--stdio"),
-		Env:     map[string]string{"ANKI_CONNECT_URL": c.URL},
-	}
-	if c.APIKey != "" {
-		server.Env["ANKI_CONNECT_API_KEY"] = c.APIKey
-	}
-	return server
+		Env:     map[string]string{"ANKI_CONNECT_URL": c.Gateway.URL, "ANKI_CONNECT_API_KEY": c.Gateway.Key},
+	}, true
 }
 
 // ---------- the Anki app ----------

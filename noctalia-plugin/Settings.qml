@@ -13,6 +13,7 @@ ColumnLayout {
   function get(k) { return pluginApi?.pluginSettings?.[k] ?? defaults[k]; }
 
   property string editUrl: get("url")
+  property string editToken: get("token")
   property string editSiteDir: get("siteDir")
   property string editOpenCommand: get("openCommand")
   property bool editAutoStart: get("autoStart")
@@ -22,6 +23,7 @@ ColumnLayout {
   function saveSettings() {
     if (!pluginApi) return;
     pluginApi.pluginSettings.url = editUrl.trim() || defaults.url;
+    pluginApi.pluginSettings.token = editToken.trim();
     pluginApi.pluginSettings.siteDir = editSiteDir.trim();
     pluginApi.pluginSettings.openCommand = editOpenCommand.trim() || defaults.openCommand;
     pluginApi.pluginSettings.autoStart = editAutoStart;
@@ -37,6 +39,14 @@ ColumnLayout {
     text: root.editUrl
     defaultValue: root.defaults.url
     onTextChanged: root.editUrl = text
+  }
+  NTextInput {
+    Layout.fillWidth: true
+    label: "API token"
+    description: "Lets the plugin use the dashboard. Make one on the dashboard's Account page and paste it here."
+    text: root.editToken
+    placeholderText: "dd_…"
+    onTextChanged: root.editToken = text
   }
   NTextInput {
     Layout.fillWidth: true

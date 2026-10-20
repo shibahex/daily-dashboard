@@ -1,5 +1,6 @@
 // Package assistant runs an AI coding agent (Claude Code, Codex or Gemini CLI) headless for the
-// MCPs tab, with only the MCP servers turned on there and read-only access to the repo.
+// MCPs tab, with only the MCP servers turned on there and nothing that reaches the web or other
+// accounts (Codex keeps its shell, sandboxed read-only and offline).
 package assistant
 
 import (
@@ -28,9 +29,14 @@ type Request struct {
 	SessionID    string // continue this conversation; "" starts a new one
 	Model        string // "" = the CLI's default
 	Servers      []NamedServer
-	Instructions string // the system prompt (see Instructions)
-	RepoDir      string // what the agent may read
-	WorkDir      string // where the dashboard writes config files for the CLIs
+	Instructions string // the system prompt, with the user's notes and data (see Instructions)
+	WorkDir      string // where the dashboard writes config files for the CLIs; the CLIs run here
+}
+
+// BlockedTools are MCP tools no agent gets, by server. The Anki gateway refuses what they do
+// anyway; blocking them here too means the agent never sees them.
+var BlockedTools = map[string][]string{
+	"anki": {"storeMediaFile"},
 }
 
 // NamedServer is an MCP server under the name the agent will know it by.
@@ -41,9 +47,10 @@ type NamedServer struct {
 
 // Invocation is the command to run for a Request.
 type Invocation struct {
-	Args []string // Args[0] is the program
-	Dir  string
-	Env  []string // nil = the server's own environment
+	Args  []string // Args[0] is the program
+	Dir   string
+	Env   []string // nil = the server's own environment
+	Stdin string   // sent on standard input ("" = none)
 }
 
 // Model is one entry in the model menu.
