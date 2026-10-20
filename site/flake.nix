@@ -48,7 +48,9 @@
           nix-store --add-root "$site/.timew-hook" --realise ${timewHook} > /dev/null
           ln -sfn "$site/.timew-hook" "$hooks/on-modify.timewarrior"
 
-          exec ${server}/bin/dashboard "''${1:-1628}"
+          # A port (default 1628), or `reset-password <username>`.
+          if [ "$#" -eq 0 ]; then set -- 1628; fi
+          exec ${server}/bin/dashboard "$@"
         '';
       };
     in

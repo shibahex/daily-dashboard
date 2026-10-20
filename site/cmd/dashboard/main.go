@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"dashboard/internal/anki"
@@ -31,6 +32,10 @@ import (
 const defaultPort = 1628
 
 func main() {
+	if len(os.Args) == 3 && os.Args[1] == "reset-password" {
+		resetPassword(os.Args[2])
+		return
+	}
 	port := portFromArgs()
 	siteDir := findSiteDir()
 	config.LoadEnvFile(filepath.Join(siteDir, ".env"))
@@ -84,6 +89,34 @@ func main() {
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	log.Fatal(server.Serve(listener))
+}
+
+// resetPassword prints a one-time link to set a new password for username: for whoever runs
+// the server, when the only admin is locked out. Run it while the dashboard is stopped (a
+// running one would overwrite the link when it next saves its accounts).
+func resetPassword(username string) {
+	siteDir := findSiteDir()
+	config.LoadEnvFile(filepath.Join(siteDir, ".env"))
+	network, err := config.NetworkFromEnv(defaultPort)
+	if err != nil {
+		log.Fatal(err)
+	}
+	account, err := auth.New(config.NewPaths(siteDir).ServerData)
+	if err != nil {
+		log.Fatal(err)
+	}
+	for _, user := range account.Users() {
+		if strings.EqualFold(user.Username, username) {
+			code, err := account.ResetPassword(user.ID)
+			if err != nil {
+				log.Fatal(err)
+			}
+			fmt.Printf("Start the dashboard, then open this link (once, within 7 days) to set a new password for %s:\n%s/invite?code=%s\n",
+				user.Username, network.BaseURL(), code)
+			return
+		}
+	}
+	log.Fatalf("No account called %q", username)
 }
 
 func portFromArgs() int {
