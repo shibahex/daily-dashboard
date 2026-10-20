@@ -1,13 +1,15 @@
 package assistant
 
 import (
+	"dashboard/internal/auth"
+
 	"sync"
 
 	"dashboard/internal/jsonfile"
 )
 
 // The MCP servers the tab knows, in order. Both are on unless the user turned one off.
-var KnownMCPs = []string{"myfitnesspal", "anki"}
+var KnownMCPs = auth.KnownMCPs
 
 // Conversation is the chat kept in data/chat.json until "New chat".
 type Conversation struct {

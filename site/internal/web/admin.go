@@ -1,0 +1,191 @@
+package web
+
+import (
+	"fmt"
+	"net/http"
+	"time"
+
+	"dashboard/internal/assistant"
+	"dashboard/internal/auth"
+	"dashboard/internal/problem"
+)
+
+// The Admin page: invite people, reset their passwords, turn accounts off, make admins, and
+// choose what each person's AI agent may use. Only admins see it (auth.RequireAdmin); admins
+// see accounts and settings, never anyone's food, notes, tasks or chats.
+
+type adminView struct {
+	Me        string // the signed-in admin's id
+	Users     []auth.User
+	Invites   []auth.PendingInvite
+	Default   auth.Policy
+	Providers []choice
+	MCPs      []choice
+	Link      string // an invite or reset link, shown once
+	LinkFor   string
+	Error     string
+	Saved     string
+}
+
+func (ui *UI) adminView(r *http.Request) adminView {
+	view := adminView{Me: ui.user(r).ID, Users: ui.Auth.Users(), Invites: ui.Auth.Invites(), Default: ui.Auth.DefaultPolicy()}
+	for _, id := range auth.KnownProviders {
+		provider, _ := ui.Providers.Get(id)
+		view.Providers = append(view.Providers, choice{ID: id, Label: provider.Label()})
+	}
+	for _, id := range auth.KnownMCPs {
+		view.MCPs = append(view.MCPs, choice{ID: id, Label: mcpLabels[id]})
+	}
+	return view
+}
+
+var mcpLabels = map[string]string{"myfitnesspal": "MyFitnessPal", "anki": "Anki"}
+
+func (ui *UI) adminPage(w http.ResponseWriter, r *http.Request) {
+	ui.renderPage(r, w, "admin", "Admin", "admin", ui.adminView(r))
+}
+
+// renderAdmin answers an admin change: the card again, with what happened.
+func (ui *UI) renderAdmin(w http.ResponseWriter, r *http.Request, saved string, err error, edit func(*adminView)) {
+	view := ui.adminView(r)
+	if err != nil {
+		view.Error = err.Error()
+	} else {
+		view.Saved = saved
+		if saved != "" {
+			announce(w, say(saved))
+		}
+		if edit != nil {
+			edit(&view)
+		}
+	}
+	ui.render(w, "admin-card", view)
+}
+
+func (ui *UI) inviteLink(code string) string { return ui.BaseURL + "/invite?code=" + code }
+
+func (ui *UI) invite(w http.ResponseWriter, r *http.Request) {
+	username := formText(r, "username")
+	code, err := ui.Auth.Invite(username, auth.Role(r.FormValue("role")))
+	ui.renderAdmin(w, r, "Invite made for "+username, err, func(v *adminView) {
+		v.Link, v.LinkFor = ui.inviteLink(code), username
+	})
+}
+
+func (ui *UI) cancelInvite(w http.ResponseWriter, r *http.Request) {
+	ui.renderAdmin(w, r, "Invite cancelled", ui.Auth.CancelInvite(r.FormValue("username")), nil)
+}
+
+// adminTarget is the account an admin change is about.
+func (ui *UI) adminTarget(r *http.Request) (auth.User, error) {
+	user, ok := ui.Auth.User(r.PathValue("id"))
+	if !ok {
+		return auth.User{}, problem.NotFoundf("No such user")
+	}
+	return user, nil
+}
+
+func (ui *UI) resetUserPassword(w http.ResponseWriter, r *http.Request) {
+	target, err := ui.adminTarget(r)
+	if err != nil {
+		ui.renderAdmin(w, r, "", err, nil)
+		return
+	}
+	code, err := ui.Auth.ResetPassword(target.ID)
+	ui.renderAdmin(w, r, "Reset link made for "+target.Username, err, func(v *adminView) {
+		v.Link, v.LinkFor = ui.inviteLink(code), target.Username
+	})
+}
+
+func (ui *UI) setUserDisabled(disabled bool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		target, err := ui.adminTarget(r)
+		if err == nil {
+			err = ui.Auth.SetDisabled(ui.user(r).ID, target.ID, disabled)
+		}
+		saved := target.Username + " turned back on"
+		if disabled {
+			saved = target.Username + " turned off and logged out"
+		}
+		ui.renderAdmin(w, r, saved, err, nil)
+	}
+}
+
+func (ui *UI) setUserRole(w http.ResponseWriter, r *http.Request) {
+	target, err := ui.adminTarget(r)
+	role := auth.Role(r.FormValue("role"))
+	if err == nil {
+		err = ui.Auth.SetRole(ui.user(r).ID, target.ID, role)
+	}
+	saved := target.Username + " is now a regular user"
+	if role == auth.Admin {
+		saved = target.Username + " is now an admin"
+	}
+	ui.renderAdmin(w, r, saved, err, nil)
+}
+
+// deleteUser removes the account and everything in its folder.
+func (ui *UI) deleteUser(w http.ResponseWriter, r *http.Request) {
+	target, err := ui.adminTarget(r)
+	if err == nil && r.FormValue("confirm") != target.Username {
+		err = problem.Invalidf("Type the username to confirm")
+	}
+	if err == nil {
+		err = ui.Auth.DeleteUser(ui.user(r).ID, target.ID)
+	}
+	if err == nil {
+		err = ui.Workspaces.Remove(target.ID)
+	}
+	ui.renderAdmin(w, r, target.Username+" and all their data deleted", err, nil)
+}
+
+// policyFrom reads the agent policy checkboxes.
+func policyFrom(r *http.Request) auth.Policy {
+	r.ParseForm()
+	return auth.Policy{
+		Providers: r.Form["providers"], MCPs: r.Form["mcps"],
+		Web: r.FormValue("web") == "on", ReadFiles: r.FormValue("read_files") == "on", EditFiles: r.FormValue("edit_files") == "on",
+	}.Clean()
+}
+
+func (ui *UI) setUserPolicy(w http.ResponseWriter, r *http.Request) {
+	target, err := ui.adminTarget(r)
+	if err == nil {
+		err = ui.Auth.SetPolicy(target.ID, policyFrom(r))
+	}
+	ui.renderAdmin(w, r, "Saved what "+target.Username+"'s AI can use", err, nil)
+}
+
+func (ui *UI) setDefaultPolicy(w http.ResponseWriter, r *http.Request) {
+	ui.renderAdmin(w, r, "Saved the settings for new users", ui.Auth.SetDefaultPolicy(policyFrom(r)), nil)
+}
+
+// ---------- the policy in the MCPs tab ----------
+
+// allowedProvider is the provider the user's chat uses: the chosen one if their policy allows
+// it, else the first one it does.
+func allowedProvider(policy auth.Policy, providers assistant.Providers, chosen string) (assistant.Provider, bool) {
+	if policy.AllowsProvider(chosen) {
+		if provider, ok := providers.Get(chosen); ok {
+			return provider, true
+		}
+	}
+	for _, id := range policy.Providers {
+		if provider, ok := providers.Get(id); ok {
+			return provider, true
+		}
+	}
+	return nil, false
+}
+
+func expiresIn(t time.Time) string {
+	days := int(time.Until(t).Hours() / 24)
+	switch {
+	case days >= 2:
+		return fmt.Sprintf("expires in %d days", days)
+	case time.Until(t) > time.Hour:
+		hours := int(time.Until(t).Hours())
+		return fmt.Sprintf("expires in %d %s", hours, plural(hours, "hour", "hours"))
+	}
+	return "expires soon"
+}

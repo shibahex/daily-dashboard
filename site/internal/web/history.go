@@ -32,7 +32,7 @@ func (ui *UI) historyPage(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
-	ui.renderPage(w, "history", "History", "history", historyPageView{Activity: activity, Skips: skips, TimeLog: ui.timeLogView(r, 0)})
+	ui.renderPage(r, w, "history", "History", "history", historyPageView{Activity: activity, Skips: skips, TimeLog: ui.timeLogView(r, 0)})
 }
 
 // ---------- what happened ----------

@@ -53,7 +53,7 @@ func (ui *UI) docsPage(w http.ResponseWriter, r *http.Request) {
 	if content, found := ui.ws(r).Store.Doc(open); found {
 		view.Content = linkDocs(renderMarkdown(string(content)))
 	}
-	ui.renderPage(w, "docs", "Docs", "docs", view)
+	ui.renderPage(r, w, "docs", "Docs", "docs", view)
 }
 
 // docRank puts the usual notes first (in order), then other notes, then the guides.

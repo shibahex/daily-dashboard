@@ -18,6 +18,7 @@ type UI struct {
 	Paths      config.Paths // the server's: templates and static files
 	Workspaces *workspace.Manager
 	Providers  assistant.Providers
+	BaseURL    string // the address people use, for invite links
 
 	templates *templateSet
 }
@@ -53,6 +54,19 @@ func (ui *UI) Routes(mux *http.ServeMux) {
 	change("/account/anki", ui.connectAnki)
 	change("/account/anki/remove", ui.disconnectAnki)
 	change("/account/keys", ui.saveAPIKey)
+
+	// Admin: accounts and what each person's AI may use. Admins only.
+	admin := func(pattern string, handler http.HandlerFunc) { change(pattern, auth.RequireAdmin(handler)) }
+	page("/admin", auth.RequireAdmin(ui.adminPage))
+	admin("/admin/invite", ui.invite)
+	admin("/admin/invites/cancel", ui.cancelInvite)
+	admin("/admin/default-policy", ui.setDefaultPolicy)
+	admin("/admin/users/{id}/reset", ui.resetUserPassword)
+	admin("/admin/users/{id}/disable", ui.setUserDisabled(true))
+	admin("/admin/users/{id}/enable", ui.setUserDisabled(false))
+	admin("/admin/users/{id}/role", ui.setUserRole)
+	admin("/admin/users/{id}/delete", ui.deleteUser)
+	admin("/admin/users/{id}/policy", ui.setUserPolicy)
 
 	// Today
 	page("/{$}", ui.todayPage)

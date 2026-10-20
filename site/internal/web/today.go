@@ -63,7 +63,7 @@ func (ui *UI) todayPage(w http.ResponseWriter, r *http.Request) {
 			view.Columns[column] = append(view.Columns[column], placedCard{ID: card.ID, PhoneOrder: card.PhoneOrder, HTML: html})
 		}
 	}
-	ui.renderPage(w, "today", "Today", "today", view)
+	ui.renderPage(r, w, "today", "Today", "today", view)
 }
 
 // cardColumns is the saved layout, or the default one. Cards missing from a saved layout

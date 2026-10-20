@@ -11,6 +11,7 @@ import (
 
 	"dashboard/internal/anki"
 	"dashboard/internal/assistant"
+	"dashboard/internal/auth"
 	"dashboard/internal/myfitnesspal"
 	"dashboard/internal/problem"
 	"dashboard/internal/workspace"
@@ -58,6 +59,18 @@ type chatView struct {
 	StatusLink   string // a tab that fixes what's wrong
 	Ready        bool   // every turned-on MCP works
 	Blocked      bool   // MCPs are on, but none works: nothing to chat with
+	NoAI         bool   // the user's policy allows no AI at all
+}
+
+// allowedMCPs is the conversation's turned-on MCPs that the user's policy allows.
+func allowedMCPs(policy auth.Policy, conversation *assistant.Conversation) []string {
+	var allowed []string
+	for _, name := range conversation.EnabledMCPs() {
+		if policy.AllowsMCP(name) {
+			allowed = append(allowed, name)
+		}
+	}
+	return allowed
 }
 
 func (v chatView) MCPOn(id string) bool {
@@ -119,8 +132,13 @@ func (v chatView) ModelLabel(model string) string {
 
 func (ui *UI) chatView(r *http.Request, customModel bool) chatView {
 	conversation := ui.ws(r).Conversations.Load()
-	provider, _ := ui.Providers.Get(conversation.Provider)
+	policy := ui.user(r).Policy
+	provider, allowed := allowedProvider(policy, ui.Providers, conversation.Provider)
+	if !allowed {
+		provider = ui.Providers[0]
+	}
 	view := chatView{
+		NoAI:         !allowed,
 		Provider:     provider,
 		CustomModel:  customModel,
 		MyFitnessPal: ui.ws(r).MyFitnessPal.Client().Setup(),
@@ -128,6 +146,9 @@ func (ui *UI) chatView(r *http.Request, customModel bool) chatView {
 		Messages:     conversation.Messages,
 	}
 	for _, p := range ui.Providers {
+		if !policy.AllowsProvider(p.ID()) {
+			continue
+		}
 		view.Providers = append(view.Providers, providerChoice{ID: p.ID(), Label: p.Label(), Selected: p.ID() == provider.ID(),
 			Installed: p.Installed(), Available: p.Available()})
 	}
@@ -142,10 +163,14 @@ func (ui *UI) chatView(r *http.Request, customModel bool) chatView {
 		view.Models = append(view.Models, modelChoice{ID: chosen, Label: chosen, Selected: true})
 	}
 
-	enabled := conversation.EnabledMCPs()
-	view.MCPs = []mcpChoice{
+	enabled := allowedMCPs(policy, conversation)
+	for _, m := range []mcpChoice{
 		{ID: "myfitnesspal", Label: "MyFitnessPal", Enabled: slices.Contains(enabled, "myfitnesspal"), Ready: view.MyFitnessPal.SignedIn},
 		{ID: "anki", Label: "Anki", Enabled: slices.Contains(enabled, "anki"), Ready: view.Anki.Connected},
+	} {
+		if policy.AllowsMCP(m.ID) {
+			view.MCPs = append(view.MCPs, m)
+		}
 	}
 	view.Ready = true
 	anyReady, ankiOff := false, false
@@ -156,10 +181,12 @@ func (ui *UI) chatView(r *http.Request, customModel bool) chatView {
 			ankiOff = ankiOff || (m.ID == "anki" && !m.Ready)
 		}
 	}
-	view.Blocked = len(enabled) > 0 && !anyReady
+	view.Blocked = (len(enabled) > 0 && !anyReady) || view.NoAI
 	switch {
+	case view.NoAI:
+		view.Status = "Your admin hasn't turned on an AI for you"
 	case len(enabled) == 0:
-		view.Status = provider.Label() + " · docs only"
+		view.Status = provider.Label() + " · notes only"
 	case view.Ready:
 		view.Status = provider.Label() + " · ready"
 	case ankiOff:
@@ -176,7 +203,7 @@ func (ui *UI) chatView(r *http.Request, customModel bool) chatView {
 }
 
 func (ui *UI) chatPage(w http.ResponseWriter, r *http.Request) {
-	ui.renderPage(w, "mcps", "MCPs", "chat", ui.chatView(r, false))
+	ui.renderPage(r, w, "mcps", "MCPs", "chat", ui.chatView(r, false))
 }
 
 func (ui *UI) chatCard(w http.ResponseWriter, r *http.Request) {
@@ -192,7 +219,11 @@ func (ui *UI) sendMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	conversation := ui.ws(r).Conversations.Load()
-	provider, _ := ui.Providers.Get(conversation.Provider)
+	provider, allowed := allowedProvider(ui.user(r).Policy, ui.Providers, conversation.Provider)
+	if !allowed {
+		fail(w, problem.Forbiddenf("Your admin hasn't turned on an AI for you"))
+		return
+	}
 	if !provider.Available() {
 		fail(w, problem.Invalidf(provider.Label()+" isn't installed"))
 		return
@@ -272,7 +303,7 @@ func recordFailure(conversation *assistant.Conversation, question string, provid
 // enabledServers is how the agent starts each turned-on MCP server.
 func (ui *UI) enabledServers(r *http.Request, conversation *assistant.Conversation) []assistant.NamedServer {
 	var servers []assistant.NamedServer
-	for _, name := range conversation.EnabledMCPs() {
+	for _, name := range allowedMCPs(ui.user(r).Policy, conversation) {
 		switch name {
 		case "myfitnesspal":
 			servers = append(servers, assistant.NamedServer{Name: name, Server: ui.ws(r).MyFitnessPal.Client().MCPServer()})
@@ -351,6 +382,10 @@ func (ui *UI) chooseProvider(w http.ResponseWriter, r *http.Request) {
 		fail(w, problem.Invalidf("unknown AI"))
 		return
 	}
+	if !ui.user(r).Policy.AllowsProvider(provider.ID()) {
+		fail(w, problem.Forbiddenf("Your admin hasn't turned on "+provider.Label()+" for you"))
+		return
+	}
 	if !provider.Installed() {
 		announce(w, say(provider.Label()+" downloads through Nix on first use, so the first answer is slower"))
 	}
@@ -392,6 +427,10 @@ func (ui *UI) toggleMCP(w http.ResponseWriter, r *http.Request) {
 	name := r.FormValue("mcp")
 	if !slices.Contains(assistant.KnownMCPs, name) {
 		fail(w, problem.Invalidf("unknown MCP"))
+		return
+	}
+	if !ui.user(r).Policy.AllowsMCP(name) {
+		fail(w, problem.Forbiddenf("Your admin hasn't turned on that MCP for you"))
 		return
 	}
 	ui.changeConversation(r, w, func(conversation *assistant.Conversation) {

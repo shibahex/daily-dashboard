@@ -15,4 +15,18 @@
 header .right { display: flex; align-items: center; gap: 12px; }
 header .account-link { color: var(--muted); text-decoration: none; font-size: 14px; }
 header .account-link:hover, header .account-link.on { color: var(--ink); }
-.account form.row { align-items: flex-end; }
+.account form.row { flex-direction: row; align-items: flex-end; }
+
+/* The Admin page */
+.admin { max-width: 760px; }
+.admin .person { border-top: 1px solid var(--line); padding: 12px 0; display: flex; flex-direction: column; gap: 8px; }
+.admin .person:first-of-type { border-top: 0; }
+.admin .person-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }
+.admin .badge { font-size: 12px; padding: 1px 8px; border-radius: 999px; background: var(--soft, rgba(127,127,127,.15)); color: var(--muted); }
+.admin .badge.off { background: var(--warn-soft); color: var(--warn); }
+.admin fieldset { border: 0; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 6px 16px; }
+.admin fieldset legend { font-size: 13px; font-weight: 600; margin-bottom: 4px; padding: 0; }
+.admin label.check { flex-direction: row; align-items: center; font-weight: 400; gap: 6px; }
+.admin details summary { cursor: pointer; font-size: 14px; color: var(--muted); }
+.admin .invite-link { font-family: ui-monospace, monospace; font-size: 13px; }
+.admin button.danger { background: var(--warn); border-color: var(--warn); color: #fff; }

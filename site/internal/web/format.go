@@ -32,6 +32,7 @@ var templateFuncs = template.FuncMap{
 	"add":         func(a, b int) int { return a + b },
 	"multiply":    func(a, b int) int { return a * b },
 	"plural":      plural,
+	"expiresIn":   expiresIn,
 	"capitalize":  capitalize,
 	"truncate":    text.Truncate,
 	"join":        strings.Join,

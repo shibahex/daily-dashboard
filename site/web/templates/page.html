@@ -23,7 +23,8 @@
   <div class="left"><h1>Daily Dashboard</h1><span class="date">{{longDay .Today}}</span></div>
   <div class="right">
     <span hx-get="/streak" hx-trigger="load, checklist-changed from:body, plan-changed from:body" hx-swap="innerHTML"></span>
-    <a class="account-link{{if eq .Tab "account"}} on{{end}}" href="/account">Account</a>
+    {{if .Admin}}<a class="account-link{{if eq .Tab "admin"}} on{{end}}" href="/admin">Admin</a>{{end}}
+    <a class="account-link{{if eq .Tab "account"}} on{{end}}" href="/account" title="Signed in as {{.User}}">{{or .User "Account"}}</a>
   </div>
 </header>
 <nav>

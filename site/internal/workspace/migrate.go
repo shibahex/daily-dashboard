@@ -15,12 +15,14 @@ import (
 var legacyDataFiles = []string{"checklist.json", "weights.json", "mfp.json", "chat.json", "anki_history.json"}
 
 // migrateHostData copies the single-user dashboard's files (site/plan.json, site/data/*.json and
-// the notes in docs/) into the host account's folder, once: when that folder has no plan yet.
+// the notes in docs/) into the host account's folder, once (a .migrated file marks it done).
 // The originals stay where they were, as a backup.
 func migrateHostData(server, user config.Paths) {
-	if exists(user.Plan()) || !exists(server.Plan()) {
+	marker := user.DataFile(".migrated")
+	if exists(marker) {
 		return
 	}
+	defer os.WriteFile(marker, []byte("Copied from the single-user dashboard's files.\n"), 0o600)
 	copyFile(server.Plan(), user.Plan())
 	for _, name := range legacyDataFiles {
 		copyFile(filepath.Join(server.ServerData, name), user.DataFile(name))

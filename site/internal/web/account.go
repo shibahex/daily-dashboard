@@ -214,7 +214,7 @@ func (ui *UI) saveAPIKey(w http.ResponseWriter, r *http.Request) {
 }
 
 func (ui *UI) accountPage(w http.ResponseWriter, r *http.Request) {
-	ui.renderPage(w, "account", "Account", "account", ui.accountView(r))
+	ui.renderPage(r, w, "account", "Account", "account", ui.accountView(r))
 }
 
 func (ui *UI) logout(w http.ResponseWriter, r *http.Request) {

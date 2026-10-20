@@ -141,10 +141,25 @@ func TestTheHostGetsTheOldDataOnce(t *testing.T) {
 	if _, err := os.Stat(paths.Plan()); err != nil {
 		t.Fatal("the originals stay as a backup")
 	}
+	os.Remove(ws.Paths.DataFile("weights.json"))
+	m.Remove("cccc")
+	if again := m.For(host); len(again.Store.Weights()) != 1 {
+		t.Fatal("a fresh folder (the old one deleted) should migrate again")
+	}
 
 	other := m.For(user("aaaa"))
 	if slices.Contains(other.Store.DocNames(), "background.md") || len(other.Store.Weights()) != 0 {
 		t.Fatal("other users must not get the host's old data")
+	}
+}
+
+func TestTheHostMigratesNotesWithoutAPlan(t *testing.T) {
+	m, paths := newManager(t)
+	os.WriteFile(filepath.Join(paths.Guides, "background.md"), []byte("my story"), 0o600)
+	host := user("cccc")
+	host.Host = true
+	if _, found := m.For(host).Store.Doc("background.md"); !found {
+		t.Fatal("notes should carry over even when there was no plan.json")
 	}
 }
 

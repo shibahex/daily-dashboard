@@ -1,0 +1,96 @@
+{{/* The Admin page: accounts, invites, and what each person's AI may use. Admins only. */}}
+{{define "admin"}}{{template "admin-card" .}}{{end}}
+
+{{define "admin-card"}}
+<div class="account admin" id="admin-card">
+  <div class="card">
+    <h2>Invite someone</h2>
+    <p class="muted">They get a link to pick their own password. Everyone has their own food, notes, tasks and chats: admins manage accounts, but can't see anyone's data.</p>
+    {{with .Error}}<p class="sign-in-error" role="alert">{{.}}</p>{{end}}
+    {{with .Saved}}<p class="ok">{{.}}</p>{{end}}
+    {{if .Link}}
+    <p>Send this link to <b>{{.LinkFor}}</b>. It works once, for 7 days, and is only shown now.</p>
+    <input class="txt invite-link" value="{{.Link}}" readonly data-select-all>
+    {{end}}
+    <form class="row" hx-post="/admin/invite" hx-target="#admin-card" hx-swap="outerHTML">
+      <label class="grow">Username <input class="txt" name="username" required maxlength="32" pattern="[A-Za-z0-9._\-]+" autocomplete="off" autocapitalize="none" spellcheck="false"></label>
+      <label>Role <select class="txt" name="role"><option value="user">User</option><option value="admin">Admin</option></select></label>
+      <button class="sm primary">Make invite link</button>
+    </form>
+    {{with .Invites}}
+    <p class="small muted">Waiting for:</p>
+    {{range .}}
+    <div class="row small"><span><b>{{.Username}}</b> · {{if .Reset}}password reset{{else}}{{.Role}}{{end}} · {{expiresIn .Expires}}</span>
+      <button class="sm ghost" hx-post="/admin/invites/cancel" hx-vals="{{vals "username" .Username}}" hx-target="#admin-card" hx-swap="outerHTML">Cancel</button></div>
+    {{end}}
+    {{end}}
+  </div>
+
+  <div class="card">
+    <h2>People</h2>
+    {{$view := .}}
+    {{range .Users}}
+    <div class="person">
+      <div class="person-head">
+        <b>{{.Username}}</b>
+        <span class="badge">{{if .IsAdmin}}admin{{else}}user{{end}}</span>
+        {{if .Host}}<span class="badge" title="Uses the server computer's own Taskwarrior, MyFitnessPal login and Anki">host</span>{{end}}
+        {{if .Disabled}}<span class="badge off">turned off</span>{{end}}
+        {{if eq .ID $view.Me}}<span class="small muted">(you)</span>{{end}}
+        <span class="small muted">{{if .LastLogin.IsZero}}never logged in{{else}}last login {{isoDay .LastLogin}}{{end}}</span>
+      </div>
+      {{if ne .ID $view.Me}}
+      <div class="row">
+        <button class="sm" hx-post="/admin/users/{{.ID}}/reset" hx-target="#admin-card" hx-swap="outerHTML">Password reset link</button>
+        {{if .IsAdmin}}<button class="sm" hx-post="/admin/users/{{.ID}}/role" hx-vals='{"role": "user"}' hx-target="#admin-card" hx-swap="outerHTML">Make regular user</button>
+        {{else}}<button class="sm" hx-post="/admin/users/{{.ID}}/role" hx-vals='{"role": "admin"}' hx-target="#admin-card" hx-swap="outerHTML" hx-confirm="Make {{.Username}} an admin? Admins can manage every account.">Make admin</button>{{end}}
+        {{if .Disabled}}<button class="sm" hx-post="/admin/users/{{.ID}}/enable" hx-target="#admin-card" hx-swap="outerHTML">Turn on</button>
+        {{else}}<button class="sm" hx-post="/admin/users/{{.ID}}/disable" hx-target="#admin-card" hx-swap="outerHTML" hx-confirm="Turn off {{.Username}}? They're logged out and can't log in until you turn them back on.">Turn off</button>{{end}}
+      </div>
+      {{end}}
+      <details>
+        <summary>What {{if eq .ID $view.Me}}your{{else}}their{{end}} AI can use</summary>
+        <form hx-post="/admin/users/{{.ID}}/policy" hx-target="#admin-card" hx-swap="outerHTML">
+          {{template "policy-fields" dict "Policy" .Policy "View" $view}}
+          <div><button class="sm primary">Save</button></div>
+        </form>
+      </details>
+      {{if and (ne .ID $view.Me) (not .Host)}}
+      <details>
+        <summary>Delete account</summary>
+        <form hx-post="/admin/users/{{.ID}}/delete" hx-target="#admin-card" hx-swap="outerHTML">
+          <p class="small muted">Deletes {{.Username}}'s account and everything they have here: plan, notes, tasks, time, food cache, chats and connections. This can't be undone.</p>
+          <label>Type <b>{{.Username}}</b> to confirm <input class="txt" name="confirm" required autocomplete="off"></label>
+          <div><button class="sm danger">Delete for good</button></div>
+        </form>
+      </details>
+      {{end}}
+    </div>
+    {{end}}
+  </div>
+
+  <div class="card">
+    <h2>New people start with</h2>
+    <form hx-post="/admin/default-policy" hx-target="#admin-card" hx-swap="outerHTML">
+      {{template "policy-fields" dict "Policy" .Default "View" .}}
+      <div><button class="sm primary">Save</button></div>
+    </form>
+  </div>
+</div>
+{{end}}
+
+{{/* The agent policy checkboxes: .Policy (auth.Policy) and .View (adminView). */}}
+{{define "policy-fields"}}
+{{$policy := .Policy}}
+<fieldset><legend>AIs</legend>
+  {{range .View.Providers}}<label class="check"><input type="checkbox" name="providers" value="{{.ID}}"{{if $policy.AllowsProvider .ID}} checked{{end}}> {{.Label}}</label>{{end}}
+</fieldset>
+<fieldset><legend>MCPs</legend>
+  {{range .View.MCPs}}<label class="check"><input type="checkbox" name="mcps" value="{{.ID}}"{{if $policy.AllowsMCP .ID}} checked{{end}}> {{.Label}}</label>{{end}}
+</fieldset>
+<fieldset><legend>Tools</legend>
+  <label class="check"><input type="checkbox" name="web"{{if $policy.Web}} checked{{end}}> Search and read the web</label>
+  <label class="check"><input type="checkbox" name="read_files"{{if $policy.ReadFiles}} checked{{end}}> Read their own notes and data</label>
+  <label class="check"><input type="checkbox" name="edit_files"{{if $policy.EditFiles}} checked{{end}}> Edit their own notes and plan</label>
+</fieldset>
+{{end}}

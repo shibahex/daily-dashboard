@@ -63,7 +63,7 @@ func (ui *UI) tasksPage(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
-	ui.renderPage(w, "tasks", "Tasks", "tasks", tasksPageView{Projects: data.projects(), List: data.listView(r)})
+	ui.renderPage(r, w, "tasks", "Tasks", "tasks", tasksPageView{Projects: data.projects(), List: data.listView(r)})
 }
 
 func (ui *UI) taskList(w http.ResponseWriter, r *http.Request) {

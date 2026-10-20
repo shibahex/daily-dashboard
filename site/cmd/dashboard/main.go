@@ -63,7 +63,7 @@ func main() {
 	mux := http.NewServeMux()
 	jsonAPI := &api.API{Workspaces: workspaces}
 	jsonAPI.Routes(mux)
-	pages := &web.UI{Auth: account, Paths: paths, Workspaces: workspaces, Providers: providers}
+	pages := &web.UI{Auth: account, Paths: paths, Workspaces: workspaces, Providers: providers, BaseURL: network.BaseURL()}
 	pages.Routes(mux)
 
 	listener := listen(network.Listen)

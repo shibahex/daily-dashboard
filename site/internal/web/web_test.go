@@ -3,8 +3,10 @@ package web
 import (
 	"encoding/json"
 	"testing"
+	"time"
 
 	"dashboard/internal/anki"
+	"dashboard/internal/auth"
 )
 
 func TestASCIIJSONKeepsTheText(t *testing.T) {
@@ -42,6 +44,11 @@ func TestAccountTemplatesRender(t *testing.T) {
 		"account":          accountView{Username: "me", Sessions: 2, HasToken: true, Connections: connectionsView{AnkiURL: "http://192.168.1.20:8765", Keys: []keyChoice{{Provider: "claude", Label: "Anthropic", Set: true}}}},
 		"connections-card": connectionsView{Host: true, MyFitnessPal: true, Error: "nope"},
 		"anki-setup":       anki.Status{Remote: true, NotSetUp: true},
+		"admin": adminView{Me: "aaaa", Link: "https://x/invite?code=c", LinkFor: "friend",
+			Users: []auth.User{{ID: "aaaa", Username: "me", Role: auth.Admin, Host: true, Policy: auth.FullPolicy},
+				{ID: "bbbb", Username: "friend", Role: auth.Member, Disabled: true, LastLogin: time.Now()}},
+			Invites:   []auth.PendingInvite{{Username: "new", Role: auth.Member, Expires: time.Now().Add(72 * time.Hour)}},
+			Providers: []choice{{"claude", "Claude Code"}}, MCPs: []choice{{"anki", "Anki"}}},
 	}
 	for name, view := range views {
 		if _, err := ui.renderToHTML(name, view); err != nil {

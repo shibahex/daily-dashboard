@@ -85,17 +85,21 @@ type pageView struct {
 	Today   time.Time
 	Content template.HTML
 	Fill    bool // the content fills the window (the chat)
+	User    string
+	Admin   bool // show the Admin link
 }
 
 // renderPage renders a tab: its content template inside the page frame.
-func (ui *UI) renderPage(w http.ResponseWriter, tab, title, contentTemplate string, data any) {
+func (ui *UI) renderPage(r *http.Request, w http.ResponseWriter, tab, title, contentTemplate string, data any) {
 	content, err := ui.renderToHTML(contentTemplate, data)
 	if err != nil {
 		log.Printf("rendering %s: %v", contentTemplate, err)
 		http.Error(w, "couldn't show this page: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	ui.render(w, "page", pageView{Tab: tab, Title: title, Today: time.Now(), Content: content, Fill: tab == "mcps"})
+	user := ui.user(r)
+	ui.render(w, "page", pageView{Tab: tab, Title: title, Today: time.Now(), Content: content, Fill: tab == "mcps",
+		User: user.Username, Admin: user.IsAdmin()})
 }
 
 // ---------- static files ----------

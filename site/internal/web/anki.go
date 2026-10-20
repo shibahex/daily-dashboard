@@ -34,7 +34,7 @@ type ankiBodyView struct {
 
 func (ui *UI) ankiPage(w http.ResponseWriter, r *http.Request) {
 	body := ui.ankiBody(r)
-	ui.renderPage(w, "anki", "Anki", "anki", ankiPageView{Status: body.Status, Body: body})
+	ui.renderPage(r, w, "anki", "Anki", "anki", ankiPageView{Status: body.Status, Body: body})
 }
 
 // ankiBodyPart answers the setup panel's polling: once Anki opens, the whole tab appears.
