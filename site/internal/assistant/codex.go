@@ -7,10 +7,10 @@ import (
 )
 
 // codex runs OpenAI's Codex CLI: `codex exec --json` with the MCP servers passed as -c config
-// overrides. Its shell stays, in the read-only sandbox (no network). Codex can't be limited
-// to a list of tools, so codexOffFeatures turns off every feature that reaches the web or
-// other accounts, and the user's own config.toml (with its MCP servers and plugins) is ignored.
-// A future Codex version could add a feature this list doesn't know about.
+// overrides. It keeps its shell, inside the dashboard's sandbox. Codex can't be limited to a
+// list of tools, so codexOffFeatures turns off every feature that reaches other accounts, and
+// the user's own config.toml (with its MCP servers and plugins) is ignored. Web search follows
+// the user's policy; the sandbox's egress proxy is the network boundary either way.
 type codex struct{ cli }
 
 func newCodex() *codex {
@@ -28,7 +28,11 @@ func (c *codex) Invocation(req Request) (Invocation, error) {
 	}
 	// -c values are TOML; JSON strings and string arrays are valid TOML too.
 	toml := func(v any) string { b, _ := json.Marshal(v); return string(b) }
-	overrides := []string{"-c", `approval_policy="never"`, "-c", `web_search="disabled"`}
+	webSearch := `web_search="disabled"`
+	if req.Caps.Web {
+		webSearch = `web_search="live"`
+	}
+	overrides := []string{"-c", `approval_policy="never"`, "-c", webSearch}
 	for _, feature := range codexOffFeatures {
 		overrides = append(overrides, "-c", "features."+feature+"=false")
 	}
@@ -43,8 +47,10 @@ func (c *codex) Invocation(req Request) (Invocation, error) {
 		}
 	}
 
+	// Codex's own sandbox can't nest inside the dashboard's; the dashboard's is the boundary
+	// (the Runner never runs Codex outside it), so Codex's is off.
 	args := append(program, "exec", "--json", "--skip-git-repo-check", "--ignore-user-config", "--ignore-rules",
-		"-C", req.WorkDir, "-s", "read-only")
+		"-C", req.Workspace, "-s", "danger-full-access")
 	if req.Model != "" {
 		args = append(args, "--model", req.Model)
 	}
@@ -56,7 +62,7 @@ func (c *codex) Invocation(req Request) (Invocation, error) {
 	} else {
 		args = append(args, "-")
 	}
-	return Invocation{Args: args, Dir: req.WorkDir, Stdin: firstMessage(req), Env: req.environment()}, nil
+	return Invocation{Args: args, Dir: req.WorkDir, Stdin: firstMessage(req), Env: req.Env}, nil
 }
 
 // codexOffFeatures are the Codex features that reach the web or accounts other than the

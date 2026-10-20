@@ -4,10 +4,8 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"os"
 	"slices"
 	"strings"
-	"time"
 
 	"dashboard/internal/anki"
 	"dashboard/internal/assistant"
@@ -228,8 +226,12 @@ func (ui *UI) sendMessage(w http.ResponseWriter, r *http.Request) {
 		fail(w, problem.Invalidf(provider.Label()+" isn't installed"))
 		return
 	}
-	ws := ui.ws(r)
-	home, env, err := agentAccount(ws, provider)
+	if ui.SandboxErr != nil {
+		fail(w, problem.Unavailablef("The AI sandbox can't run on this server: "+ui.SandboxErr.Error()))
+		return
+	}
+	ws, user := ui.ws(r), ui.user(r)
+	env, err := agentKey(ws, provider)
 	if err != nil {
 		fail(w, err)
 		return
@@ -238,57 +240,21 @@ func (ui *UI) sendMessage(w http.ResponseWriter, r *http.Request) {
 		fail(w, problem.Conflictf(assistant.ErrBusy.Error()))
 		return
 	}
-
-	servers := ui.enabledServers(r, conversation)
-	request := assistant.Request{
-		Home:         home,
-		Env:          env,
-		Message:      message,
-		SessionID:    conversation.SessionID,
-		Model:        conversation.Model(),
-		Servers:      servers,
-		Instructions: assistant.Instructions(time.Now(), assistant.Context(ws.Paths.Docs, ws.Paths.Plan(), ws.Paths.Data), servers),
-		WorkDir:      ws.AssistantDir(),
-	}
-	go answer(ws, provider, conversation, request)
+	run := &agentRun{ui: ui, ws: ws, provider: provider, conversation: conversation, message: message,
+		mcps: allowedMCPs(user.Policy, conversation), caps: capabilitiesFor(user.Policy), env: env}
+	go run.answer()
 	ui.render(w, "chat-card", ui.chatView(r, false))
 }
 
-// agentAccount is the HOME and API key the user's agent runs with. Everyone but the host must
-// use their own key: their chats never spend the server's own sign-in, and their agent never
-// sees the server's logins or anyone else's session history.
-func agentAccount(ws *workspace.Workspace, provider assistant.Provider) (home string, env []string, err error) {
+// agentKey is the user's own API key for the provider, as the CLI's environment. Everyone
+// brings their own: no chat spends the server's sign-in, and the sandbox holds no other login.
+func agentKey(ws *workspace.Workspace, provider assistant.Provider) ([]string, error) {
 	key := assistant.APIKeys[provider.ID()]
 	value := ws.Secrets.Get(key.Name)
-	if ws.Host {
-		if value == "" {
-			return "", nil, nil
-		}
-		return "", key.KeyEnv(value), nil
-	}
 	if value == "" {
-		return "", nil, problem.Invalidf("Add your " + key.Label + " API key on the Account page first")
+		return nil, problem.Invalidf("Add your " + key.Label + " API key on the Account page first")
 	}
-	home = ws.Paths.DataFile("agent-home")
-	if err := os.MkdirAll(home, 0o700); err != nil {
-		return "", nil, err
-	}
-	return home, key.KeyEnv(value), nil
-}
-
-// answer runs in the background, so the answer is saved even if the page goes away.
-func answer(ws *workspace.Workspace, provider assistant.Provider, conversation *assistant.Conversation, request assistant.Request) {
-	defer ws.Live.Finish()
-	outcome, err := ws.Chat.Answer(provider, conversation, request, ws.Live.Progress)
-	if err != nil {
-		recordFailure(conversation, request.Message, provider, err)
-	}
-	if err := ws.Conversations.Save(conversation); err != nil {
-		log.Printf("saving the chat: %v", err)
-	}
-	if outcome.ChangedDiary {
-		ws.MyFitnessPal.Sync() // so the Today tab shows the change right away
-	}
+	return key.KeyEnv(value), nil
 }
 
 // recordFailure keeps the question and why it got no answer, so the chat shows them.
@@ -298,22 +264,6 @@ func recordFailure(conversation *assistant.Conversation, question string, provid
 		conversation.Messages = append(conversation.Messages, assistant.Message{Role: "user", Text: question})
 	}
 	conversation.Messages = append(conversation.Messages, assistant.Message{Role: "assistant", Provider: provider.ID(), Error: err.Error()})
-}
-
-// enabledServers is how the agent starts each turned-on MCP server.
-func (ui *UI) enabledServers(r *http.Request, conversation *assistant.Conversation) []assistant.NamedServer {
-	var servers []assistant.NamedServer
-	for _, name := range allowedMCPs(ui.user(r).Policy, conversation) {
-		switch name {
-		case "myfitnesspal":
-			servers = append(servers, assistant.NamedServer{Name: name, Server: ui.ws(r).MyFitnessPal.Client().MCPServer()})
-		case "anki":
-			if server, ok := ui.ws(r).Anki().MCPServer(); ok {
-				servers = append(servers, assistant.NamedServer{Name: name, Server: server})
-			}
-		}
-	}
-	return servers
 }
 
 // chatStream sends the reply as it grows ("reply" events with the bubble's HTML), then "done".

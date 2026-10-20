@@ -5,11 +5,12 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
-// claude runs Claude Code: `claude -p` with streaming JSON and nothing but the given MCP
-// servers. --restricted ignores the user's own settings files, --tools "" removes every
-// built-in tool (files, shell, web), and dontAsk refuses any tool that isn't allowed here.
+// claude runs Claude Code: `claude -p` with streaming JSON, the given MCP servers and only the
+// built-in tools the user's policy allows (claudeTools). --restricted ignores settings files
+// and keeps the file tools in the workspace; dontAsk refuses any tool not allowed here.
 type claude struct {
 	cli
 	catalog *ModelCatalog
@@ -57,10 +58,12 @@ func (c *claude) Invocation(req Request) (Invocation, error) {
 		return Invocation{}, err
 	}
 
+	tools := claudeTools(req.Caps)
+	allowed = append(allowed, tools...)
 	args := append(program,
 		"-p", "--output-format", "stream-json", "--verbose", "--include-partial-messages",
-		"--restricted", "--strict-mcp-config", "--mcp-config", configPath,
-		"--tools", "", "--permission-mode", "dontAsk",
+		"--restricted", "--strict-mcp-config", "--mcp-config", req.inside(configPath),
+		"--tools", strings.Join(tools, ","), "--permission-mode", "dontAsk",
 		"--append-system-prompt", req.Instructions,
 	)
 	if len(allowed) > 0 {
@@ -77,7 +80,22 @@ func (c *claude) Invocation(req Request) (Invocation, error) {
 	}
 	// After --, a message that starts with "-" is still the message, not a flag.
 	args = append(args, "--", req.Message)
-	return Invocation{Args: args, Dir: req.WorkDir, Env: req.environment()}, nil
+	return Invocation{Args: args, Dir: req.WorkDir, Env: req.Env}, nil
+}
+
+// claudeTools are the built-in tools the capabilities allow (none at all by default).
+func claudeTools(caps Capabilities) []string {
+	var tools []string
+	if caps.Read {
+		tools = append(tools, "Read", "Glob", "Grep")
+	}
+	if caps.Edit {
+		tools = append(tools, "Edit", "Write")
+	}
+	if caps.Web {
+		tools = append(tools, "WebSearch", "WebFetch")
+	}
+	return tools
 }
 
 // claudeLine is the part of Claude Code's stream-json events the dashboard reads.

@@ -62,7 +62,13 @@ func (r *Runner) Answer(provider Provider, conversation *Conversation, req Reque
 	}
 	defer r.busy.Store(false)
 
+	if req.Wrap == nil {
+		return Outcome{}, errors.New("the AI sandbox isn't set up, so the assistant can't run")
+	}
 	invocation, err := provider.Invocation(req)
+	if err == nil {
+		invocation, err = req.Wrap(invocation)
+	}
 	if err != nil {
 		return Outcome{}, err
 	}

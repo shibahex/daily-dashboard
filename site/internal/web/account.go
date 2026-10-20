@@ -141,8 +141,8 @@ type connectionsView struct {
 }
 
 type keyChoice struct {
-	Provider, Label, Where string
-	Set                    bool
+	Provider, Label, Where, Hint string
+	Set                          bool
 }
 
 func (ui *UI) accountView(r *http.Request) accountView {
@@ -158,7 +158,7 @@ func (ui *UI) connectionsView(r *http.Request) connectionsView {
 		Anki: ankiClient.Status(), AnkiURL: ankiClient.URL}
 	for _, provider := range auth.KnownProviders {
 		key := assistant.APIKeys[provider]
-		view.Keys = append(view.Keys, keyChoice{Provider: provider, Label: key.Label, Where: key.Where, Set: ws.Secrets.Has(key.Name)})
+		view.Keys = append(view.Keys, keyChoice{Provider: provider, Label: key.Label, Where: key.Where, Hint: key.Hint, Set: ws.Secrets.Has(key.Name)})
 	}
 	return view
 }

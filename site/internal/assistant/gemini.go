@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 )
 
 // gemini runs Google's Gemini CLI: `gemini -p` with stream-json output.
@@ -51,13 +52,16 @@ func (g *gemini) Invocation(req Request) (Invocation, error) {
 		names = append(names, s.Name)
 	}
 	settingsPath := filepath.Join(req.WorkDir, "gemini-settings.json")
+	core := geminiTools(req.Caps)
+	var exclude []string
+	for _, tool := range geminiAllTools {
+		if !slices.Contains(core, tool) {
+			exclude = append(exclude, tool)
+		}
+	}
 	settings, _ := json.Marshal(map[string]any{
-		"security": map[string]any{"folderTrust": map[string]any{"enabled": false}},
-		"tools": map[string]any{
-			"core": []string{},
-			"exclude": []string{"run_shell_command", "web_fetch", "google_web_search", "read_file", "read_many_files",
-				"write_file", "replace", "glob", "search_file_content", "grep_search", "list_directory", "save_memory"},
-		},
+		"security":   map[string]any{"folderTrust": map[string]any{"enabled": false}},
+		"tools":      map[string]any{"core": core, "exclude": exclude},
 		"mcpServers": servers,
 	})
 	if err := os.WriteFile(settingsPath, settings, 0o600); err != nil {
@@ -65,7 +69,7 @@ func (g *gemini) Invocation(req Request) (Invocation, error) {
 	}
 
 	// --prompt=… keeps a message that starts with "-" from being read as a flag; -e none
-	// turns off the user's extensions, which can bring their own tools and hooks.
+	// turns off extensions, which can bring their own tools and hooks.
 	args := append(program, "--prompt="+firstMessage(req), "-o", "stream-json", "--approval-mode", "yolo", "-e", "none")
 	if req.Model != "" {
 		args = append(args, "--model", req.Model)
@@ -81,12 +85,27 @@ func (g *gemini) Invocation(req Request) (Invocation, error) {
 		// Gemini resumes by "latest" or index, not id; this folder only holds dashboard chats.
 		args = append(args, "--resume", "latest")
 	}
-	env := req.environment()
-	if env == nil {
-		env = os.Environ()
-	}
-	env = append(env, "GEMINI_CLI_SYSTEM_SETTINGS_PATH="+settingsPath)
+	env := append(append([]string{}, req.Env...), "GEMINI_CLI_SYSTEM_SETTINGS_PATH="+req.inside(settingsPath))
 	return Invocation{Args: args, Dir: req.WorkDir, Env: env}, nil
+}
+
+// geminiAllTools are Gemini CLI's built-in tools; geminiTools picks the allowed ones.
+var geminiAllTools = []string{"read_file", "read_many_files", "glob", "search_file_content", "grep_search", "list_directory",
+	"write_file", "replace", "run_shell_command", "web_fetch", "google_web_search", "save_memory", "write_todos"}
+
+// geminiTools are the built-in tools the capabilities allow. Never the shell.
+func geminiTools(caps Capabilities) []string {
+	tools := []string{}
+	if caps.Read {
+		tools = append(tools, "read_file", "read_many_files", "glob", "search_file_content", "grep_search", "list_directory")
+	}
+	if caps.Edit {
+		tools = append(tools, "write_file", "replace")
+	}
+	if caps.Web {
+		tools = append(tools, "google_web_search", "web_fetch")
+	}
+	return tools
 }
 
 type geminiLine struct {

@@ -27,7 +27,8 @@
       dashboard = pkgs.writeShellApplication {
         name = "health-dashboard";
         # uv runs mfp_fetch.py with the MyFitnessPal MCP package for the MyFitnessPal sync.
-        runtimeInputs = [ pkgs.timewarrior pkgs.uv ];
+        # bubblewrap, socat, bash and coreutils make the AI agents' sandbox (internal/sandbox).
+        runtimeInputs = [ pkgs.timewarrior pkgs.uv pkgs.bubblewrap pkgs.socat pkgs.bash pkgs.coreutils pkgs.nodejs_22 pkgs.python312 ];
         text = ''
           # Run from the site folder so the server uses the live files, not a store copy.
           if [ ! -f web/templates/page.html ]; then
@@ -65,7 +66,7 @@
 
       # `nix develop`: Go, timew and uv, e.g. `go run ./cmd/dashboard 8080` or `timew summary :week`.
       devShells.${system}.default = pkgs.mkShell {
-        packages = [ pkgs.go pkgs.gopls pkgs.timewarrior pkgs.uv ];
+        packages = [ pkgs.go pkgs.gopls pkgs.timewarrior pkgs.uv pkgs.bubblewrap pkgs.socat pkgs.bash pkgs.coreutils pkgs.nodejs_22 pkgs.python312 ];
       };
     };
 }

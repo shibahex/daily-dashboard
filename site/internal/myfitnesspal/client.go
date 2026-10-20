@@ -22,7 +22,8 @@ import (
 )
 
 const (
-	Package = "mfp-mcp[autorefresh]==0.4.1" // pinned, like the Anki MCP: a new release runs only after review
+	Version = "0.4.1" // pinned, like the Anki MCP: a new release runs only after review
+	Package = "mfp-mcp[autorefresh]==" + Version
 	RepoURL = "https://github.com/Mason-Levyy/myfitnesspal-mcp"
 )
 
@@ -83,6 +84,14 @@ type Setup struct {
 	Dir      *string `json:"dir"`
 	SignedIn bool    `json:"signed_in"`
 	Repo     string  `json:"repo"`
+}
+
+// Checkout is the local checkout the MCP comes from ("" = the released package).
+func (c Client) Checkout() string {
+	if c.usesCheckout() {
+		return c.CheckoutDir
+	}
+	return ""
 }
 
 func (c Client) usesCheckout() bool {

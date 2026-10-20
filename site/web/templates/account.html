@@ -89,11 +89,11 @@
 
   <div class="card">
     <h2>AI keys</h2>
-    <p class="muted">The MCPs tab uses your own API key for each AI, so your chats use your credit.{{if .Host}} Without a key, this account falls back to the server computer's own sign-in.{{end}} Keys are stored encrypted.</p>
+    <p class="muted">The MCPs tab uses your own key for each AI, so your chats use your own credit, and the AI runs in a sandbox that holds no other login. Keys are stored encrypted.</p>
     {{range .Keys}}
     <form class="row" hx-post="/account/keys" hx-target="#connections-card" hx-swap="outerHTML">
       <input type="hidden" name="provider" value="{{.Provider}}">
-      <label class="grow">{{.Label}} {{if .Set}}<span class="ok small">· saved</span>{{end}}
+      <label class="grow">{{.Label}} {{if .Set}}<span class="ok small">· saved</span>{{end}}{{with .Hint}}<small class="muted">Accepts {{.}}.</small>{{end}}
         <input class="txt" type="password" name="key" autocomplete="off" spellcheck="false" placeholder="{{if .Set}}Leave empty and save to remove{{else}}Paste a key{{end}}"></label>
       <button class="sm{{if not .Set}} primary{{end}}">{{if .Set}}Replace{{else}}Save{{end}}</button>
       <a class="small muted" href="{{.Where}}" target="_blank" rel="noopener noreferrer">Get a key</a>

@@ -37,3 +37,12 @@ func Write(path string, v any) error {
 	}
 	return os.Rename(tmp, path)
 }
+
+// WriteBytes saves data the same safe way as Write (a temp file renamed over the old one).
+func WriteBytes(path string, data []byte) error {
+	tmp := strings.TrimSuffix(path, filepath.Ext(path)) + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o600); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
+}

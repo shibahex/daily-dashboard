@@ -4,10 +4,13 @@
 package assistant
 
 import (
-	"os"
+	"context"
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strings"
+	"sync"
+	"time"
 
 	"dashboard/internal/mcp"
 )
@@ -31,24 +34,34 @@ type Request struct {
 	SessionID    string // continue this conversation; "" starts a new one
 	Model        string // "" = the CLI's default
 	Servers      []NamedServer
-	Instructions string   // the system prompt, with the user's notes and data (see Instructions)
-	WorkDir      string   // where the dashboard writes config files for the CLIs; the CLIs run here
-	Home         string   // the CLI's HOME: the user's own, so it never sees the server's logins ("" = the server's)
-	Env          []string // extra environment: the user's API key
+	Instructions string       // the system prompt, with the user's notes and data (see Instructions)
+	Caps         Capabilities // what the user's policy lets the agent do
+	WorkDir      string       // where the dashboard writes config files for the CLI
+	InnerWorkDir string       // WorkDir as the CLI sees it inside the sandbox
+	Workspace    string       // the folder the CLI works in, as it sees it
+	Env          []string     // extra environment for the CLI: the user's API key
+
+	// Wrap puts the CLI in the user's sandbox. The Runner refuses to run without it.
+	Wrap func(Invocation) (Invocation, error)
 }
 
-// environment is what the CLI runs with: the server's environment with the user's HOME and
-// API key on top (nil when there's nothing to change).
-func (r Request) environment() []string {
-	if r.Home == "" && len(r.Env) == 0 {
-		return nil
+// Capabilities are the agent's tools beyond its MCP servers, from the user's policy.
+type Capabilities struct {
+	Web  bool // search and fetch web pages
+	Read bool // read the user's files in the workspace
+	Edit bool // change the user's notes and plan there
+}
+
+// inside is a path under WorkDir as the CLI sees it.
+func (r Request) inside(hostPath string) string {
+	if r.InnerWorkDir == "" {
+		return hostPath
 	}
-	env := os.Environ()
-	if r.Home != "" {
-		env = append(env, "HOME="+r.Home, "XDG_CONFIG_HOME="+filepath.Join(r.Home, ".config"),
-			"XDG_DATA_HOME="+filepath.Join(r.Home, ".local", "share"), "XDG_CACHE_HOME="+filepath.Join(r.Home, ".cache"))
+	rel, err := filepath.Rel(r.WorkDir, hostPath)
+	if err != nil || strings.HasPrefix(rel, "..") {
+		return hostPath
 	}
-	return append(env, r.Env...)
+	return filepath.Join(r.InnerWorkDir, rel)
 }
 
 // BlockedTools are MCP tools no agent gets, by server. The Anki gateway refuses what they do
@@ -119,18 +132,56 @@ func (c cli) SignInHint() string { return c.signIn }
 func (c cli) Models() []Model    { return c.models }
 
 func (c cli) Installed() bool { _, err := exec.LookPath(c.program); return err == nil }
-func (c cli) Available() bool { return c.command() != nil }
 
-// command is the program to run: from the PATH, or `nix run <package> --` (which downloads it
-// on first use), or nil when neither works.
+// Available is cheap (pages ask on every render): on the PATH, or Nix can build it.
+func (c cli) Available() bool {
+	if c.Installed() {
+		return true
+	}
+	_, err := exec.LookPath("nix")
+	return err == nil && c.nixPackage != ""
+}
+
+// command is the program to run, as a real path a sandbox can see: from the PATH, or built
+// with Nix (downloaded on first use), or nil when neither works.
 func (c cli) command() []string {
 	if path, err := exec.LookPath(c.program); err == nil {
+		if real, err := filepath.EvalSymlinks(path); err == nil {
+			return []string{real}
+		}
 		return []string{path}
 	}
-	if _, err := exec.LookPath("nix"); err == nil && c.nixPackage != "" {
-		return []string{"nix", "run", c.nixPackage, "--"}
+	if path := nixProgram(c.nixPackage, c.program); path != "" {
+		return []string{path}
 	}
 	return nil
+}
+
+var (
+	nixBuiltMu sync.Mutex
+	nixBuilt   = map[string]string{}
+)
+
+// nixProgram builds a Nix package (once) and returns its program's path in the store, which is
+// what a sandbox can run ("" when there's no Nix or the build fails).
+func nixProgram(pkg, program string) string {
+	if pkg == "" {
+		return ""
+	}
+	nixBuiltMu.Lock()
+	defer nixBuiltMu.Unlock()
+	if path, ok := nixBuilt[pkg]; ok {
+		return path
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, "nix", "build", "--no-link", "--print-out-paths", pkg).Output()
+	if err != nil {
+		return ""
+	}
+	path := filepath.Join(strings.TrimSpace(strings.Split(string(out), "\n")[0]), "bin", program)
+	nixBuilt[pkg] = path
+	return path
 }
 
 // ---------- the registry ----------
@@ -166,18 +217,24 @@ func (ps Providers) Default() Provider {
 // environment variables the CLI reads it from, and where to make one.
 type APIKey struct {
 	Name, Label, Env, Where string
+	Hint                    string // what else the field accepts
 	ExtraEnv                []string
 }
 
 // APIKeys are the keys users can add, by provider id.
 var APIKeys = map[string]APIKey{
-	"claude": {Name: "anthropic", Label: "Anthropic (Claude Code)", Env: "ANTHROPIC_API_KEY", Where: "https://console.anthropic.com/settings/keys"},
+	"claude": {Name: "anthropic", Label: "Anthropic (Claude Code)", Env: "ANTHROPIC_API_KEY", Where: "https://console.anthropic.com/settings/keys",
+		Hint: "an API key, or a Claude subscription token from `claude setup-token`"},
 	"codex":  {Name: "openai", Label: "OpenAI (Codex)", Env: "OPENAI_API_KEY", ExtraEnv: []string{"CODEX_API_KEY"}, Where: "https://platform.openai.com/api-keys"},
 	"gemini": {Name: "gemini", Label: "Google (Gemini CLI)", Env: "GEMINI_API_KEY", Where: "https://aistudio.google.com/apikey"},
 }
 
-// KeyEnv is the environment that gives the provider's CLI this key.
+// KeyEnv is the environment that gives the provider's CLI this key. A Claude subscription
+// token (from `claude setup-token`, "sk-ant-oat…") goes where Claude Code looks for one.
 func (k APIKey) KeyEnv(value string) []string {
+	if k.Name == "anthropic" && strings.HasPrefix(value, "sk-ant-oat") {
+		return []string{"CLAUDE_CODE_OAUTH_TOKEN=" + value}
+	}
 	env := []string{k.Env + "=" + value}
 	for _, extra := range k.ExtraEnv {
 		env = append(env, extra+"="+value)

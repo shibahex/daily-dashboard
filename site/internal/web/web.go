@@ -9,6 +9,8 @@ import (
 	"dashboard/internal/assistant"
 	"dashboard/internal/auth"
 	"dashboard/internal/config"
+	"dashboard/internal/egress"
+	"dashboard/internal/sandbox"
 	"dashboard/internal/workspace"
 )
 
@@ -19,6 +21,13 @@ type UI struct {
 	Workspaces *workspace.Manager
 	Providers  assistant.Providers
 	BaseURL    string // the address people use, for invite links
+
+	// The AI agents' sandbox (SandboxErr says why there's none: then the chat refuses to run),
+	// the MCP programs it runs, and its only way to the network.
+	Sandbox    sandbox.Tools
+	SandboxErr error
+	Programs   *sandbox.Programs
+	Egress     *egress.Proxy
 
 	templates *templateSet
 }

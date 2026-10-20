@@ -67,9 +67,6 @@ func (w *Workspace) setAnki(client anki.Client) {
 	w.anki = client
 }
 
-// AssistantDir is where the agent's config files for this user are written.
-func (w *Workspace) AssistantDir() string { return w.Paths.DataFile("assistant") }
-
 // Manager opens each user's workspace once and keeps it.
 type Manager struct {
 	paths     config.Paths        // the server's
@@ -110,6 +107,9 @@ func (m *Manager) For(user auth.User) *Workspace {
 	}()
 	return ws
 }
+
+// Gateway is the Anki gateway every user's agent reaches their Anki through.
+func (m *Manager) Gateway() *anki.Gateway { return m.gateway }
 
 // OpenAll opens every user's workspace, so each one's MyFitnessPal keeps syncing.
 func (m *Manager) OpenAll(users []auth.User) {

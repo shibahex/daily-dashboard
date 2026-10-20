@@ -80,6 +80,16 @@ func StartGateway() (*Gateway, error) {
 	return g, nil
 }
 
+// ServeOn answers on listener too: a unix socket the dashboard opens for one sandboxed run.
+// Requests still need the owner's key. It returns when the listener is closed.
+func (g *Gateway) ServeOn(listener net.Listener) {
+	server := &http.Server{ReadHeaderTimeout: 10 * time.Second, Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.Host = g.host // the sandbox calls it 127.0.0.1:8765; the socket itself is the address
+		g.ServeHTTP(w, r)
+	})}
+	server.Serve(listener)
+}
+
 // Register sends owner's requests to upstream (their AnkiConnect) and returns the key their
 // MCP uses. An owner keeps one key; registering again only changes where it goes.
 func (g *Gateway) Register(owner string, upstream Client) string {
