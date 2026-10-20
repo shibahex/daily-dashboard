@@ -35,9 +35,11 @@ table.week tr.cur td { color: var(--accent); font-weight: 600; }
 .reason { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; width: 100%; }
 .reason input { flex: 1 1 200px; font-size: 13px; padding: 4px 8px; }
 .history { display: flex; gap: 4px; margin-top: 12px; flex-wrap: wrap; }
-.history i { width: 16px; height: 16px; border-radius: 4px; background: var(--chip); display: block; }
-.history i.full { background: var(--accent); } .history i.part { background: var(--accent-soft); outline: 1px solid var(--accent); outline-offset: -1px; }
-.history i.today { outline: 2px solid var(--ink); outline-offset: 1px; }
+.history button { width: 16px; height: 16px; border-radius: 4px; background: var(--chip); display: block; border: 0; padding: 0; cursor: pointer; }
+.history button:hover { outline: 1px solid var(--muted); }
+.history button.full { background: var(--accent); } .history button.part { background: var(--accent-soft); outline: 1px solid var(--accent); outline-offset: -1px; }
+.history button.shown { outline: 2px solid var(--ink); outline-offset: 1px; }
+.past-day { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 4px; }
 ul.notes { margin: 0; padding-left: 18px; } ul.notes li { margin: 4px 0; }
 .editor .row { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; }
 .editor .row input.txt { flex: 1; }

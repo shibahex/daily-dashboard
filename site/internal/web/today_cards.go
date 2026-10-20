@@ -123,10 +123,14 @@ type checklistDot struct {
 	Day   time.Time
 	Ratio float64
 	Today bool
+	Shown bool // the day the card shows
 }
 
+// checklistCardView is one day's checklist: today, or an earlier day picked from the dots.
 type checklistCardView struct {
 	Editing                     bool
+	Day                         time.Time
+	IsToday                     bool
 	Items                       []checklistItem
 	Done, Skipped, Total        int
 	DonePercent, SkippedPercent float64
@@ -137,25 +141,37 @@ type checklistCardView struct {
 
 const checklistURL = "/cards/checklist"
 
+func (v checklistCardView) DayKey() string { return v.Day.Format(dayLayout) }
+
+// checklistDay is the day asked for (?day= or the form's day): today unless it's an earlier day.
+func checklistDay(r *http.Request) time.Time {
+	today := startOfDay(time.Now())
+	day, err := time.ParseInLocation(dayLayout, r.FormValue("day"), time.Local)
+	if err != nil || day.After(today) {
+		return today
+	}
+	return day
+}
+
 func (ui *UI) renderChecklistCard(r *http.Request) (template.HTML, error) {
-	view, err := ui.checklistView(isEditing(r), r.URL.Query().Get("note"), nil)
+	view, err := ui.checklistView(isEditing(r), checklistDay(r), r.URL.Query().Get("note"), nil)
 	if err != nil {
 		return "", err
 	}
 	return ui.renderToHTML("card-checklist", view)
 }
 
-func (ui *UI) checklistView(editing bool, noteOpenFor string, editedItems [][]string) (checklistCardView, error) {
+func (ui *UI) checklistView(editing bool, shown time.Time, noteOpenFor string, editedItems [][]string) (checklistCardView, error) {
 	plan, err := ui.Store.LoadPlan()
 	if err != nil {
 		return checklistCardView{}, err
 	}
 	days := ui.Store.Checklist()
 	now := time.Now()
-	todays := days[now.Format("2006-01-02")]
-	view := checklistCardView{Editing: editing, Total: len(plan.Checklist)}
+	states := days[shown.Format(dayLayout)]
+	view := checklistCardView{Editing: editing, Day: shown, IsToday: shown.Equal(startOfDay(now)), Total: len(plan.Checklist)}
 	for _, name := range plan.Checklist {
-		state, note := checkState(todays[name])
+		state, note := checkState(states[name])
 		view.Items = append(view.Items, checklistItem{Name: name, State: state, Note: note, NoteOpen: state == "skip" && name == noteOpenFor})
 		switch state {
 		case "done":
@@ -171,7 +187,8 @@ func (ui *UI) checklistView(editing bool, noteOpenFor string, editedItems [][]st
 	}
 	for i := 13; i >= 0; i-- {
 		day := now.AddDate(0, 0, -i)
-		view.LastTwoWeeks = append(view.LastTwoWeeks, checklistDot{Day: day, Ratio: dayRatio(plan.Checklist, days, day), Today: i == 0})
+		view.LastTwoWeeks = append(view.LastTwoWeeks, checklistDot{Day: day, Ratio: dayRatio(plan.Checklist, days, day), Today: i == 0,
+			Shown: day.Format(dayLayout) == shown.Format(dayLayout)})
 	}
 	if editedItems == nil {
 		editedItems = asRows(plan.Checklist)
@@ -194,7 +211,7 @@ func checkState(value any) (state, note string) {
 }
 
 func (ui *UI) checklistCard(w http.ResponseWriter, r *http.Request) {
-	view, err := ui.checklistView(isEditing(r), r.URL.Query().Get("note"), nil)
+	view, err := ui.checklistView(isEditing(r), checklistDay(r), r.URL.Query().Get("note"), nil)
 	if err != nil {
 		fail(w, err)
 		return
@@ -206,7 +223,7 @@ func (ui *UI) checklistCard(w http.ResponseWriter, r *http.Request) {
 func (ui *UI) saveChecklistItems(w http.ResponseWriter, r *http.Request) {
 	rows := rowsFromForm(r, 1)
 	if operation := rowOperation(r); operation != "" {
-		view, err := ui.checklistView(true, "", applyRowOperation(rows, operation, 1))
+		view, err := ui.checklistView(true, checklistDay(r), "", applyRowOperation(rows, operation, 1))
 		if err != nil {
 			fail(w, err)
 			return
@@ -219,11 +236,12 @@ func (ui *UI) saveChecklistItems(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	announce(w, say("Checklist saved"), planChanged, checklistChanged)
-	ui.renderChecklistAfterChange(w, "")
+	ui.renderChecklistAfterChange(w, checklistDay(r), "")
 }
 
-// setChecklistItem ticks, skips or clears today's item. item, state ("done", "skip", "none" or,
-// from the checkbox, done=1 when ticked), and an optional skip reason.
+// setChecklistItem ticks, skips or clears an item on the card's day (today, or an earlier day):
+// item, state ("done", "skip", "none" or, from the checkbox, done=1 when ticked), and an
+// optional skip reason.
 func (ui *UI) setChecklistItem(w http.ResponseWriter, r *http.Request) {
 	item := r.FormValue("item")
 	state := r.FormValue("state")
@@ -233,7 +251,8 @@ func (ui *UI) setChecklistItem(w http.ResponseWriter, r *http.Request) {
 			state = "done"
 		}
 	}
-	day := time.Now().Format("2006-01-02")
+	shown := checklistDay(r)
+	day := shown.Format(dayLayout)
 	items := ui.Store.Checklist()[day]
 	if items == nil {
 		items = map[string]any{}
@@ -264,11 +283,11 @@ func (ui *UI) setChecklistItem(w http.ResponseWriter, r *http.Request) {
 		message = say("Reason saved")
 	}
 	announce(w, message, checklistChanged)
-	ui.renderChecklistAfterChange(w, noteOpen)
+	ui.renderChecklistAfterChange(w, shown, noteOpen)
 }
 
-func (ui *UI) renderChecklistAfterChange(w http.ResponseWriter, noteOpenFor string) {
-	view, err := ui.checklistView(false, noteOpenFor, nil)
+func (ui *UI) renderChecklistAfterChange(w http.ResponseWriter, shown time.Time, noteOpenFor string) {
+	view, err := ui.checklistView(false, shown, noteOpenFor, nil)
 	if err != nil {
 		fail(w, err)
 		return

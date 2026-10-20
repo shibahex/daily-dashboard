@@ -32,7 +32,7 @@
 {{end}}
 
 {{define "card-checklist"}}
-<div class="card" hx-disinherit="*" id="card-checklist"{{if not .Editing}} hx-get="/cards/checklist" hx-trigger="checklist-changed[!this.contains(event.target)] from:body, plan-changed[!this.contains(event.target)] from:body"{{end}} hx-swap="outerHTML">
+<div class="card" hx-disinherit="*" id="card-checklist"{{if not .Editing}} hx-get="/cards/checklist?day={{.DayKey}}" hx-trigger="checklist-changed[!this.contains(event.target)] from:body, plan-changed[!this.contains(event.target)] from:body"{{end}} hx-swap="outerHTML">
   {{template "card-head" dict "Title" "Daily checklist" "URL" "/cards/checklist" "Editing" .Editing}}
   {{if .Editing}}
   <form hx-post="/cards/checklist" hx-target="closest .card" hx-swap="outerHTML">
@@ -40,31 +40,34 @@
     {{template "row-editor" .ItemsEditor}}
   </form>
   {{else}}
+  {{if not .IsToday}}<div class="past-day"><b>{{longDay .Day}}</b>
+    <button class="edit-btn" hx-get="/cards/checklist" hx-target="#card-checklist" hx-swap="outerHTML">Back to today</button></div>{{end}}
   <div class="small muted">{{add .Done .Skipped}} of {{.Total}} done{{if .Skipped}} ({{.Skipped}} skipped){{end}}{{if and .Complete .Total}} · day complete ✓{{end}}</div>
   <div class="progress"><div class="d" style="width:{{.DonePercent}}%"></div><div class="s" style="width:{{.SkippedPercent}}%"></div></div>
   {{range .Items}}
   <div class="check-wrap">
     <div class="check{{with .State}} {{.}}{{end}}">
       <label><input type="checkbox" name="done" value="1"{{if eq .State "done"}} checked{{end}}
-        hx-post="/checklist/set" hx-vals="{{vals "item" .Name}}" hx-target="#card-checklist" hx-swap="outerHTML"><span>{{.Name}}</span></label>
+        hx-post="/checklist/set" hx-vals="{{vals "item" .Name "day" $.DayKey}}" hx-target="#card-checklist" hx-swap="outerHTML"><span>{{.Name}}</span></label>
       {{if eq .State "skip"}}
-      <button class="skip-btn" hx-post="/checklist/set" hx-vals="{{vals "item" .Name "state" "none"}}" hx-target="#card-checklist" hx-swap="outerHTML" title="Un-skip">skipped</button>
+      <button class="skip-btn" hx-post="/checklist/set" hx-vals="{{vals "item" .Name "state" "none" "day" $.DayKey}}" hx-target="#card-checklist" hx-swap="outerHTML" title="Un-skip">skipped</button>
       {{else}}
-      <button class="skip-btn" hx-post="/checklist/set" hx-vals="{{vals "item" .Name "state" "skip"}}" hx-target="#card-checklist" hx-swap="outerHTML" title="Skip today. Still counts toward the day.">skip</button>
+      <button class="skip-btn" hx-post="/checklist/set" hx-vals="{{vals "item" .Name "state" "skip" "day" $.DayKey}}" hx-target="#card-checklist" hx-swap="outerHTML" title="Skip it. Still counts toward the day.">skip</button>
       {{end}}
     </div>
     {{if eq .State "skip"}}{{if .NoteOpen}}
     <form class="note-edit" hx-post="/checklist/set" hx-target="#card-checklist" hx-swap="outerHTML">
-      <input type="hidden" name="item" value="{{.Name}}"><input type="hidden" name="state" value="skip">
+      <input type="hidden" name="item" value="{{.Name}}"><input type="hidden" name="state" value="skip"><input type="hidden" name="day" value="{{$.DayKey}}">
       <input class="txt" name="note" maxlength="300" placeholder="Why are you skipping? (optional)" value="{{.Note}}" autofocus>
       <button class="sm primary">Save</button>
     </form>
     {{else}}
-    <button class="note-line" hx-get="/cards/checklist?note={{query .Name}}" hx-target="#card-checklist" hx-swap="outerHTML" title="Edit reason">{{if .Note}}↳ {{.Note}}{{else}}+ add a reason{{end}}</button>
+    <button class="note-line" hx-get="/cards/checklist?day={{$.DayKey}}&amp;note={{query .Name}}" hx-target="#card-checklist" hx-swap="outerHTML" title="Edit reason">{{if .Note}}↳ {{.Note}}{{else}}+ add a reason{{end}}</button>
     {{end}}{{end}}
   </div>
   {{end}}
-  <div class="history" title="Last 14 days">{{range .LastTwoWeeks}}<i class="{{if ge .Ratio 1.0}}full{{else if gt .Ratio 0.0}}part{{end}}{{if .Today}} today{{end}}" title="{{shortDay .Day}}: {{percentText .Ratio}}"></i>{{end}}</div>
+  <div class="history" title="Last 14 days: pick a day to see or change it">{{range .LastTwoWeeks}}<button class="{{if ge .Ratio 1.0}}full{{else if gt .Ratio 0.0}}part{{end}}{{if .Shown}} shown{{end}}" title="{{shortDay .Day}}: {{percentText .Ratio}}"
+    hx-get="/cards/checklist?day={{isoDay .Day}}" hx-target="#card-checklist" hx-swap="outerHTML"></button>{{end}}</div>
   {{end}}
 </div>
 {{end}}
