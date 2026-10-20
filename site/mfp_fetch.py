@@ -259,8 +259,11 @@ if __name__ == "__main__":
     try:
         main()
     except Exception as exc:
-        msg = str(exc)
+        # One readable line for the page: some errors (the browser's) carry pages of log.
+        msg = (str(exc).strip().splitlines() or [type(exc).__name__])[0][:200]
         if mfp_client.is_auth_error(exc):
-            msg = "MyFitnessPal login expired. Run `mfp-mcp auth` in the myfitnesspal-mcp folder, then refresh."
+            msg = "MyFitnessPal login expired: reconnect it on the Account page with a fresh session token."
+        elif "ProcessSingleton" in msg or "refresh is still running" in msg:
+            msg = "MyFitnessPal's login refresh was busy. It'll try again on the next sync."
         print(json.dumps({"error": msg}))
         sys.exit(1)
