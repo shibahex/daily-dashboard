@@ -23,6 +23,9 @@ const (
 // ErrUnreachable means AnkiConnect didn't answer (Anki closed, or the add-on missing).
 var ErrUnreachable = errors.New("Anki isn't reachable")
 
+// ErrNotSetUp means the user hasn't told the dashboard where their AnkiConnect is.
+var ErrNotSetUp = fmt.Errorf("%w: set up your Anki on the Account page", ErrUnreachable)
+
 // ActionError is an error AnkiConnect returned for an action.
 type ActionError struct{ Message string }
 
@@ -31,6 +34,7 @@ func (e ActionError) Error() string { return e.Message }
 type Client struct {
 	URL    string
 	APIKey string // only if one is set in AnkiConnect's config
+	Local  bool   // the Anki on this computer (the host account's): it can be opened from here
 	http   *http.Client
 
 	// Gateway is what the agents' Anki MCP talks to instead of AnkiConnect (see Gateway), and
@@ -45,7 +49,9 @@ func NewClientFromEnv() Client {
 	if url == "" {
 		url = defaultURL
 	}
-	return NewClient(url, os.Getenv("ANKI_CONNECT_API_KEY"))
+	client := NewClient(url, os.Getenv("ANKI_CONNECT_API_KEY"))
+	client.Local = true
+	return client
 }
 
 // NewClient talks to the AnkiConnect at url ("" = not set up yet).
@@ -55,6 +61,9 @@ func NewClient(url, apiKey string) Client {
 
 // Call runs one AnkiConnect action. params may be nil, a map, or raw JSON.
 func (c Client) Call(action string, params any) (json.RawMessage, error) {
+	if c.URL == "" {
+		return nil, ErrNotSetUp
+	}
 	if params == nil {
 		params = map[string]any{}
 	}

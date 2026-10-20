@@ -145,3 +145,23 @@ func TestContextOnlyReadsTheUsersOwnFiles(t *testing.T) {
 		t.Errorf("other files leaked in: %q", context)
 	}
 }
+
+func TestAgentGetsTheUsersHomeAndKey(t *testing.T) {
+	req := testRequest(t)
+	req.Home = "/data/users/aaaa/agent-home"
+	req.Env = APIKeys["claude"].KeyEnv("sk-ant-test")
+	c := newClaude(nil)
+	c.program = "sh"
+	inv, _ := c.Invocation(req)
+	if !slices.Contains(inv.Env, "HOME=/data/users/aaaa/agent-home") || !slices.Contains(inv.Env, "ANTHROPIC_API_KEY=sk-ant-test") {
+		t.Fatal("the agent should run with the user's own HOME and key")
+	}
+	if got := APIKeys["codex"].KeyEnv("k"); !slices.Equal(got, []string{"OPENAI_API_KEY=k", "CODEX_API_KEY=k"}) {
+		t.Fatalf("codex key env: %v", got)
+	}
+
+	plain := testRequest(t)
+	if inv, _ := c.Invocation(plain); inv.Env != nil {
+		t.Fatal("without a home or key, the agent keeps the server's environment")
+	}
+}

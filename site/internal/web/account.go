@@ -3,7 +3,10 @@ package web
 import (
 	"errors"
 	"net/http"
+	"strings"
 
+	"dashboard/internal/anki"
+	"dashboard/internal/assistant"
 	"dashboard/internal/auth"
 	"dashboard/internal/httpx"
 	"dashboard/internal/problem"
@@ -116,18 +119,98 @@ func (ui *UI) renderSignIn(w http.ResponseWriter, status int, view signInView) {
 // ---------- the Account page ----------
 
 type accountView struct {
-	Username string
-	Admin    bool
-	Sessions int
-	HasToken bool
-	NewToken string // shown once, right after it's made
-	Error    string
-	Saved    string
+	Username    string
+	Admin       bool
+	Sessions    int
+	HasToken    bool
+	NewToken    string // shown once, right after it's made
+	Error       string
+	Saved       string
+	Connections connectionsView
+}
+
+// connectionsView is the user's own MyFitnessPal, Anki and AI keys.
+type connectionsView struct {
+	Host         bool // uses the server computer's own logins
+	MyFitnessPal bool // signed in
+	Anki         anki.Status
+	AnkiURL      string
+	Keys         []keyChoice
+	Error        string
+	Saved        string
+}
+
+type keyChoice struct {
+	Provider, Label, Where string
+	Set                    bool
 }
 
 func (ui *UI) accountView(r *http.Request) accountView {
 	user := ui.user(r)
-	return accountView{Username: user.Username, Admin: user.IsAdmin(), Sessions: ui.Auth.SessionCount(user.ID), HasToken: ui.Auth.HasToken(user.ID)}
+	return accountView{Username: user.Username, Admin: user.IsAdmin(), Sessions: ui.Auth.SessionCount(user.ID),
+		HasToken: ui.Auth.HasToken(user.ID), Connections: ui.connectionsView(r)}
+}
+
+func (ui *UI) connectionsView(r *http.Request) connectionsView {
+	ws := ui.ws(r)
+	ankiClient := ws.Anki()
+	view := connectionsView{Host: ws.Host, MyFitnessPal: ws.MyFitnessPal.Client().Setup().SignedIn,
+		Anki: ankiClient.Status(), AnkiURL: ankiClient.URL}
+	for _, provider := range auth.KnownProviders {
+		key := assistant.APIKeys[provider]
+		view.Keys = append(view.Keys, keyChoice{Provider: provider, Label: key.Label, Where: key.Where, Set: ws.Secrets.Has(key.Name)})
+	}
+	return view
+}
+
+// renderConnections answers a change to a connection: the card again, with what happened.
+func (ui *UI) renderConnections(w http.ResponseWriter, r *http.Request, saved string, err error) {
+	view := ui.connectionsView(r)
+	if err != nil {
+		view.Error = err.Error()
+	} else {
+		view.Saved = saved
+		announce(w, say(saved))
+	}
+	ui.render(w, "connections-card", view)
+}
+
+func (ui *UI) connectMyFitnessPal(w http.ResponseWriter, r *http.Request) {
+	ws := ui.ws(r)
+	err := ws.MyFitnessPal.Client().Connect(r.FormValue("token"))
+	if err == nil {
+		go ws.MyFitnessPal.Sync()
+	}
+	ui.renderConnections(w, r, "MyFitnessPal connected", err)
+}
+
+func (ui *UI) disconnectMyFitnessPal(w http.ResponseWriter, r *http.Request) {
+	ui.renderConnections(w, r, "MyFitnessPal disconnected", ui.ws(r).MyFitnessPal.Client().Disconnect())
+}
+
+func (ui *UI) connectAnki(w http.ResponseWriter, r *http.Request) {
+	err := ui.Workspaces.ConnectAnki(ui.user(r), formText(r, "url"), strings.TrimSpace(r.FormValue("key")))
+	ui.renderConnections(w, r, "Anki connected", err)
+}
+
+func (ui *UI) disconnectAnki(w http.ResponseWriter, r *http.Request) {
+	ui.renderConnections(w, r, "Anki disconnected", ui.Workspaces.DisconnectAnki(ui.user(r)))
+}
+
+// saveAPIKey stores (or, with an empty key, removes) the user's key for one AI provider.
+func (ui *UI) saveAPIKey(w http.ResponseWriter, r *http.Request) {
+	key, known := assistant.APIKeys[r.FormValue("provider")]
+	value := strings.TrimSpace(r.FormValue("key"))
+	switch {
+	case !known:
+		ui.renderConnections(w, r, "", problem.Invalidf("Pick a provider"))
+	case len(value) > 500 || strings.ContainsAny(value, " \t\r\n"):
+		ui.renderConnections(w, r, "", problem.Invalidf("That doesn't look like an API key"))
+	case value == "":
+		ui.renderConnections(w, r, key.Label+" key removed", ui.ws(r).Secrets.Set(key.Name, ""))
+	default:
+		ui.renderConnections(w, r, key.Label+" key saved", ui.ws(r).Secrets.Set(key.Name, value))
+	}
 }
 
 func (ui *UI) accountPage(w http.ResponseWriter, r *http.Request) {

@@ -56,7 +56,7 @@ func (c *codex) Invocation(req Request) (Invocation, error) {
 	} else {
 		args = append(args, "-")
 	}
-	return Invocation{Args: args, Dir: req.WorkDir, Stdin: firstMessage(req)}, nil
+	return Invocation{Args: args, Dir: req.WorkDir, Stdin: firstMessage(req), Env: req.environment()}, nil
 }
 
 // codexOffFeatures are the Codex features that reach the web or accounts other than the

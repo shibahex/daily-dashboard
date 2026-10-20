@@ -18,12 +18,16 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"dashboard/internal/anki"
 	"dashboard/internal/assistant"
 	"dashboard/internal/auth"
 	"dashboard/internal/config"
+	"dashboard/internal/jsonfile"
 	"dashboard/internal/myfitnesspal"
+	"dashboard/internal/problem"
+	"dashboard/internal/secrets"
 	"dashboard/internal/store"
 	"dashboard/internal/tasks"
 	"dashboard/internal/taskwarrior"
@@ -39,12 +43,28 @@ type Workspace struct {
 	Tasks         *tasks.Service
 	Time          timewarrior.Client
 	MyFitnessPal  *myfitnesspal.Syncer
-	Anki          anki.Client
+	Secrets       *secrets.Store // the user's AI API keys, sealed
 	Conversations *assistant.Conversations
 	Chat          *assistant.Runner
 	Live          *assistant.LiveAnswer
 
-	stop chan struct{}
+	mu   sync.Mutex
+	anki anki.Client   // changes when the user connects their Anki: read it with Anki()
+	stop chan struct{} // closed to stop the background sync
+	done chan struct{} // closed once it has stopped
+}
+
+// Anki is the user's Anki: this computer's for the host, otherwise their own AnkiConnect.
+func (w *Workspace) Anki() anki.Client {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.anki
+}
+
+func (w *Workspace) setAnki(client anki.Client) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.anki = client
 }
 
 // AssistantDir is where the agent's config files for this user are written.
@@ -57,14 +77,17 @@ type Manager struct {
 	hostAnki  anki.Client         // the Anki on this computer, for the host account
 	gateway   *anki.Gateway
 	providers assistant.Providers
+	box       *secrets.Box
 
 	mu   sync.Mutex
 	open map[string]*Workspace
 }
 
-func NewManager(paths config.Paths, mfp myfitnesspal.Client, hostAnki anki.Client, gateway *anki.Gateway, providers assistant.Providers) *Manager {
+func NewManager(paths config.Paths, mfp myfitnesspal.Client, hostAnki anki.Client, gateway *anki.Gateway,
+	providers assistant.Providers, box *secrets.Box) *Manager {
 	os.MkdirAll(paths.UsersDir(), 0o700)
-	return &Manager{paths: paths, mfp: mfp, hostAnki: hostAnki, gateway: gateway, providers: providers, open: map[string]*Workspace{}}
+	return &Manager{paths: paths, mfp: mfp, hostAnki: hostAnki, gateway: gateway, providers: providers, box: box,
+		open: map[string]*Workspace{}}
 }
 
 // For is the user's workspace, opened (and its MyFitnessPal sync started) on first use.
@@ -81,7 +104,10 @@ func (m *Manager) For(user auth.User) *Workspace {
 	}
 	ws := m.openWorkspace(user)
 	m.open[user.ID] = ws
-	go ws.MyFitnessPal.RunUntil(ws.stop)
+	go func() {
+		defer close(ws.done)
+		ws.MyFitnessPal.RunUntil(ws.stop)
+	}()
 	return ws
 }
 
@@ -103,6 +129,10 @@ func (m *Manager) Remove(userID string) error {
 	if ok {
 		close(ws.stop)
 		ws.Chat.Stop()
+		<-ws.done // a sync still writing would leave files behind
+		for i := 0; ws.Chat.Busy() && i < 50; i++ {
+			time.Sleep(100 * time.Millisecond) // ...and so would an answer being saved
+		}
 	}
 	m.gateway.Unregister(userID)
 	if !validID(userID) {
@@ -111,13 +141,40 @@ func (m *Manager) Remove(userID string) error {
 	return os.RemoveAll(filepath.Join(m.paths.UsersDir(), userID))
 }
 
-// SetAnki points the user's Anki at their AnkiConnect.
-func (m *Manager) SetAnki(user auth.User, client anki.Client) {
+// ConnectAnki checks the user's AnkiConnect (see anki.CheckConnection), saves it and points
+// their Anki and their agent's Anki MCP at it. The host keeps this computer's Anki.
+func (m *Manager) ConnectAnki(user auth.User, url, apiKey string) error {
+	if user.Host {
+		return problem.Invalidf("This account uses the Anki on the server's computer")
+	}
+	cleaned, err := anki.CheckConnection(url, apiKey, false)
+	if err != nil {
+		return err
+	}
 	ws := m.For(user)
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	client.Gateway, client.GatewayKey = m.gateway, m.gateway.Register(user.ID, client)
-	ws.Anki = client
+	if err := jsonfile.Write(filepath.Join(filepath.Dir(ws.Paths.Plan()), "anki.json"), ankiSettings{URL: cleaned, APIKey: apiKey}); err != nil {
+		return err
+	}
+	m.useAnki(ws, anki.NewClient(cleaned, apiKey))
+	return nil
+}
+
+// DisconnectAnki forgets the user's AnkiConnect.
+func (m *Manager) DisconnectAnki(user auth.User) error {
+	if user.Host {
+		return problem.Invalidf("This account uses the Anki on the server's computer")
+	}
+	ws := m.For(user)
+	if err := os.Remove(filepath.Join(filepath.Dir(ws.Paths.Plan()), "anki.json")); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	m.useAnki(ws, anki.NewClient("", ""))
+	return nil
+}
+
+func (m *Manager) useAnki(ws *Workspace, client anki.Client) {
+	client.Gateway, client.GatewayKey = m.gateway, m.gateway.Register(ws.UserID, client)
+	ws.setAnki(client)
 }
 
 // validID guards RemoveAll: user ids are hex (auth.newUserID), never a path.
@@ -143,19 +200,21 @@ func (m *Manager) openWorkspace(user auth.User) *Workspace {
 	files := store.New(paths)
 	files.SeedDocs()
 
-	ws := &Workspace{UserID: user.ID, Host: user.Host, Paths: paths, Store: files, stop: make(chan struct{})}
+	ws := &Workspace{UserID: user.ID, Host: user.Host, Paths: paths, Store: files,
+		stop: make(chan struct{}), done: make(chan struct{})}
 	mfp := m.mfp
 	var taskClient *taskwarrior.Client
+	ankiClient := m.hostAnki
 	if user.Host {
 		taskClient, ws.Time = taskwarrior.NewClient(), timewarrior.NewClient()
-		ws.Anki = m.hostAnki
 	} else {
 		env := prepareTaskwarrior(dir, filepath.Join(m.paths.Site, ".timew-hook"))
 		taskClient, ws.Time = taskwarrior.NewClientWithEnv(env), timewarrior.NewClientWithEnv(env)
 		mfp = mfp.ForUser(filepath.Join(dir, "mfp"))
-		ws.Anki = loadAnki(dir)
+		ankiClient = loadAnki(dir)
 	}
-	ws.Anki.Gateway, ws.Anki.GatewayKey = m.gateway, m.gateway.Register(user.ID, ws.Anki)
+	m.useAnki(ws, ankiClient)
+	ws.Secrets = secrets.NewStore(m.box, dir, user.ID)
 	ws.Tasks = tasks.NewService(taskClient, ws.Time)
 	ws.MyFitnessPal = myfitnesspal.NewSyncer(mfp, files, paths.DataFile("mfp.json"))
 	ws.Conversations = assistant.NewConversations(paths.DataFile("chat.json"), m.providers)

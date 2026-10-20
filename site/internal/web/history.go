@@ -69,7 +69,7 @@ func (ui *UI) loadActivity(r *http.Request) (activityData, error) {
 		Checklist:      ui.ws(r).Store.Checklist(),
 		ChecklistItems: plan.Checklist,
 	}
-	history := ui.ws(r).Anki.History(ui.ws(r).Paths.DataFile("anki_history.json"))
+	history := ui.ws(r).Anki().History(ui.ws(r).Paths.DataFile("anki_history.json"))
 	data.Reviews, data.AnkiLive = history.Reviews, history.Live
 	if intervals, err := ui.ws(r).Time.IntervalsBetween(data.Today.AddDate(-1, 0, -7), data.Today.AddDate(0, 0, 1)); err == nil {
 		for _, interval := range intervals {

@@ -17,6 +17,7 @@ import (
 
 	"dashboard/internal/config"
 	"dashboard/internal/mcp"
+	"dashboard/internal/problem"
 	"dashboard/internal/text"
 )
 
@@ -125,29 +126,12 @@ func (c Client) MCPServer() mcp.Server {
 // its JSON answer.
 func (c Client) Run(request map[string]any, timeout time.Duration) (json.RawMessage, error) {
 	if !c.Setup().SignedIn {
-		return nil, errors.New("MyFitnessPal isn't connected yet. Set up the MyFitnessPal MCP (see the MCPs tab).")
+		return nil, errors.New("MyFitnessPal isn't connected yet. Connect it on the Account page.")
 	}
 	requestJSON, _ := json.Marshal(request)
-	where := []string{"--no-project", "--with", Package}
-	if c.usesCheckout() {
-		where = []string{"--directory", c.CheckoutDir, "--extra", "autorefresh"}
-	}
-	uv := uvCommand()
-	args := append(uv[1:], "run", "--quiet", "--python", "3.12", "--managed-python")
-	args = append(args, where...)
-	args = append(args, "python", c.ScriptPath, string(requestJSON))
-
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, uv[0], args...)
-	cmd.Env = os.Environ()
-	if c.ConfigHome != "" {
-		// Another user's MFP_COOKIE from the server's environment mustn't sign this one in.
-		cmd.Env = slices.DeleteFunc(cmd.Env, func(v string) bool { return strings.HasPrefix(v, "MFP_COOKIE=") })
-	}
-	for key, value := range c.env() {
-		cmd.Env = append(cmd.Env, key+"="+value)
-	}
+	cmd := c.command(ctx, "python", c.ScriptPath, string(requestJSON))
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	runErr := cmd.Run()
@@ -171,6 +155,61 @@ func (c Client) Run(request map[string]any, timeout time.Duration) (json.RawMess
 		return nil, errors.New(message)
 	}
 	return answer, nil
+}
+
+// command runs program inside the MCP package's environment (uv run), with the user's own
+// login folders.
+func (c Client) command(ctx context.Context, program ...string) *exec.Cmd {
+	where := []string{"--no-project", "--with", Package}
+	if c.usesCheckout() {
+		where = []string{"--directory", c.CheckoutDir, "--extra", "autorefresh"}
+	}
+	uv := uvCommand()
+	args := append(uv[1:], "run", "--quiet", "--python", "3.12", "--managed-python")
+	args = append(append(args, where...), program...)
+	cmd := exec.CommandContext(ctx, uv[0], args...)
+	cmd.Env = os.Environ()
+	if c.ConfigHome != "" {
+		// Another user's MFP_COOKIE from the server's environment mustn't sign this one in.
+		cmd.Env = slices.DeleteFunc(cmd.Env, func(v string) bool { return strings.HasPrefix(v, "MFP_COOKIE=") })
+	}
+	for key, value := range c.env() {
+		cmd.Env = append(cmd.Env, key+"="+value)
+	}
+	return cmd
+}
+
+// Connect signs the user in with their MyFitnessPal session token (the
+// __Secure-next-auth.session-token cookie), through the MCP's own `auth`, which checks it with
+// MyFitnessPal before saving it in the user's folder.
+func (c Client) Connect(token string) error {
+	token = strings.TrimSpace(token)
+	if token == "" || len(token) > 8000 || strings.ContainsAny(token, "\r\n") {
+		return problem.Invalidf("Paste the value of the __Secure-next-auth.session-token cookie")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+	cmd := c.command(ctx, "mfp-mcp", "auth")
+	cmd.Stdin = strings.NewReader(token + "\n")
+	var output bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &output, &output
+	if err := cmd.Run(); err != nil {
+		return problem.Invalidf("MyFitnessPal didn't accept that token: " + text.LastLine(output.String(), err.Error()))
+	}
+	return nil
+}
+
+// Disconnect forgets the user's MyFitnessPal login.
+func (c Client) Disconnect() error {
+	if c.ConfigHome == "" {
+		return problem.Invalidf("This account uses the server computer's own MyFitnessPal login")
+	}
+	for _, path := range []string{filepath.Dir(c.CookiePath()), filepath.Join(c.DataHome, "myfitnesspal-mcp")} {
+		if err := os.RemoveAll(path); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // uvCommand is uv from the PATH, or from Nix when it isn't installed.

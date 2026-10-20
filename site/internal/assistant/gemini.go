@@ -81,7 +81,11 @@ func (g *gemini) Invocation(req Request) (Invocation, error) {
 		// Gemini resumes by "latest" or index, not id; this folder only holds dashboard chats.
 		args = append(args, "--resume", "latest")
 	}
-	env := append(os.Environ(), "GEMINI_CLI_SYSTEM_SETTINGS_PATH="+settingsPath)
+	env := req.environment()
+	if env == nil {
+		env = os.Environ()
+	}
+	env = append(env, "GEMINI_CLI_SYSTEM_SETTINGS_PATH="+settingsPath)
 	return Invocation{Args: args, Dir: req.WorkDir, Env: env}, nil
 }
 

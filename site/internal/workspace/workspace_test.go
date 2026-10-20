@@ -12,6 +12,7 @@ import (
 	"dashboard/internal/auth"
 	"dashboard/internal/config"
 	"dashboard/internal/myfitnesspal"
+	"dashboard/internal/secrets"
 	"dashboard/internal/tasks"
 )
 
@@ -31,8 +32,12 @@ func newManager(t *testing.T) (*Manager, config.Paths) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	box, err := secrets.LoadBox(filepath.Join(paths.ServerData, "secret.key"))
+	if err != nil {
+		t.Fatal(err)
+	}
 	m := NewManager(paths, myfitnesspal.Client{}, anki.NewClient("http://127.0.0.1:8765", ""), gateway,
-		assistant.NewProviders(assistant.NewModelCatalog(t.TempDir())))
+		assistant.NewProviders(assistant.NewModelCatalog(t.TempDir())), box)
 	t.Cleanup(func() {
 		for _, id := range []string{"aaaa", "bbbb", "cccc"} {
 			m.Remove(id)
@@ -79,10 +84,14 @@ func TestUsersDontShareData(t *testing.T) {
 		}
 	}
 
+	a.Secrets.Set("anthropic", "a's key")
+	if b.Secrets.Has("anthropic") {
+		t.Fatal("API keys leaked between users")
+	}
 	if a.Paths.DataFile("chat.json") == b.Paths.DataFile("chat.json") || a.AssistantDir() == b.AssistantDir() {
 		t.Fatal("chats and agent folders must differ")
 	}
-	if a.Anki.GatewayKey == "" || a.Anki.GatewayKey == b.Anki.GatewayKey {
+	if a.Anki().GatewayKey == "" || a.Anki().GatewayKey == b.Anki().GatewayKey {
 		t.Fatal("each user needs their own Anki gateway key")
 	}
 	if info, err := os.Stat(filepath.Dir(a.Paths.Plan())); err != nil || info.Mode().Perm() != 0o700 {
@@ -142,7 +151,7 @@ func TestTheHostGetsTheOldDataOnce(t *testing.T) {
 func TestRemoveDeletesEverything(t *testing.T) {
 	m, _ := newManager(t)
 	ws := m.For(user("aaaa"))
-	key := ws.Anki.GatewayKey
+	key := ws.Anki().GatewayKey
 	dir := filepath.Dir(ws.Paths.Plan())
 	if err := m.Remove("aaaa"); err != nil {
 		t.Fatal(err)

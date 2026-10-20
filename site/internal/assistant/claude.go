@@ -77,7 +77,7 @@ func (c *claude) Invocation(req Request) (Invocation, error) {
 	}
 	// After --, a message that starts with "-" is still the message, not a flag.
 	args = append(args, "--", req.Message)
-	return Invocation{Args: args, Dir: req.WorkDir}, nil
+	return Invocation{Args: args, Dir: req.WorkDir, Env: req.environment()}, nil
 }
 
 // claudeLine is the part of Claude Code's stream-json events the dashboard reads.

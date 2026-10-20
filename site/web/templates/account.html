@@ -45,7 +45,63 @@
 </html>
 {{end}}
 
-{{define "account"}}{{template "account-card" .}}{{end}}
+{{define "account"}}{{template "account-card" .}}{{template "connections-card" .Connections}}{{end}}
+
+{{define "connections-card"}}
+<div class="account" id="connections-card">
+  <div class="card">
+    <h2>Your connections</h2>
+    <p class="muted">Only you use these. Your logins and keys are kept in your own folder on the server, and nobody else's food, cards or AI usage goes through them.</p>
+    {{with .Error}}<p class="sign-in-error" role="alert">{{.}}</p>{{end}}
+    {{with .Saved}}<p class="ok">{{.}}</p>{{end}}
+  </div>
+
+  <div class="card">
+    <h2>MyFitnessPal</h2>
+    {{if .MyFitnessPal}}
+    <p>Connected{{if .Host}} (the server computer's own login){{end}}. The Today tab syncs your diary every 10 minutes.</p>
+    {{if not .Host}}<div class="row"><button class="sm ghost" hx-post="/account/myfitnesspal/remove" hx-target="#connections-card" hx-swap="outerHTML" hx-confirm="Disconnect MyFitnessPal?">Disconnect</button></div>{{end}}
+    {{end}}
+    <form hx-post="/account/myfitnesspal" hx-target="#connections-card" hx-swap="outerHTML" hx-disabled-elt="find button">
+      <p class="muted small">Log in at myfitnesspal.com, open the browser's developer tools (F12) → <b>Application</b> (Chrome) or <b>Storage</b> (Firefox) → <b>Cookies</b>, and copy the value of <code>__Secure-next-auth.session-token</code>.</p>
+      <label>{{if .MyFitnessPal}}Replace the session token{{else}}Session token{{end}}
+        <input class="txt" type="password" name="token" required autocomplete="off" spellcheck="false"></label>
+      <div><button class="sm primary">{{if .MyFitnessPal}}Reconnect{{else}}Connect{{end}}</button> <small class="muted">Checking it with MyFitnessPal takes a few seconds.</small></div>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>Anki</h2>
+    {{if .Host}}
+    <p class="muted">This account uses the Anki on the server's computer, through AnkiConnect at <code>{{.AnkiURL}}</code>.</p>
+    {{else}}
+    {{if .Anki.Connected}}<p>Connected to <code>{{.AnkiURL}}</code>.</p>
+    {{else if .AnkiURL}}<p>Set to <code>{{.AnkiURL}}</code>, but it isn't answering. Is Anki open on that computer?</p>{{end}}
+    <form hx-post="/account/anki" hx-target="#connections-card" hx-swap="outerHTML" hx-disabled-elt="find button">
+      <p class="muted small">On your computer: install AnkiConnect in Anki (<b>Tools → Add-ons → Get Add-ons…</b>, code <code>{{or .Anki.Addon "2055492159"}}</code>), then in its config set <code>"webBindAddress": "0.0.0.0"</code> and an <code>"apiKey"</code> of your own, and restart Anki. The key is required: without it anyone on the network could use your Anki.</p>
+      <label>AnkiConnect address <input class="txt" name="url" value="{{.AnkiURL}}" placeholder="http://192.168.1.20:8765" required autocomplete="off" spellcheck="false"></label>
+      <label>AnkiConnect API key <input class="txt" type="password" name="key" required autocomplete="off" spellcheck="false"></label>
+      <div class="row"><button class="sm primary">{{if .AnkiURL}}Save{{else}}Connect{{end}}</button>
+      {{if .AnkiURL}}<button type="button" class="sm ghost" hx-post="/account/anki/remove" hx-target="#connections-card" hx-swap="outerHTML" hx-confirm="Disconnect your Anki?">Disconnect</button>{{end}}</div>
+    </form>
+    {{end}}
+  </div>
+
+  <div class="card">
+    <h2>AI keys</h2>
+    <p class="muted">The MCPs tab uses your own API key for each AI, so your chats use your credit.{{if .Host}} Without a key, this account falls back to the server computer's own sign-in.{{end}} Keys are stored encrypted.</p>
+    {{range .Keys}}
+    <form class="row" hx-post="/account/keys" hx-target="#connections-card" hx-swap="outerHTML">
+      <input type="hidden" name="provider" value="{{.Provider}}">
+      <label class="grow">{{.Label}} {{if .Set}}<span class="ok small">· saved</span>{{end}}
+        <input class="txt" type="password" name="key" autocomplete="off" spellcheck="false" placeholder="{{if .Set}}Leave empty and save to remove{{else}}Paste a key{{end}}"></label>
+      <button class="sm{{if not .Set}} primary{{end}}">{{if .Set}}Replace{{else}}Save{{end}}</button>
+      <a class="small muted" href="{{.Where}}" target="_blank" rel="noopener noreferrer">Get a key</a>
+    </form>
+    {{end}}
+  </div>
+</div>
+{{end}}
 
 {{define "account-card"}}
 <div class="account" id="account-card">

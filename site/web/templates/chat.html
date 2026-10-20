@@ -66,10 +66,9 @@
 {{end}}
 
 {{define "mfp-setup"}}
-<div class="mcp-setup spaced-top"><b>Set up the MyFitnessPal MCP</b><ol>
-  <li>Download the <a class="link" href="{{.Repo}}" target="_blank" rel="noopener">MyFitnessPal MCP</a> (or skip this: the dashboard can run the released package with <code>uv</code>).</li>
-  <li>Connect your account: <code>uvx --from 'mfp-mcp[autorefresh]' mfp-mcp auth</code> and paste your MyFitnessPal session cookie, as the MCP's README shows.</li>
-  <li>Reload this page.</li></ol></div>
+<div class="mcp-setup spaced-top"><b>Connect MyFitnessPal</b><ol>
+  <li>On the <a class="link" href="/account">Account page</a>, paste your MyFitnessPal session token under <b>Your connections</b>.</li>
+  <li>Come back here: the MyFitnessPal MCP uses your own login.</li></ol></div>
 {{end}}
 
 {{/* A saved message: the question, or the answer with its tool calls. */}}

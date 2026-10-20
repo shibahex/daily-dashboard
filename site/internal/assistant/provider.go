@@ -4,7 +4,9 @@
 package assistant
 
 import (
+	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 
 	"dashboard/internal/mcp"
@@ -29,8 +31,24 @@ type Request struct {
 	SessionID    string // continue this conversation; "" starts a new one
 	Model        string // "" = the CLI's default
 	Servers      []NamedServer
-	Instructions string // the system prompt, with the user's notes and data (see Instructions)
-	WorkDir      string // where the dashboard writes config files for the CLIs; the CLIs run here
+	Instructions string   // the system prompt, with the user's notes and data (see Instructions)
+	WorkDir      string   // where the dashboard writes config files for the CLIs; the CLIs run here
+	Home         string   // the CLI's HOME: the user's own, so it never sees the server's logins ("" = the server's)
+	Env          []string // extra environment: the user's API key
+}
+
+// environment is what the CLI runs with: the server's environment with the user's HOME and
+// API key on top (nil when there's nothing to change).
+func (r Request) environment() []string {
+	if r.Home == "" && len(r.Env) == 0 {
+		return nil
+	}
+	env := os.Environ()
+	if r.Home != "" {
+		env = append(env, "HOME="+r.Home, "XDG_CONFIG_HOME="+filepath.Join(r.Home, ".config"),
+			"XDG_DATA_HOME="+filepath.Join(r.Home, ".local", "share"), "XDG_CACHE_HOME="+filepath.Join(r.Home, ".cache"))
+	}
+	return append(env, r.Env...)
 }
 
 // BlockedTools are MCP tools no agent gets, by server. The Anki gateway refuses what they do
@@ -142,4 +160,27 @@ func (ps Providers) Default() Provider {
 		}
 	}
 	return ps[0]
+}
+
+// APIKey is the key a provider's CLI needs: the name it's saved under in a user's secrets, the
+// environment variables the CLI reads it from, and where to make one.
+type APIKey struct {
+	Name, Label, Env, Where string
+	ExtraEnv                []string
+}
+
+// APIKeys are the keys users can add, by provider id.
+var APIKeys = map[string]APIKey{
+	"claude": {Name: "anthropic", Label: "Anthropic (Claude Code)", Env: "ANTHROPIC_API_KEY", Where: "https://console.anthropic.com/settings/keys"},
+	"codex":  {Name: "openai", Label: "OpenAI (Codex)", Env: "OPENAI_API_KEY", ExtraEnv: []string{"CODEX_API_KEY"}, Where: "https://platform.openai.com/api-keys"},
+	"gemini": {Name: "gemini", Label: "Google (Gemini CLI)", Env: "GEMINI_API_KEY", Where: "https://aistudio.google.com/apikey"},
+}
+
+// KeyEnv is the environment that gives the provider's CLI this key.
+func (k APIKey) KeyEnv(value string) []string {
+	env := []string{k.Env + "=" + value}
+	for _, extra := range k.ExtraEnv {
+		env = append(env, extra+"="+value)
+	}
+	return env
 }

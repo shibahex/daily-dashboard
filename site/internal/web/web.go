@@ -48,6 +48,11 @@ func (ui *UI) Routes(mux *http.ServeMux) {
 	change("/account/password", ui.changePassword)
 	change("/account/token", ui.makeToken)
 	change("/account/token/remove", ui.removeToken)
+	change("/account/myfitnesspal", ui.connectMyFitnessPal)
+	change("/account/myfitnesspal/remove", ui.disconnectMyFitnessPal)
+	change("/account/anki", ui.connectAnki)
+	change("/account/anki/remove", ui.disconnectAnki)
+	change("/account/keys", ui.saveAPIKey)
 
 	// Today
 	page("/{$}", ui.todayPage)

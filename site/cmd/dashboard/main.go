@@ -21,6 +21,7 @@ import (
 	"dashboard/internal/config"
 	"dashboard/internal/httpx"
 	"dashboard/internal/myfitnesspal"
+	"dashboard/internal/secrets"
 	"dashboard/internal/web"
 	"dashboard/internal/workspace"
 )
@@ -49,10 +50,14 @@ func main() {
 	if err != nil {
 		log.Fatalf("starting the Anki gateway: %v", err)
 	}
+	box, err := secrets.LoadBox(filepath.Join(paths.ServerData, "secret.key"))
+	if err != nil {
+		log.Fatalf("loading the secrets key: %v", err)
+	}
 	providers := assistant.NewProviders(assistant.NewModelCatalog(filepath.Join(paths.ServerData, "assistant")))
 	workspaces := workspace.NewManager(paths,
 		myfitnesspal.NewClientFromEnv(filepath.Join(siteDir, "mfp_fetch.py")),
-		anki.NewClientFromEnv(), gateway, providers)
+		anki.NewClientFromEnv(), gateway, providers, box)
 	workspaces.OpenAll(account.Users())
 
 	mux := http.NewServeMux()

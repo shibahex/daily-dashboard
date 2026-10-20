@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"slices"
 	"strings"
 	"time"
@@ -123,7 +124,7 @@ func (ui *UI) chatView(r *http.Request, customModel bool) chatView {
 		Provider:     provider,
 		CustomModel:  customModel,
 		MyFitnessPal: ui.ws(r).MyFitnessPal.Client().Setup(),
-		Anki:         ui.ws(r).Anki.Status(),
+		Anki:         ui.ws(r).Anki().Status(),
 		Messages:     conversation.Messages,
 	}
 	for _, p := range ui.Providers {
@@ -197,6 +198,11 @@ func (ui *UI) sendMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ws := ui.ws(r)
+	home, env, err := agentAccount(ws, provider)
+	if err != nil {
+		fail(w, err)
+		return
+	}
 	if ws.Chat.Busy() || !ws.Live.Start(message) {
 		fail(w, problem.Conflictf(assistant.ErrBusy.Error()))
 		return
@@ -204,6 +210,8 @@ func (ui *UI) sendMessage(w http.ResponseWriter, r *http.Request) {
 
 	servers := ui.enabledServers(r, conversation)
 	request := assistant.Request{
+		Home:         home,
+		Env:          env,
 		Message:      message,
 		SessionID:    conversation.SessionID,
 		Model:        conversation.Model(),
@@ -213,6 +221,28 @@ func (ui *UI) sendMessage(w http.ResponseWriter, r *http.Request) {
 	}
 	go answer(ws, provider, conversation, request)
 	ui.render(w, "chat-card", ui.chatView(r, false))
+}
+
+// agentAccount is the HOME and API key the user's agent runs with. Everyone but the host must
+// use their own key: their chats never spend the server's own sign-in, and their agent never
+// sees the server's logins or anyone else's session history.
+func agentAccount(ws *workspace.Workspace, provider assistant.Provider) (home string, env []string, err error) {
+	key := assistant.APIKeys[provider.ID()]
+	value := ws.Secrets.Get(key.Name)
+	if ws.Host {
+		if value == "" {
+			return "", nil, nil
+		}
+		return "", key.KeyEnv(value), nil
+	}
+	if value == "" {
+		return "", nil, problem.Invalidf("Add your " + key.Label + " API key on the Account page first")
+	}
+	home = ws.Paths.DataFile("agent-home")
+	if err := os.MkdirAll(home, 0o700); err != nil {
+		return "", nil, err
+	}
+	return home, key.KeyEnv(value), nil
 }
 
 // answer runs in the background, so the answer is saved even if the page goes away.
@@ -247,7 +277,7 @@ func (ui *UI) enabledServers(r *http.Request, conversation *assistant.Conversati
 		case "myfitnesspal":
 			servers = append(servers, assistant.NamedServer{Name: name, Server: ui.ws(r).MyFitnessPal.Client().MCPServer()})
 		case "anki":
-			if server, ok := ui.ws(r).Anki.MCPServer(); ok {
+			if server, ok := ui.ws(r).Anki().MCPServer(); ok {
 				servers = append(servers, assistant.NamedServer{Name: name, Server: server})
 			}
 		}
