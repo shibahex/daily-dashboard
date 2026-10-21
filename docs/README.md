@@ -1,13 +1,40 @@
 # Health Dashboard
-A private, self-hosted dashboard for getting healthier and smarter. It brings your daily checklist and training, weight, food (from MyFitnessPal), tasks and time tracking, and Anki flashcards into one place, with an AI that can see all of it and act on it: log a meal, make flashcards from your notes, or tell you what to eat tonight. It runs on your own computer or server, for you alone or for several people. Everyone has their own account, and nobody sees anyone else's data.
 
-- **Today:** today's workout, a checklist with streaks, weight trend, calories and macros from MyFitnessPal (log and edit foods right there), tasks due, time tracked. Drag the cards to arrange them.
+**Your food, workouts, tasks and flashcards in one place, with MCP support that can manage all of it.**
+
+A private, self-hosted dashboard for getting healthier. Check in once a day, see what's left, and ask the AI to log a meal, quiz you on your Anki flashcards, manage all your Anki flashcards, or suggest what to eat tonight. It runs on your own computer or server, for you or for several people. Every account is separate, and nobody sees anyone else's data.
+
+- **Today:** workout, checklist with streaks, weight trend, calories and macros from MyFitnessPal (log and edit foods right there), tasks due, time tracked. Drag the cards to arrange them.
 - **Tasks:** [Taskwarrior](https://taskwarrior.org) tasks with repeating schedules, skips with reasons, and time tracking in [Timewarrior](https://timewarrior.net).
 - **History:** activity heatmap, activity feed, time log.
 - **Docs:** your own notes (goals, nutrition plan, workout plan…), which the AI can also read.
-- **Anki:** your decks and due counts, add cards, search and edit notes, plus an Anki card on Today and your review history in History (through the AnkiConnect add-on).
+- **Anki:** decks and due counts, add cards, search and edit notes, plus an Anki card on Today and your review history in History (through the AnkiConnect add-on).
 - **MCPs:** chat with Claude Code, Codex or Gemini CLI through the [MyFitnessPal](https://github.com/Mason-Levyy/myfitnesspal-mcp) and [Anki](https://github.com/ankimcp/anki-mcp-server) MCPs: "what should I eat tonight?", "log 2 eggs for breakfast", "make flashcards from my notes".
 - **Noctalia bar plugin** (optional): checklist, due tasks and a task timer on the [Noctalia](https://github.com/noctalia-dev/noctalia-shell) bar.
+
+## Why it works
+
+MyFitnessPal, Taskwarrior and Anki each cover one part of your day. Here they share one screen, so a single check-in replaces three apps.
+
+- **One daily check.** Workout, checklist, remaining macros, tasks due and Anki cards due are all on Today.
+- **One history.** Food, tasks, skips, tracked time and flashcard reviews are collected together, so a day or a week is easy to look back on.
+- **Skips come with context.** Any task can be skipped, but every skip asks why: sick, traveling, no time, didn't feel like it, or your own words. Skip from the Tasks tab or the Today card, and a repeating task rolls on to its next occurrence. The reason is saved and shows in the History feed and heatmap next to what you completed.
+- **An AI that can review it.** With an AI key set, it reads the same data, skip reasons included. Ask "what should I eat tonight?" and it works from your remaining macros and today's workout. Ask "why was last week bad?" and it can go through your skips, food and reviews together.
+- **Your plan next to your results.** Your goals and plans live in Docs, so you (and the AI) can compare what you meant to do with what you did.
+
+Reasons are what make the data useful. Three skipped workouts that say "tired" point at sleep or food. Three that say "no time" point at your schedule. Without them, all you have is a broken streak, and you and the AI are both guessing.
+
+Each piece also works alone. MyFitnessPal and Anki take a few minutes to link (steps 3 and 4 in [Make it yours](#make-it-yours)).
+
+## Why the AI support is built in
+Tracking tools only help if you keep them up to date, and that upkeep can kill the habit. The AI takes the busywork so you can spend your time on the habits themselves. Because it also sees everything you log, it can help you review your routine and plan what to change next.
+
+- **Turn conversations into actions.** "Log 2 eggs and toast for breakfast" goes into MyFitnessPal without you opening the app or hunting through its food database, or talk about starting a new plan with target macros and the MCP will make a new plan for you.
+- **Cards without the chore.** Point it at your notes and it drafts flashcards into Anki. Ask it to find, fix or tidy up existing cards, and it edits them for you. Or ask about existing decks and manage them for you.
+- **Questions answered from your data.** "What can I eat tonight?" uses your remaining macros and today's workout. "How many cards are due?" and "what did I skip this week?" are one message each.
+- **Less time in the tools.** One chat covers MyFitnessPal and Anki, so you don't switch between apps and menus to do small things.
+
+Think of it as an assistant that keeps your tools tidy while you get on with the day. The dashboard works fine without it, and the AI is switched on by adding a key on the Account page (step 5 in [Make it yours](#make-it-yours)).
 
 ## Get started
 
@@ -32,35 +59,6 @@ Each account gets its own private folder (`site/data/users/<id>/`, ignored by gi
 5. **Add an AI key** (optional, for the MCPs tab): on the Account page, an Anthropic, OpenAI or Google API key, or for Claude a subscription token from `claude setup-token`.
 6. **Invite people** (optional): put the dashboard behind an HTTPS reverse proxy ([Sharing it on a network](dashboard.md#sharing-it-on-a-network)), then use **Admin → Invite someone**.
 7. **Local settings** (optional): copy `site/.env.example` to `site/.env` for the network address, a local MCP checkout and similar.
-
-## Skip tasks with a reason
-
-Every task can be skipped, and every skip asks for a reason: sick, traveling, no time, didn't feel like it, or your own words.
-
-- Skip from the Tasks tab or the Today card. A repeating task rolls on to its next occurrence.
-- The reason is saved with the skip and appears in the History feed and heatmap next to everything you completed.
-- Time tracked in Timewarrior stays alongside, so a skipped task and a task you spent two hours on are both on the record.
-
-You and the AI get a log of what you avoid and why. Three skipped workouts that all say "tired" point at sleep or food. Three that say "no time" point at your schedule. Without the reasons, all you have is a broken streak.
-
-## Why connect everything
-
-MyFitnessPal, Taskwarrior and Anki each cover one part of your day. Here they're all in one place, so one daily check-in replaces opening three separate apps.
-
-| Source | What it's for |
-| --- | --- |
-| **MyFitnessPal** | Food: calories, macros and logging consistency, with logging and editing on the Today tab |
-| **Taskwarrior + Timewarrior** | Tasks, repeating schedules, skips with reasons, time spent |
-| **Anki** | Studying something new and reviewing flashcards: due counts, add cards, review history |
-
-What you get from having all three together:
-
-- **One daily check.** Workout, checklist, remaining macros, tasks due and Anki cards due are on the Today tab. Open it once a day and you can see what's left.
-- **Everything you do, collected.** Food, tasks, skips with their reasons, tracked time and flashcard reviews all end up in one history, so you can look back at a day or a week without piecing it together from separate apps.
-- **Data the AI can review.** With an AI key set, it reads the same collected data. Ask "what should I eat tonight?" and it works from your remaining macros and today's workout. Ask "why was last week bad?" and it can go through your skips, food log and reviews together.
-- **Your plan next to your results.** Your goals, nutrition plan and workout plan are in the Docs tab, so the AI (and you) can compare what you meant to do with what the history shows.
-
-Connecting is optional and each piece works alone, but MyFitnessPal and Anki only take a few minutes to link (steps 3 and 4 in [Make it yours](#make-it-yours)).
 
 ## Keeping your data private
 
