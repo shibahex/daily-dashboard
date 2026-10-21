@@ -53,3 +53,11 @@ a.sign-in-btn { display: block; text-align: center; text-decoration: none; borde
   100% { box-shadow: 0 0 0 3px transparent; }
 }
 .ai-settings { border-top: 1px solid var(--line); padding-top: 10px; }
+
+/* The Account page's tabs. */
+.subtabs { display: flex; gap: 4px; flex-wrap: wrap; margin: 0 0 16px; border-bottom: 1px solid var(--line); }
+.subtabs a { padding: 8px 14px; color: var(--muted); text-decoration: none; border-bottom: 2px solid transparent; margin-bottom: -1px; font-weight: 500; }
+.subtabs a:hover { color: var(--ink); }
+.subtabs a.on { color: var(--ink); border-color: var(--accent); font-weight: 600; }
+.notice.warn { margin: 0 0 8px; padding: 10px 14px; border-radius: 10px; background: var(--warn-soft); color: var(--warn); font-size: 14px; line-height: 1.5; }
+.notice.warn .link { color: inherit; font-weight: 600; text-decoration: underline; }

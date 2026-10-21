@@ -352,6 +352,10 @@ func (ui *UI) setServerAI(w http.ResponseWriter, r *http.Request) {
 	view := ui.connectionsView(r)
 	user.ServerAI = on
 	view.ServerAI, view.ServerAIs = on, serverAILabels(user)
+	if on && !view.ServerAllowed {
+		fail(w, problem.Forbiddenf("Your admin hasn't allowed an AI on the server for you yet"))
+		return
+	}
 	ui.render(w, "server-ai", view)
 }
 

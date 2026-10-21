@@ -67,7 +67,17 @@
 </html>
 {{end}}
 
-{{define "account"}}{{template "account-card" .}}{{template "connections-card" .Connections}}{{end}}
+{{define "account"}}
+<nav class="subtabs" aria-label="Account settings">
+  <a href="/account"{{if eq .Tab ""}} class="on" aria-current="page"{{end}}>Account</a>
+  <a href="/account?tab=privacy"{{if eq .Tab "privacy"}} class="on" aria-current="page"{{end}}>Privacy</a>
+  <a href="/account?tab=connections"{{if eq .Tab "connections"}} class="on" aria-current="page"{{end}}>Connections</a>
+  <a href="/account?tab=ai"{{if eq .Tab "ai"}} class="on" aria-current="page"{{end}}>AI</a>
+</nav>
+{{if eq .Tab "ai"}}{{template "ai-card" .Connections}}
+{{else if eq .Tab "connections"}}{{template "connections-card" .Connections}}
+{{else}}{{template "account-card" .}}{{end}}
+{{end}}
 
 {{define "connections-card"}}
 <div class="account" id="connections-card">
@@ -109,6 +119,11 @@
     {{end}}
   </div>
 
+</div>
+{{end}}
+
+{{define "ai-card"}}
+<div class="account" id="ai-card">
   <div class="card" id="ai-settings">
     <h2>AI</h2>
     <p class="muted">The MCPs tab's AI can run in two places; you pick one at the top of that tab.</p>
@@ -145,12 +160,18 @@
 
 {{define "server-ai"}}
 <div class="ai-place" id="server-ai">
-  <h3>On the server {{if .ServerAI}}<span class="badge on">on</span>{{end}}</h3>
+  <h3>On the server {{if and .ServerAI .ServerAllowed}}<span class="badge on">on</span>{{end}}</h3>
   <p class="muted">Claude Code, Codex and Gemini CLI can't run in a browser, so they run on the server. That's the way to use a Claude subscription. The catch: while one answers, the server sees your message, your notes and your key. It keeps none of them, but whoever runs the server could read them then.</p>
+  {{if not .ServerAllowed}}
+  <p class="notice warn">{{if .Admin}}You haven't allowed an AI on the server for your own account yet. Tick the ones you want under your name on the <a class="link" href="/admin">Admin page</a>.{{else}}Your admin hasn't allowed an AI on the server for you yet. Ask them if you'd like to use one.{{end}}</p>
+  {{else if and .ServerAI (not .ServerAIs)}}
+  <p class="notice warn">The AIs you're allowed aren't installed on the server yet. Ask whoever runs it.</p>
+  {{else if .ServerAI}}
+  <p class="small">You can pick {{range $i, $name := .ServerAIs}}{{if $i}}, {{end}}{{$name}}{{end}} on the MCPs tab.</p>
+  {{end}}
   {{if .ServerAI}}
-  <p class="small">{{if .ServerAIs}}You can pick {{range $i, $name := .ServerAIs}}{{if $i}}, {{end}}{{$name}}{{end}} on the MCPs tab.{{else}}None of them is allowed for you or installed on the server yet.{{end}}</p>
   <button class="sm" hx-post="/account/server-ai" hx-vals="{{vals "on" "0"}}" hx-target="#server-ai" hx-swap="outerHTML">Turn it off</button>
-  {{else}}
+  {{else if .ServerAllowed}}
   <button class="sm" hx-post="/account/server-ai" hx-vals="{{vals "on" "1"}}" hx-target="#server-ai" hx-swap="outerHTML" hx-confirm="Let the server see your messages, notes and key while an AI on the server answers you?">Turn it on</button>
   {{end}}
 </div>
@@ -158,32 +179,7 @@
 
 {{define "account-card"}}
 <div class="account" id="account-card">
-  <div class="card">
-    <h2>Signed in as {{.Username}}</h2>
-    <p class="muted">{{.Sessions}} {{plural .Sessions "browser" "browsers"}} signed in. A browser stays signed in for up to 30 days, or until it goes unused for 7.</p>
-    <div class="devices">{{range .Devices}}
-      <div class="device"><span><b>{{or .Agent "A browser"}}</b>{{if .Current}} · <span class="ok">this one</span>{{end}}
-        <small class="muted">signed in {{isoDay .Created}}{{if not .LastUsed.IsZero}} · last used {{isoDay .LastUsed}}{{end}}</small></span>
-        {{if not .Current}}<button class="sm ghost" hx-post="/account/devices/end" hx-vals="{{vals "id" .ID}}" hx-target="#account-card" hx-swap="outerHTML" hx-confirm="Log that browser out?">Log out</button>{{end}}</div>
-    {{end}}</div>
-    <div class="row">
-      <button class="sm" hx-post="/account/logout" hx-swap="none">Log out</button>
-      {{if gt .Sessions 1}}<button class="sm" hx-post="/account/logout-others" hx-target="#account-card" hx-swap="outerHTML">Log out everywhere else</button>{{end}}
-    </div>
-  </div>
-
-  <form class="card" hx-post="/account/password" hx-target="#account-card" hx-swap="outerHTML" data-keys="password"{{if .Sealed}} data-sealed{{end}}>
-    <h2>Change password</h2>
-    {{with .Error}}<p class="sign-in-error" role="alert">{{.}}</p>{{end}}
-    {{with .Saved}}<p class="ok">{{.}}</p>{{end}}
-    <p class="sign-in-error" role="alert" data-keys-error hidden></p>
-    <input type="text" name="username" value="{{.Username}}" autocomplete="username" hidden>
-    <label>Current password <input class="txt" type="password" name="current_password" data-current required autocomplete="current-password"></label>
-    <label>New password <input class="txt" type="password" name="new_password" data-password required minlength="12" maxlength="256" autocomplete="new-password"></label>
-    <label>New password again <input class="txt" type="password" name="new_confirm" data-confirm required maxlength="256" autocomplete="new-password"></label>
-    <div><button class="sm primary">Change password</button></div>
-  </form>
-
+  {{if eq .Tab "privacy"}}
   <form class="card" hx-post="/account/recovery" hx-target="#account-card" hx-swap="outerHTML" data-keys="recovery" data-sealed>
     <h2>Your notes and recovery code</h2>
     <p class="muted">Your notes, AI chat and AI keys are encrypted here in your browser: the server only ever has them scrambled. If you forget your password, your recovery code is the only way back in.</p>
@@ -213,6 +209,33 @@
     {{end}}
   </div>
 
+  {{else}}
+  <div class="card">
+    <h2>Signed in as {{.Username}}</h2>
+    <p class="muted">{{.Sessions}} {{plural .Sessions "browser" "browsers"}} signed in. A browser stays signed in for up to 30 days, or until it goes unused for 7.</p>
+    <div class="devices">{{range .Devices}}
+      <div class="device"><span><b>{{or .Agent "A browser"}}</b>{{if .Current}} · <span class="ok">this one</span>{{end}}
+        <small class="muted">signed in {{isoDay .Created}}{{if not .LastUsed.IsZero}} · last used {{isoDay .LastUsed}}{{end}}</small></span>
+        {{if not .Current}}<button class="sm ghost" hx-post="/account/devices/end" hx-vals="{{vals "id" .ID}}" hx-target="#account-card" hx-swap="outerHTML" hx-confirm="Log that browser out?">Log out</button>{{end}}</div>
+    {{end}}</div>
+    <div class="row">
+      <button class="sm" hx-post="/account/logout" hx-swap="none">Log out</button>
+      {{if gt .Sessions 1}}<button class="sm" hx-post="/account/logout-others" hx-target="#account-card" hx-swap="outerHTML">Log out everywhere else</button>{{end}}
+    </div>
+  </div>
+
+  <form class="card" hx-post="/account/password" hx-target="#account-card" hx-swap="outerHTML" data-keys="password"{{if .Sealed}} data-sealed{{end}}>
+    <h2>Change password</h2>
+    {{with .Error}}<p class="sign-in-error" role="alert">{{.}}</p>{{end}}
+    {{with .Saved}}<p class="ok">{{.}}</p>{{end}}
+    <p class="sign-in-error" role="alert" data-keys-error hidden></p>
+    <input type="text" name="username" value="{{.Username}}" autocomplete="username" hidden>
+    <label>Current password <input class="txt" type="password" name="current_password" data-current required autocomplete="current-password"></label>
+    <label>New password <input class="txt" type="password" name="new_password" data-password required minlength="12" maxlength="256" autocomplete="new-password"></label>
+    <label>New password again <input class="txt" type="password" name="new_confirm" data-confirm required maxlength="256" autocomplete="new-password"></label>
+    <div><button class="sm primary">Change password</button></div>
+  </form>
+
   <div class="card">
     <h2>Bar plugin token</h2>
     <p class="muted">The Noctalia plugin uses this instead of a password. Paste it into the plugin's settings (<b>API token</b>). It only works for the plugin's small API, not the pages.</p>
@@ -225,5 +248,6 @@
       {{if .HasToken}}<button class="sm ghost" hx-post="/account/token/remove" hx-target="#account-card" hx-swap="outerHTML" hx-confirm="Remove the token? The bar plugin stops working until it has a new one.">Remove token</button>{{end}}
     </div>
   </div>
+  {{end}}
 </div>
 {{end}}

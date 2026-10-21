@@ -3,6 +3,7 @@ package web
 import (
 	"errors"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"dashboard/internal/anki"
@@ -257,6 +258,7 @@ func (ui *UI) renderSignIn(w http.ResponseWriter, status int, view signInView) {
 // ---------- the Account page ----------
 
 type accountView struct {
+	Tab          string // accountTabs: which part of the page shows
 	Username     string
 	Admin        bool
 	Sessions     int
@@ -274,19 +276,22 @@ type accountView struct {
 
 // connectionsView is the user's own MyFitnessPal, Anki and AI keys.
 type connectionsView struct {
-	Host         bool     // uses the server computer's own logins
-	ServerAI     bool     // the user lets the server run an AI for them
-	ServerAIs    []string // the AIs on the server they may pick
-	MyFitnessPal bool     // signed in
-	Anki         anki.Status
-	AnkiURL      string
-	Error        string
-	Saved        string
+	Tab           string
+	Admin         bool
+	Host          bool     // uses the server computer's own logins
+	ServerAI      bool     // the user lets the server run an AI for them
+	ServerAIs     []string // the AIs on the server they may pick
+	ServerAllowed bool     // their admin allows at least one AI on the server
+	MyFitnessPal  bool     // signed in
+	Anki          anki.Status
+	AnkiURL       string
+	Error         string
+	Saved         string
 }
 
 func (ui *UI) accountView(r *http.Request) accountView {
 	user := ui.user(r)
-	view := accountView{Username: user.Username, Admin: user.IsAdmin(), Sessions: ui.Auth.SessionCount(user.ID),
+	view := accountView{Tab: accountTab(r), Username: user.Username, Admin: user.IsAdmin(), Sessions: ui.Auth.SessionCount(user.ID),
 		Devices:  ui.Auth.Devices(user.ID, auth.SessionFrom(r)),
 		HasToken: ui.Auth.HasToken(user.ID), Connections: ui.connectionsView(r), Encrypted: ui.Workspaces.Encrypted(user), Sealed: sealedNotes(user), PlainStorage: user.PlainStorage}
 	return view
@@ -295,8 +300,34 @@ func (ui *UI) accountView(r *http.Request) accountView {
 func (ui *UI) connectionsView(r *http.Request) connectionsView {
 	user, ws := ui.user(r), ui.ws(r)
 	ankiClient := ws.Anki()
-	return connectionsView{Host: ws.Host, MyFitnessPal: ws.MyFitnessPal.Client().Setup().SignedIn,
+	view := connectionsView{Tab: accountTab(r), Admin: user.IsAdmin(), Host: ws.Host, MyFitnessPal: ws.MyFitnessPal.Client().Setup().SignedIn,
 		Anki: ankiClient.Status(), AnkiURL: ankiClient.URL, ServerAI: user.ServerAI, ServerAIs: serverAILabels(user)}
+	for _, id := range auth.ServerProviders {
+		view.ServerAllowed = view.ServerAllowed || user.Policy.AllowsProvider(id)
+	}
+	return view
+}
+
+// accountTabs are the Account page's tabs, by their ?tab= value ("" is the first).
+var accountTabs = []struct{ ID, Label string }{
+	{"", "Account"}, {"privacy", "Privacy"}, {"connections", "Connections"}, {"ai", "AI"},
+}
+
+// accountTab is the tab a request is for: the page's ?tab=, or for a change made on the page,
+// the tab of the page it came from.
+func accountTab(r *http.Request) string {
+	tab := r.URL.Query().Get("tab")
+	if tab == "" {
+		if from, err := url.Parse(r.Header.Get("HX-Current-URL")); err == nil {
+			tab = from.Query().Get("tab")
+		}
+	}
+	for _, t := range accountTabs {
+		if t.ID == tab {
+			return tab
+		}
+	}
+	return ""
 }
 
 // renderConnections answers a change to a connection: the card again, with what happened.

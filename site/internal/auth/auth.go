@@ -93,8 +93,11 @@ var (
 	// ServerProviders are the AIs that run on the server, only for people who turn that on.
 	ServerProviders = []string{"claude-code", "codex", "gemini"}
 	KnownMCPs       = []string{"myfitnesspal", "anki"}
-	// FullPolicy is everything; it's the default for new users until an admin changes it.
+	// FullPolicy is everything: the first admin's.
 	FullPolicy = Policy{Providers: KnownProviders, MCPs: KnownMCPs, EditFiles: true}
+	// NewUserPolicy is the default for new users until an admin changes it: everything but the
+	// AIs on the server, which an admin allows person by person.
+	NewUserPolicy = Policy{Providers: []string{"claude", "local"}, MCPs: KnownMCPs, EditFiles: true}
 )
 
 func (p Policy) AllowsProvider(id string) bool { return slices.Contains(p.Providers, id) }
@@ -227,7 +230,7 @@ func (a *Auth) load(dataDir string) error {
 		a.state.Invites = map[string]invite{}
 	}
 	if a.state.DefaultPolicy.Providers == nil {
-		a.state.DefaultPolicy = FullPolicy
+		a.state.DefaultPolicy = NewUserPolicy
 	}
 	a.state.DefaultPolicy = a.state.DefaultPolicy.Clean()
 	return nil
@@ -252,7 +255,7 @@ func (a *Auth) migrateSingleAccount(dataDir string) error {
 	}
 	admin := &User{ID: newUserID(), Username: old.Username, Password: old.Password, Role: Admin, Host: true,
 		Policy: FullPolicy, Created: old.Created}
-	a.state = state{Users: []*User{admin}, Tokens: map[string]string{}, Invites: map[string]invite{}, DefaultPolicy: FullPolicy}
+	a.state = state{Users: []*User{admin}, Tokens: map[string]string{}, Invites: map[string]invite{}, DefaultPolicy: NewUserPolicy}
 	if old.Token != "" {
 		a.state.Tokens[old.Token] = admin.ID
 	}
