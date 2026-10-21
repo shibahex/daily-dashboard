@@ -10,6 +10,7 @@ import (
 
 	"dashboard/internal/assistant"
 	"dashboard/internal/auth"
+	"dashboard/internal/localmodel"
 	"dashboard/internal/mcp"
 	"dashboard/internal/problem"
 	"dashboard/internal/sandbox"
@@ -107,6 +108,13 @@ func (run *agentRun) prepare() (assistant.Request, error) {
 	go ui.Egress.Serve(egress)
 
 	spec := sandbox.Spec{RunDir: run.sockets, Home: run.homeDir(), Workspace: run.workspaceDir(), Egress: egressSocket}
+	if run.provider.ID() == "local" {
+		socket, err := run.relayLocal()
+		if err != nil {
+			return assistant.Request{}, err
+		}
+		spec.Local = socket
+	}
 	var servers []assistant.NamedServer
 	for _, name := range run.mcps {
 		server, err := run.mcpServer(name, &spec)
@@ -120,10 +128,15 @@ func (run *agentRun) prepare() (assistant.Request, error) {
 		instructions = assistant.Instructions(time.Now(), assistant.Context(ws.Paths.Docs, ws.Paths.Plan(), ws.Paths.Data), servers, run.caps)
 	}
 
+	model := run.conversation.Model()
+	if model == "" && run.provider.ID() == "local" {
+		model = ws.Secrets.Get(localModelSecret)
+	}
+
 	return assistant.Request{
 		Message:      run.message,
 		SessionID:    run.conversation.SessionID,
-		Model:        run.conversation.Model(),
+		Model:        model,
 		Servers:      servers,
 		Instructions: instructions,
 		Caps:         run.caps,
@@ -195,4 +208,27 @@ func shortTempDir() string {
 		return "/tmp"
 	}
 	return os.TempDir()
+}
+
+// localServer is the user's saved model server.
+func localServer(ws *workspace.Workspace) localmodel.Server {
+	return localmodel.Server{Base: ws.Secrets.Get(localURLSecret), Key: ws.Secrets.Get(assistant.APIKeys["local"].Name)}
+}
+
+// relayLocal offers the user's model server to the sandbox on a socket, through the bridge that
+// turns Claude Code's Anthropic requests into OpenAI-style chat completions. It only ever calls
+// that one server, and the key stays out here.
+func (run *agentRun) relayLocal() (string, error) {
+	server := localServer(run.ws)
+	if server.Base == "" {
+		return "", problem.Invalidf("Add your local model server's address on the Account page first")
+	}
+	socket := filepath.Join(run.sockets, "local.sock")
+	listener, err := net.Listen("unix", socket)
+	if err != nil {
+		return "", err
+	}
+	run.listeners = append(run.listeners, listener)
+	go localmodel.Bridge{Server: server}.Serve(listener)
+	return socket, nil
 }

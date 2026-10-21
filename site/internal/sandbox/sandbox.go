@@ -24,6 +24,7 @@ const (
 	socketDir    = "/run/dashboard"
 	ProxyURL     = "http://127.0.0.1:3128"
 	AnkiURL      = "http://127.0.0.1:8765"
+	LocalURL     = "http://127.0.0.1:8766" // the dashboard's bridge to the user's own model server
 )
 
 // Tools are the programs the sandbox needs, as real paths (in the Nix store on NixOS).
@@ -85,6 +86,7 @@ type Spec struct {
 	Mounts    []Mount  // anything else: MCP programs (read-only), the MyFitnessPal login folder
 	Egress    string   // the egress proxy's socket
 	Anki      string   // the user's Anki gateway socket ("" = no Anki)
+	Local     string   // a socket to the user's local model server ("" = none)
 	Path      []string // extra folders for PATH (the CLI's and MCPs' programs)
 	Env       []string // KEY=value for inside, on top of the basics
 }
@@ -120,6 +122,9 @@ func (t Tools) Command(spec Spec, args []string) ([]string, error) {
 	if spec.Anki != "" {
 		cmd = append(cmd, "--ro-bind", spec.Anki, socketDir+"/anki.sock")
 	}
+	if spec.Local != "" {
+		cmd = append(cmd, "--ro-bind", spec.Local, socketDir+"/local.sock")
+	}
 	for _, m := range spec.Mounts {
 		flag := "--ro-bind"
 		if m.Writable {
@@ -139,16 +144,19 @@ func (t Tools) Command(spec Spec, args []string) ([]string, error) {
 		}
 		cmd = append(cmd, "--setenv", key, value)
 	}
-	cmd = append(cmd, "--chdir", WorkspaceDir, "--", t.Shell, "-c", t.startScript(spec.Anki != ""), "sandbox")
+	cmd = append(cmd, "--chdir", WorkspaceDir, "--", t.Shell, "-c", t.startScript(spec.Anki != "", spec.Local != ""), "sandbox")
 	return append(cmd, args...), nil
 }
 
 // startScript starts the socats that offer the dashboard's sockets on 127.0.0.1, waits until
 // they listen, then becomes the CLI.
-func (t Tools) startScript(anki bool) string {
+func (t Tools) startScript(anki, local bool) string {
 	script := t.Socat + " TCP-LISTEN:3128,bind=127.0.0.1,fork,reuseaddr UNIX-CONNECT:" + socketDir + "/egress.sock 2>/dev/null &\n"
 	if anki {
 		script += t.Socat + " TCP-LISTEN:8765,bind=127.0.0.1,fork,reuseaddr UNIX-CONNECT:" + socketDir + "/anki.sock 2>/dev/null &\n"
+	}
+	if local {
+		script += t.Socat + " TCP-LISTEN:8766,bind=127.0.0.1,fork,reuseaddr UNIX-CONNECT:" + socketDir + "/local.sock 2>/dev/null &\n"
 	}
 	// bash's /dev/tcp tells when socat listens; give up after ~2s and let the CLI report it.
 	script += "for i in $(seq 40); do (exec 3<>/dev/tcp/127.0.0.1/3128) 2>/dev/null && break; sleep 0.05; done\n"

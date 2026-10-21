@@ -12,6 +12,7 @@ import (
 	"dashboard/internal/auth"
 	"dashboard/internal/myfitnesspal"
 	"dashboard/internal/problem"
+	"dashboard/internal/sandbox"
 	"dashboard/internal/workspace"
 )
 
@@ -153,9 +154,13 @@ func (ui *UI) chatView(r *http.Request, customModel bool) chatView {
 			Installed: p.Installed(), Available: p.Available()})
 	}
 	chosen := conversation.Model()
-	view.Models = []modelChoice{{ID: "", Label: "Default model", Selected: chosen == ""}}
+	defaultLabel := "Default model"
+	if saved := ui.ws(r).Secrets.Get(localModelSecret); provider.ID() == "local" && saved != "" {
+		defaultLabel = "Default (" + saved + ")"
+	}
+	view.Models = []modelChoice{{ID: "", Label: defaultLabel, Selected: chosen == ""}}
 	knownModel := chosen == ""
-	for _, model := range provider.Models() {
+	for _, model := range ui.modelsFor(r, provider) {
 		view.Models = append(view.Models, modelChoice{ID: model.ID, Label: model.Label, Description: model.Description, Selected: model.ID == chosen})
 		knownModel = knownModel || model.ID == chosen
 	}
@@ -242,8 +247,12 @@ func (ui *UI) sendMessage(w http.ResponseWriter, r *http.Request) {
 		fail(w, problem.Conflictf(assistant.ErrBusy.Error()))
 		return
 	}
+	caps := capabilitiesFor(user.Policy)
+	if provider.ID() == "local" {
+		caps.Web = false // web search is Anthropic's own service, which a local server doesn't have
+	}
 	run := &agentRun{ui: ui, ws: ws, provider: provider, conversation: conversation, message: message,
-		mcps: allowedMCPs(user.Policy, conversation), caps: capabilitiesFor(user.Policy), env: env}
+		mcps: allowedMCPs(user.Policy, conversation), caps: caps, env: env}
 	go run.answer()
 	ui.render(w, "chat-card", ui.chatView(r, false))
 }
@@ -251,6 +260,14 @@ func (ui *UI) sendMessage(w http.ResponseWriter, r *http.Request) {
 // agentKey is the user's own API key for the provider, as the CLI's environment. Everyone
 // brings their own: no chat spends the server's sign-in, and the sandbox holds no other login.
 func agentKey(ws *workspace.Workspace, provider assistant.Provider) ([]string, error) {
+	if provider.ID() == "local" {
+		if ws.Secrets.Get(localURLSecret) == "" {
+			return nil, problem.Invalidf("Add your local model server's address on the Account page first")
+		}
+		// Claude Code talks to the bridge inside the sandbox (see relayLocal), which holds the real
+		// address and key; Claude Code only needs some token to send.
+		return []string{"ANTHROPIC_BASE_URL=" + sandbox.LocalURL, "ANTHROPIC_AUTH_TOKEN=local"}, nil
+	}
 	key := assistant.APIKeys[provider.ID()]
 	value := ws.Secrets.Get(key.Name)
 	if value == "" {
@@ -418,4 +435,24 @@ func (ui *UI) changeConversation(r *http.Request, w http.ResponseWriter, change 
 		return
 	}
 	ui.render(w, "chat-card", ui.chatView(r, false))
+}
+
+// modelsFor is the model menu: the provider's own, or for a local model what the user's server
+// says it has.
+func (ui *UI) modelsFor(r *http.Request, provider assistant.Provider) []assistant.Model {
+	if provider.ID() != "local" {
+		return provider.Models()
+	}
+	server := localServer(ui.ws(r))
+	if server.Base == "" {
+		return nil
+	}
+	names, _ := server.CachedModels(false)
+	var models []assistant.Model
+	for _, name := range names {
+		if assistant.ModelNamePattern.MatchString(name) {
+			models = append(models, assistant.Model{ID: name, Label: name})
+		}
+	}
+	return models
 }

@@ -85,7 +85,7 @@ Works through the [AnkiConnect](https://ankiweb.net/shared/info/2055492159) add-
 A chat with an AI that can use your MyFitnessPal diary and your Anki cards: ask about your food and plan, say what you ate and it logs it, or have it make flashcards. It uses the [MyFitnessPal MCP](https://github.com/Mason-Levyy/myfitnesspal-mcp) and the [Anki MCP](https://github.com/ankimcp/anki-mcp-server), with your notes, plan, weigh-ins, checklist history and today's diary as context.
 
 - **Add your key** on the Account page for the AI you use: an Anthropic, OpenAI or Google API key. For Claude you can also use your subscription: run `claude setup-token` and paste the token it prints. Everyone uses their own key, including the admin, so chats use your own credit.
-- **Pick the AI** at the top: Claude Code, Codex or Gemini CLI (the ones your admin allows). Codex and Gemini are built with Nix on first use. Switching starts a new chat.
+- **Pick the AI** at the top: Claude Code, Codex, Gemini CLI or a Local model (the ones your admin allows). Codex and Gemini are built with Nix on first use. **Local model** runs Claude Code against your own Ollama, llama.cpp, LM Studio or other OpenAI-compatible server, through a bridge in the dashboard that translates (set its address on the Account page and pick from the models it lists; the admin must enable it, since the dashboard connects to the address you give). The dashboard never runs the model itself. Switching starts a new chat.
 - **Pick the MCPs** with the toggles. A green dot means it's ready; one that needs setup links to the Account page. With both off, the AI can only talk about your notes and data.
 - The conversation is kept in your own `chat.json` until **New chat**.
 

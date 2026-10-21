@@ -9,6 +9,7 @@ import (
 	"dashboard/internal/assistant"
 	"dashboard/internal/auth"
 	"dashboard/internal/httpx"
+	"dashboard/internal/localmodel"
 	"dashboard/internal/problem"
 )
 
@@ -136,6 +137,11 @@ type connectionsView struct {
 	Anki         anki.Status
 	AnkiURL      string
 	Keys         []keyChoice
+	LocalURL     string // the user's local model server, host:port
+	LocalModel   string
+	LocalKey     bool
+	LocalModels  []string // what the server has (empty when it can't be reached)
+	LocalError   string   // why the list couldn't be had
 	Error        string
 	Saved        string
 }
@@ -157,8 +163,20 @@ func (ui *UI) connectionsView(r *http.Request) connectionsView {
 	view := connectionsView{Host: ws.Host, MyFitnessPal: ws.MyFitnessPal.Client().Setup().SignedIn,
 		Anki: ankiClient.Status(), AnkiURL: ankiClient.URL}
 	for _, provider := range auth.KnownProviders {
+		if provider == "local" {
+			continue // has its own form
+		}
 		key := assistant.APIKeys[provider]
 		view.Keys = append(view.Keys, keyChoice{Provider: provider, Label: key.Label, Where: key.Where, Hint: key.Hint, Set: ws.Secrets.Has(key.Name)})
+	}
+	view.LocalURL, view.LocalModel = ws.Secrets.Get(localURLSecret), ws.Secrets.Get(localModelSecret)
+	view.LocalKey = ws.Secrets.Has(assistant.APIKeys["local"].Name)
+	if view.LocalURL != "" {
+		models, err := localServer(ws).CachedModels(false)
+		view.LocalModels = models
+		if err != nil {
+			view.LocalError = err.Error()
+		}
 	}
 	return view
 }
@@ -265,4 +283,49 @@ func (ui *UI) removeToken(w http.ResponseWriter, r *http.Request) {
 	}
 	announce(w, say("Token removed: the bar plugin can't connect until it has a new one"))
 	ui.render(w, "account-card", ui.accountView(r))
+}
+
+// The local model server's address and default model are saved beside the user's API keys.
+const (
+	localURLSecret   = "local_url"
+	localModelSecret = "local_model"
+)
+
+// saveLocal stores (or, with an empty address, removes) the local model server settings.
+func (ui *UI) saveLocal(w http.ResponseWriter, r *http.Request) {
+	secrets := ui.ws(r).Secrets
+	key := assistant.APIKeys["local"]
+	model := strings.TrimSpace(r.FormValue("model"))
+	apiKey := strings.TrimSpace(r.FormValue("key"))
+	address := strings.TrimSpace(r.FormValue("url"))
+	if address != "" {
+		var err error
+		if address, err = localmodel.ParseBase(address); err != nil {
+			ui.renderConnections(w, r, "", problem.Invalidf(err.Error()))
+			return
+		}
+	}
+	switch {
+	case model != "" && !assistant.ModelNamePattern.MatchString(model):
+		ui.renderConnections(w, r, "", problem.Invalidf("That doesn't look like a model name"))
+		return
+	case len(apiKey) > 500 || strings.ContainsAny(apiKey, " \t\r\n"):
+		ui.renderConnections(w, r, "", problem.Invalidf("That doesn't look like an API key"))
+		return
+	}
+	err := secrets.Set(localURLSecret, address)
+	if err == nil {
+		err = secrets.Set(localModelSecret, model)
+	}
+	if err == nil && (apiKey != "" || address == "") { // an empty key box keeps the saved key
+		err = secrets.Set(key.Name, apiKey)
+	}
+	if err == nil && address != "" {
+		localServer(ui.ws(r)).CachedModels(true) // ask the (maybe new) server again now
+	}
+	saved := "Local model saved"
+	if address == "" {
+		saved = "Local model removed"
+	}
+	ui.renderConnections(w, r, saved, err)
 }

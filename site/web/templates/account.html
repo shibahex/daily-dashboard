@@ -99,6 +99,26 @@
       <a class="small muted" href="{{.Where}}" target="_blank" rel="noopener noreferrer">Get a key</a>
     </form>
     {{end}}
+    <h3>Local model</h3>
+    <p class="muted">Use a model from your own Ollama, llama.cpp (<code>llama-server</code>), LM Studio or any server with the OpenAI-style API (<code>/v1/models</code>, <code>/v1/chat/completions</code>). The dashboard runs nothing: it only connects to the address you give. Your admin has to turn on <b>Local model</b> for you. Pick it in the AI menu on the MCPs tab.</p>
+    <form class="row" hx-post="/account/local" hx-target="#connections-card" hx-swap="outerHTML">
+      <label class="grow">Address <input class="txt" name="url" value="{{.LocalURL}}" placeholder="localhost:11434" autocomplete="off" spellcheck="false"></label>
+      <label class="grow">Model
+        {{if .LocalModels}}
+        <select class="txt" name="model">
+          <option value=""{{if not .LocalModel}} selected{{end}}>Pick a model…</option>
+          {{$saved := .LocalModel}}{{$listed := false}}
+          {{range .LocalModels}}<option{{if eq . $saved}} selected{{$listed = true}}{{end}}>{{.}}</option>{{end}}
+          {{if and $saved (not $listed)}}<option selected>{{$saved}}</option>{{end}}
+        </select>
+        {{else}}
+        <input class="txt" name="model" value="{{.LocalModel}}" placeholder="{{if .LocalURL}}Type its name{{else}}Save the address first{{end}}" autocomplete="off" spellcheck="false">
+        {{end}}
+        {{with .LocalError}}<small class="muted">Couldn't list its models: {{.}}</small>{{end}}</label>
+      <label class="grow">API key {{if .LocalKey}}<span class="ok small">· saved</span>{{end}}<input class="txt" type="password" name="key" autocomplete="off" spellcheck="false" placeholder="{{if .LocalKey}}Leave empty to keep it{{else}}Optional{{end}}"></label>
+      <button class="sm primary">Save</button>
+    </form>
+    <p class="small muted">Save the address and its models show up to pick from. Empty address removes it. Examples: <code>localhost:11434</code> (Ollama), <code>localhost:8080</code> (llama.cpp), <code>localhost:1234</code> (LM Studio) or an <code>https://…/v1</code> endpoint; <code>/v1</code> is added when there's no path. The model needs to handle tool calls.</p>
   </div>
 </div>
 {{end}}

@@ -1,4 +1,4 @@
-// Package assistant runs an AI coding agent (Claude Code, Codex or Gemini CLI) headless for the
+// Package assistant runs an AI coding agent (Claude Code, Codex, Gemini CLI, or Claude Code on a local model) headless for the
 // MCPs tab, with only the MCP servers turned on there and nothing that reaches the web or other
 // accounts (Codex keeps its shell, sandboxed read-only and offline).
 package assistant
@@ -92,7 +92,7 @@ type Model struct {
 }
 
 // ModelNamePattern is what a model name may look like ("claude-opus-5-5", "gpt-5.5").
-var ModelNamePattern = regexp.MustCompile(`^[\w.:/-]{1,80}$`)
+var ModelNamePattern = regexp.MustCompile(`^[\w.:/@+-]{1,120}$`)
 
 // ---------- events ----------
 
@@ -190,7 +190,7 @@ func nixProgram(pkg, program string) string {
 type Providers []Provider
 
 func NewProviders(claudeModels *ModelCatalog) Providers {
-	return Providers{newClaude(claudeModels), newCodex(), newGemini()}
+	return Providers{newClaude(claudeModels), newCodex(), newGemini(), newLocal()}
 }
 
 // Get returns the provider with this id.
@@ -227,6 +227,9 @@ var APIKeys = map[string]APIKey{
 		Hint: "an API key, or a Claude subscription token from `claude setup-token`"},
 	"codex":  {Name: "openai", Label: "OpenAI (Codex)", Env: "OPENAI_API_KEY", ExtraEnv: []string{"CODEX_API_KEY"}, Where: "https://platform.openai.com/api-keys"},
 	"gemini": {Name: "gemini", Label: "Google (Gemini CLI)", Env: "GEMINI_API_KEY", Where: "https://aistudio.google.com/apikey"},
+	// The local server needs no key unless the user put one in front of it; its address and model
+	// are saved beside it, and the dashboard's bridge sends it (see web/account.go, internal/localmodel).
+	"local": {Name: "local_key", Label: "Local model server"},
 }
 
 // KeyEnv is the environment that gives the provider's CLI this key. A Claude subscription

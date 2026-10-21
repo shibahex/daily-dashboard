@@ -61,7 +61,7 @@ func (u User) IsAdmin() bool { return u.Role == Admin }
 // Policy is what a user's AI agent may use. Admins set it, and the server checks it again for
 // every message, whatever the page sent.
 type Policy struct {
-	Providers []string `json:"providers"`  // "claude", "codex", "gemini"
+	Providers []string `json:"providers"`  // "claude", "codex", "gemini", "local"
 	MCPs      []string `json:"mcps"`       // "myfitnesspal", "anki"
 	Web       bool     `json:"web"`        // web search and fetch
 	ReadFiles bool     `json:"read_files"` // read the user's own notes and data in the sandbox
@@ -69,10 +69,10 @@ type Policy struct {
 }
 
 var (
-	KnownProviders = []string{"claude", "codex", "gemini"}
+	KnownProviders = []string{"claude", "codex", "gemini", "local"}
 	KnownMCPs      = []string{"myfitnesspal", "anki"}
-	// FullPolicy is everything; it's the default for new users until an admin changes it.
-	FullPolicy = Policy{Providers: KnownProviders, MCPs: KnownMCPs, Web: true, ReadFiles: true, EditFiles: true}
+	// FullPolicy is everything but the local model, which an admin turns on (it reaches a server the user names).
+	FullPolicy = Policy{Providers: []string{"claude", "codex", "gemini"}, MCPs: KnownMCPs, Web: true, ReadFiles: true, EditFiles: true}
 )
 
 func (p Policy) AllowsProvider(id string) bool { return slices.Contains(p.Providers, id) }
