@@ -24,6 +24,7 @@ func isEditing(r *http.Request) bool { return r.URL.Query().Get("edit") == "1" }
 
 type sessionCardView struct {
 	Editing  bool
+	Heading  string // "Today's training", or the earlier day's
 	Key      string
 	Session  store.Session
 	Planned  bool
@@ -46,7 +47,8 @@ func (ui *UI) sessionView(r *http.Request, editing bool, exercises [][]string) (
 	if err != nil {
 		return sessionCardView{}, err
 	}
-	key, session, planned := plan.SessionFor(time.Now().Weekday().String())
+	day := shownDay(r)
+	key, session, planned := plan.SessionFor(day.Weekday().String())
 	if !planned {
 		session = store.Session{Title: "Nothing scheduled"}
 	}
@@ -55,8 +57,12 @@ func (ui *UI) sessionView(r *http.Request, editing bool, exercises [][]string) (
 			exercises = append(exercises, []string{exercise[0], exercise[1]})
 		}
 	}
+	heading := "Today's training"
+	if !isToday(day) {
+		heading = "Training · " + dayName(day)
+	}
 	return sessionCardView{
-		Editing: editing, Key: key, Session: session, Planned: planned, UsedOn: plan.DaysUsing(key),
+		Editing: editing, Heading: heading, Key: key, Session: session, Planned: planned, UsedOn: plan.DaysUsing(key),
 		Exercise: rowEditor{URL: sessionURL, Rows: exercises, AddLabel: "Add exercise",
 			Columns: []rowColumn{{Placeholder: "Exercise"}, {Placeholder: "Sets × reps", Narrow: true}}},
 	}, nil
@@ -71,7 +77,7 @@ func (ui *UI) sessionCard(w http.ResponseWriter, r *http.Request) {
 	ui.render(w, "card-session", view)
 }
 
-// saveSession saves today's session (title, note, exercises), or applies a row operation.
+// saveSession saves the shown day's session (title, note, exercises), or applies a row operation.
 func (ui *UI) saveSession(w http.ResponseWriter, r *http.Request) {
 	rows := rowsFromForm(r, 2)
 	if operation := rowOperation(r); operation != "" {
@@ -84,7 +90,7 @@ func (ui *UI) saveSession(w http.ResponseWriter, r *http.Request) {
 		ui.render(w, "card-session", view)
 		return
 	}
-	weekday := time.Now().Weekday().String()
+	weekday := shownDay(r).Weekday().String()
 	err := ui.ws(r).Store.UpdatePlan(func(plan *store.Plan) {
 		key, session, _ := plan.SessionFor(weekday)
 		if title := formText(r, "title"); title != "" {
@@ -126,11 +132,12 @@ type checklistDot struct {
 	Shown bool // the day the card shows
 }
 
-// checklistCardView is one day's checklist: today, or an earlier day picked from the dots.
+// checklistCardView is one day's checklist: the page's day, or an earlier one picked from the dots.
 type checklistCardView struct {
 	Editing                     bool
 	Day                         time.Time
-	IsToday                     bool
+	OnPageDay                   bool   // the card shows the page's day (not one picked from the dots)
+	PageDay                     string // the page's day, for "Back to …"
 	Items                       []checklistItem
 	Done, Skipped, Total        int
 	DonePercent, SkippedPercent float64
@@ -143,18 +150,8 @@ const checklistURL = "/cards/checklist"
 
 func (v checklistCardView) DayKey() string { return v.Day.Format(dayLayout) }
 
-// checklistDay is the day asked for (?day= or the form's day): today unless it's an earlier day.
-func checklistDay(r *http.Request) time.Time {
-	today := startOfDay(time.Now())
-	day, err := time.ParseInLocation(dayLayout, r.FormValue("day"), time.Local)
-	if err != nil || day.After(today) {
-		return today
-	}
-	return day
-}
-
 func (ui *UI) renderChecklistCard(r *http.Request) (template.HTML, error) {
-	view, err := ui.checklistView(r, isEditing(r), checklistDay(r), r.URL.Query().Get("note"), nil)
+	view, err := ui.checklistView(r, isEditing(r), shownDay(r), r.URL.Query().Get("note"), nil)
 	if err != nil {
 		return "", err
 	}
@@ -169,7 +166,8 @@ func (ui *UI) checklistView(r *http.Request, editing bool, shown time.Time, note
 	days := ui.ws(r).Store.Checklist()
 	now := time.Now()
 	states := days[shown.Format(dayLayout)]
-	view := checklistCardView{Editing: editing, Day: shown, IsToday: shown.Equal(startOfDay(now)), Total: len(plan.Checklist)}
+	page := pageDay(r)
+	view := checklistCardView{Editing: editing, Day: shown, OnPageDay: shown.Equal(page), PageDay: dayName(page), Total: len(plan.Checklist)}
 	for _, name := range plan.Checklist {
 		state, note := checkState(states[name])
 		view.Items = append(view.Items, checklistItem{Name: name, State: state, Note: note, NoteOpen: state == "skip" && name == noteOpenFor})
@@ -211,7 +209,7 @@ func checkState(value any) (state, note string) {
 }
 
 func (ui *UI) checklistCard(w http.ResponseWriter, r *http.Request) {
-	view, err := ui.checklistView(r, isEditing(r), checklistDay(r), r.URL.Query().Get("note"), nil)
+	view, err := ui.checklistView(r, isEditing(r), shownDay(r), r.URL.Query().Get("note"), nil)
 	if err != nil {
 		fail(w, err)
 		return
@@ -223,7 +221,7 @@ func (ui *UI) checklistCard(w http.ResponseWriter, r *http.Request) {
 func (ui *UI) saveChecklistItems(w http.ResponseWriter, r *http.Request) {
 	rows := rowsFromForm(r, 1)
 	if operation := rowOperation(r); operation != "" {
-		view, err := ui.checklistView(r, true, checklistDay(r), "", applyRowOperation(rows, operation, 1))
+		view, err := ui.checklistView(r, true, shownDay(r), "", applyRowOperation(rows, operation, 1))
 		if err != nil {
 			fail(w, err)
 			return
@@ -236,7 +234,7 @@ func (ui *UI) saveChecklistItems(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	announce(w, say("Checklist saved"), planChanged, checklistChanged)
-	ui.renderChecklistAfterChange(r, w, checklistDay(r), "")
+	ui.renderChecklistAfterChange(r, w, shownDay(r), "")
 }
 
 // setChecklistItem ticks, skips or clears an item on the card's day (today, or an earlier day):
@@ -251,7 +249,7 @@ func (ui *UI) setChecklistItem(w http.ResponseWriter, r *http.Request) {
 			state = "done"
 		}
 	}
-	shown := checklistDay(r)
+	shown := shownDay(r)
 	day := shown.Format(dayLayout)
 	items := ui.ws(r).Store.Checklist()[day]
 	if items == nil {
@@ -304,7 +302,8 @@ type weightCardView struct {
 	LastWeighIn  time.Time
 	HasWeighIns  bool
 	WeighedToday bool
-	TodayLB      float64
+	TodayLB      float64 // the shown day's weigh-in
+	DayName      string  // "today", "yesterday", "Mon, Oct 19"
 	Change       float64 // since the plan's start
 	StartDate    time.Time
 	Trend        *sparkline
@@ -331,7 +330,8 @@ func (ui *UI) weightView(r *http.Request, editing bool) (weightCardView, error) 
 	}
 	weights := ui.ws(r).Store.Weights()
 	today := time.Now().Format("2006-01-02")
-	view := weightCardView{Editing: editing, Plan: plan.Weight, Current: plan.Weight.Start}
+	shown := shownDay(r)
+	view := weightCardView{Editing: editing, Plan: plan.Weight, Current: plan.Weight.Start, DayName: dayName(shown)}
 	view.StartDate, _ = time.ParseInLocation("2006-01-02", plan.Weight.StartDate, time.Local)
 	if len(weights) > 0 {
 		last := weights[len(weights)-1]
@@ -340,7 +340,7 @@ func (ui *UI) weightView(r *http.Request, editing bool) (weightCardView, error) 
 		view.WeighedToday = last.Date == today
 	}
 	for _, w := range weights {
-		if w.Date == today {
+		if w.Date == shown.Format(dayLayout) {
 			view.TodayLB = w.LB
 		}
 	}
@@ -412,10 +412,10 @@ func (ui *UI) saveWeightPlan(w http.ResponseWriter, r *http.Request) {
 	ui.renderWeightAfterChange(r, w)
 }
 
-// logWeight logs today's weigh-in (lb), or removes it (remove=1). A new weigh-in also goes to
+// logWeight logs the shown day's weigh-in (lb), or removes it (remove=1). A new weigh-in also goes to
 // MyFitnessPal and ticks the "Weigh in" checklist item.
 func (ui *UI) logWeight(w http.ResponseWriter, r *http.Request) {
-	day := time.Now().Format("2006-01-02")
+	day := shownDay(r).Format(dayLayout)
 	if r.FormValue("remove") != "" {
 		if err := ui.ws(r).Store.SetWeight(day, nil); err != nil {
 			fail(w, err)
@@ -487,7 +487,7 @@ func (ui *UI) weekView(r *http.Request, editing bool, chosen map[string]string) 
 		return weekCardView{}, err
 	}
 	view := weekCardView{Editing: editing}
-	today := time.Now().Weekday().String()
+	today := shownDay(r).Weekday().String()
 	for _, day := range store.Weekdays {
 		key := plan.Schedule[day]
 		if picked, ok := chosen[day]; ok {

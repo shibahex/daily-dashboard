@@ -49,6 +49,7 @@ type nutritionView struct {
 	Limits    []limitTile
 	Meals     []myfitnesspal.Meal
 	MealNow   string // where "+ Log food" adds to
+	DayName   string // "today", "yesterday", "Mon, Oct 19"
 }
 
 type goalsCardView struct {
@@ -58,6 +59,7 @@ type goalsCardView struct {
 	Nutrition *nutritionView
 	Syncing   bool
 	LastError string
+	DayName   string // "today", "yesterday", "Mon, Oct 19"
 }
 
 const goalsURL = "/cards/goals"
@@ -75,14 +77,12 @@ func (ui *UI) goalsView(r *http.Request, editing bool, edited [][]string) (goals
 	if err != nil {
 		return goalsCardView{}, err
 	}
-	cache, stale := ui.ws(r).MyFitnessPal.Status()
-	if stale {
-		ui.ws(r).MyFitnessPal.SyncInBackground()
-	}
-	syncing := stale || ui.ws(r).MyFitnessPal.Busy()
-	view := goalsCardView{Editing: editing, Goals: plan.Goals, Syncing: syncing, LastError: cache.ErrorText()}
+	shown := shownDay(r)
+	cache, syncing := ui.ws(r).MyFitnessPal.Day(shown.Format(dayLayout))
+	view := goalsCardView{Editing: editing, Goals: plan.Goals, Syncing: syncing, LastError: cache.ErrorText(), DayName: dayName(shown)}
 	if day, synced := cache.Day(); synced && !editing {
 		view.Nutrition = nutritionFrom(day, cache, syncing)
+		view.Nutrition.DayName = view.DayName
 	}
 	if edited == nil {
 		for _, goal := range plan.Goals {
@@ -182,9 +182,9 @@ func (ui *UI) saveGoals(w http.ResponseWriter, r *http.Request) {
 	ui.renderGoalsWith(r, w, false, nil)
 }
 
-// syncNutrition syncs with MyFitnessPal now.
+// syncNutrition syncs the shown day with MyFitnessPal now.
 func (ui *UI) syncNutrition(w http.ResponseWriter, r *http.Request) {
-	cache := ui.ws(r).MyFitnessPal.Sync()
+	cache := ui.ws(r).MyFitnessPal.FetchDay(shownDay(r).Format(dayLayout))
 	var message *notice
 	if cache.ErrorText() != "" {
 		message = &notice{Message: "MyFitnessPal: " + cache.ErrorText(), Bad: true}
@@ -281,7 +281,8 @@ func (ui *UI) foodPickView(r *http.Request) (foodPickView, error) {
 	}
 	quantity, _ := strconv.ParseFloat(view.Quantity, 64)
 	view.Preview = food.Nutrition.Scaled(view.Servings[view.Serving].Multiplier * quantity)
-	if day, ok := ui.ws(r).MyFitnessPal.Cached().Day(); ok {
+	cache, _ := ui.ws(r).MyFitnessPal.Day(shownDay(r).Format(dayLayout))
+	if day, ok := cache.Day(); ok {
 		for _, meal := range day.Meals {
 			view.Meals = append(view.Meals, meal.Name)
 		}
@@ -302,7 +303,7 @@ func (ui *UI) addFood(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	serving := view.Servings[view.Serving]
-	if _, err := ui.ws(r).MyFitnessPal.AddFood(view.Food.FoodID, serving.WeightID, quantity, view.Meal); err != nil {
+	if _, err := ui.ws(r).MyFitnessPal.AddFood(shownDay(r).Format(dayLayout), view.Food.FoodID, serving.WeightID, quantity, view.Meal); err != nil {
 		fail(w, err)
 		return
 	}
@@ -331,7 +332,7 @@ func (ui *UI) saveFood(w http.ResponseWriter, r *http.Request) {
 		fail(w, problem.Invalidf("Enter how many servings"))
 		return
 	}
-	if _, err := ui.ws(r).MyFitnessPal.EditFood(r.PathValue("entry"), r.FormValue("serving"), quantity, r.FormValue("meal")); err != nil {
+	if _, err := ui.ws(r).MyFitnessPal.EditFood(shownDay(r).Format(dayLayout), r.PathValue("entry"), r.FormValue("serving"), quantity, r.FormValue("meal")); err != nil {
 		fail(w, err)
 		return
 	}
@@ -340,7 +341,7 @@ func (ui *UI) saveFood(w http.ResponseWriter, r *http.Request) {
 }
 
 func (ui *UI) deleteFood(w http.ResponseWriter, r *http.Request) {
-	if _, err := ui.ws(r).MyFitnessPal.DeleteFood(r.PathValue("entry")); err != nil {
+	if _, err := ui.ws(r).MyFitnessPal.DeleteFood(shownDay(r).Format(dayLayout), r.PathValue("entry")); err != nil {
 		fail(w, err)
 		return
 	}

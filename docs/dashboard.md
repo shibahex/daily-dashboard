@@ -2,7 +2,7 @@
 
 The web dashboard in `site/`: a self-hosted page for daily habits: today's workout, a daily checklist (with skips and reasons), goals, weight, and full Taskwarrior + Timewarrior management. Several people can use one server, each with their own account and their own data: nobody sees anyone else's.
 
-- **Today:** training for the day, checklist with streaks, weight log, nutrition from MyFitnessPal, due tasks, time tracked
+- **Today:** training for the day, checklist with streaks, weight log, nutrition from MyFitnessPal, due tasks, time tracked. The ‹ › arrows around the date at the top go to earlier days (say, after midnight) to see or fix them: that day's training, checklist, weigh-in, food and time. Due tasks and Anki always show now.
 - **Tasks:** add, edit, complete (asks how long it took, default 30 min, and logs it in Timewarrior; also on past days), skip with reasons, repeating schedules (every N days, specific weekdays every N weeks, monthly), undo
 - **History:** GitHub-style activity heatmap (tasks done, hours tracked, checklist), activity feed, time log editor, skip reasons
 - **Docs:** your own Markdown notes, plus these guides
@@ -63,7 +63,7 @@ The **Nutrition today** card shows what you've eaten against your MyFitnessPal g
 - Connect it on the **Account** page: paste the Cookie header of a myfitnesspal.com request (DevTools → Network → the first request → Request Headers → `cookie` → Copy value; the page shows the steps). MyFitnessPal needs the whole header, since its `remember_me` cookie is what keeps you signed in. The [MyFitnessPal MCP](https://github.com/Mason-Levyy/myfitnesspal-mcp) checks it and saves it in your own folder. `mfp_fetch.py` runs with that package through `uv`.
 - The server syncs every 10 minutes, when the page is opened with stale data, and with **↻ Sync**. The result is cached in `data/mfp.json`.
 - **Log food:** **+ Log food** (or **+ Add to …** under a meal) searches MyFitnessPal's food database. Pick a result, then the number of servings, the serving size and the meal; a preview shows the calories and macros before you add it.
-- **Edit or remove:** open a meal and use ✎ to change the amount, serving size or meal (MyFitnessPal's own edit form) or ✕ to remove a food. Changes go straight to your MyFitnessPal diary for today.
+- **Edit or remove:** open a meal and use ✎ to change the amount, serving size or meal (MyFitnessPal's own edit form) or ✕ to remove a food. Changes go straight to your MyFitnessPal diary for the day shown.
 - Weigh-ins in MyFitnessPal are copied into the weight log (and tick "Weigh in"). A weight logged on the dashboard is sent to MyFitnessPal.
 - Goals are read from MyFitnessPal; change them there. If MyFitnessPal can't be reached, the card falls back to the goals in `plan.json`.
 - If the login expires and the automatic refresh can't renew it, paste a fresh Cookie header on the Account page.

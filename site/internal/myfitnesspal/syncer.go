@@ -18,7 +18,8 @@ const (
 	writeTimeout = 150 * time.Second
 )
 
-// Cache is today's synced diary (data/mfp.json). Data is mfp_fetch.py's answer, kept as is.
+// Cache is today's synced diary (data/mfp.json). Earlier days the Today tab looks at are kept in memory
+// (Syncer.Day). Data is mfp_fetch.py's answer, kept as is.
 type Cache struct {
 	Data      json.RawMessage `json:"data,omitempty"`
 	FetchedAt float64         `json:"fetched_at,omitempty"` // unix seconds
@@ -40,6 +41,10 @@ type Syncer struct {
 	cachePath string
 	mu        sync.Mutex
 	busy      atomic.Bool
+
+	pastMu   sync.Mutex
+	past     map[string]Cache // earlier days, by YYYY-MM-DD
+	fetching map[string]bool
 }
 
 func NewSyncer(client Client, s *store.Store, cachePath string) *Syncer {
@@ -92,7 +97,7 @@ func (s *Syncer) SyncInBackground() {
 }
 
 // Change runs a diary change (add, edit or delete a food, log a weigh-in). mfp_fetch.py answers
-// with the refreshed day, which becomes the cache.
+// with the refreshed day it changed, which becomes the cache (today's, or an earlier day's).
 func (s *Syncer) Change(request map[string]any) (Cache, error) {
 	s.mu.Lock()
 	defer s.unlock()
@@ -125,16 +130,24 @@ func (s *Syncer) unlock() {
 }
 
 // save stores a successful answer (and its weigh-ins), or records the error on the old cache.
+// An answer for an earlier day goes to the in-memory cache for that day instead.
 func (s *Syncer) save(data json.RawMessage, err error) Cache {
 	now := float64(time.Now().UnixNano()) / 1e9
-	cache := s.Cached()
 	if err == nil {
-		cache = Cache{Data: data, FetchedAt: now}
 		var synced day
 		json.Unmarshal(data, &synced)
 		if mergeErr := s.store.MergeWeighIns(synced.Weights, today()); mergeErr != nil {
 			log.Printf("saving MyFitnessPal weigh-ins: %v", mergeErr)
 		}
+		if synced.Day != "" && synced.Day != today() {
+			cache := Cache{Data: data, FetchedAt: now}
+			s.keepPast(synced.Day, cache)
+			return cache
+		}
+	}
+	cache := s.Cached()
+	if err == nil {
+		cache = Cache{Data: data, FetchedAt: now}
 	} else {
 		message := err.Error()
 		cache.Error, cache.FailedAt = &message, now
@@ -143,6 +156,82 @@ func (s *Syncer) save(data json.RawMessage, err error) Cache {
 		log.Printf("saving the MyFitnessPal cache: %v", writeErr)
 	}
 	return cache
+}
+
+// ---------- earlier days ----------
+
+// pastDays is how many earlier days stay in memory.
+const pastDays = 14
+
+func (s *Syncer) keepPast(date string, cache Cache) {
+	s.pastMu.Lock()
+	defer s.pastMu.Unlock()
+	if s.past == nil {
+		s.past = map[string]Cache{}
+	}
+	s.past[date] = cache
+	for len(s.past) > pastDays { // forget the one fetched longest ago
+		oldest := ""
+		for d, c := range s.past {
+			if oldest == "" || c.FetchedAt < s.past[oldest].FetchedAt {
+				oldest = d
+			}
+		}
+		delete(s.past, oldest)
+	}
+}
+
+// Day is the diary for date (YYYY-MM-DD): today's cache, or an earlier day's, fetched in the
+// background when it's missing or old. loading reports a fetch is on its way.
+func (s *Syncer) Day(date string) (cache Cache, loading bool) {
+	if date == today() {
+		cache, stale := s.Status()
+		if stale {
+			s.SyncInBackground()
+		}
+		return cache, stale || s.Busy()
+	}
+	s.pastMu.Lock()
+	cache, known := s.past[date]
+	fetching := s.fetching[date]
+	// Wait StaleAfter after the last try, whether it worked or not.
+	tried := time.Unix(int64(max(cache.FetchedAt, cache.FailedAt)), 0)
+	stale := !known || time.Since(tried) > StaleAfter
+	if stale && !fetching {
+		if s.fetching == nil {
+			s.fetching = map[string]bool{}
+		}
+		s.fetching[date] = true
+		go s.FetchDay(date)
+	}
+	s.pastMu.Unlock()
+	return cache, stale || fetching
+}
+
+// FetchDay fetches an earlier day now (after any run in progress).
+func (s *Syncer) FetchDay(date string) Cache {
+	if date == today() {
+		return s.Sync()
+	}
+	defer func() {
+		s.pastMu.Lock()
+		delete(s.fetching, date)
+		s.pastMu.Unlock()
+	}()
+	s.mu.Lock()
+	defer s.unlock()
+	s.busy.Store(true)
+	data, err := s.client.Run(map[string]any{"op": "fetch", "date": date}, fetchTimeout)
+	if err != nil {
+		message := err.Error()
+		s.pastMu.Lock()
+		cache := s.past[date]
+		s.pastMu.Unlock()
+		cache.Error, cache.FailedAt = &message, float64(time.Now().UnixNano())/1e9
+		s.keepPast(date, cache)
+		return cache
+	}
+	return s.save(data, nil)
 }
 
 func today() string { return time.Now().Format("2006-01-02") }

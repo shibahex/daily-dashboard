@@ -238,7 +238,7 @@ def run(req):
         set_weight(client, day, float(req["lb"]))
     else:
         raise ValueError(f"unknown op {op}")
-    return fetch(client, date.today())
+    return fetch(client, day)
 
 
 def main():

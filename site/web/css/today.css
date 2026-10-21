@@ -60,3 +60,8 @@ svg.spark { width: 100%; height: 60px; display: block; margin-top: 10px; }
 .tracking { color: var(--accent); margin-bottom: 8px; }
 .time-totals { display: flex; gap: 24px; margin-bottom: 10px; }
 .time-label { margin: 6px 0; }
+/* Moving between days: arrows around the date at the top (see page.html). */
+.day-nav { display: inline-flex; align-items: baseline; gap: 2px; }
+.day-nav .edit-btn { text-decoration: none; font-size: 15px; padding: 0 6px; }
+.day-nav .edit-btn.off { opacity: .3; cursor: default; }
+.day-nav .edit-btn.off:hover { background: none; color: var(--muted); }

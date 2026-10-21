@@ -24,8 +24,10 @@ type trackedLabel struct {
 type timeCardView struct {
 	Available bool
 	Running   *trackedLabel // what's being tracked now, and for how long
-	Today     time.Duration
-	Week      time.Duration
+	Today     time.Duration // on the shown day
+	Week      time.Duration // in its week
+	DayName   string        // "today", "yesterday", "Mon, Oct 19"
+	WeekName  string        // "this week" or "that week"
 	Labels    []trackedLabel
 }
 
@@ -38,16 +40,28 @@ func (ui *UI) renderTimeCard(r *http.Request) (template.HTML, error) {
 }
 
 func (ui *UI) timeCardView(r *http.Request) (timeCardView, error) {
-	intervals, err := ui.ws(r).Time.IntervalsThisWeek()
+	now := time.Now()
+	dayStart := shownDay(r)
+	dayEnd := dayStart.AddDate(0, 0, 1)
+	view := timeCardView{Available: true, DayName: dayName(dayStart), WeekName: "this week"}
+	var intervals []timewarrior.Interval
+	var err error
+	if isToday(dayStart) {
+		intervals, err = ui.ws(r).Time.IntervalsThisWeek()
+	} else {
+		// An earlier day: its own week, Monday to Sunday.
+		weekStart := dayStart.AddDate(0, 0, -(int(dayStart.Weekday())+6)%7)
+		intervals, err = ui.ws(r).Time.IntervalsBetween(weekStart, weekStart.AddDate(0, 0, 7))
+		if !weekStart.Equal(startOfDay(now).AddDate(0, 0, -(int(now.Weekday())+6)%7)) {
+			view.WeekName = "that week"
+		}
+	}
 	if problem.KindOf(err) == problem.Unavailable {
 		return timeCardView{}, nil
 	}
 	if err != nil {
 		return timeCardView{}, err
 	}
-	now := time.Now()
-	dayStart := startOfDay(now)
-	view := timeCardView{Available: true}
 	byLabel := map[string]time.Duration{}
 	for _, interval := range intervals {
 		label := strings.Join(interval.Tags, " · ")
@@ -60,12 +74,15 @@ func (ui *UI) timeCardView(r *http.Request) (timeCardView, error) {
 		end, running := interval.EndTime()
 		if running {
 			end = now
-			view.Running = &trackedLabel{Label: label, Tracked: tracked}
+			if isToday(dayStart) {
+				view.Running = &trackedLabel{Label: label, Tracked: tracked}
+			}
 		}
-		if start := interval.StartTime(); end.After(dayStart) {
-			view.Today += end.Sub(maxTime(start, dayStart))
+		if start := maxTime(interval.StartTime(), dayStart); end.After(start) && start.Before(dayEnd) {
+			view.Today += minTime(end, dayEnd).Sub(start)
 		}
 	}
+
 	for label, tracked := range byLabel {
 		view.Labels = append(view.Labels, trackedLabel{Label: label, Tracked: tracked})
 	}
@@ -78,6 +95,13 @@ func (ui *UI) timeCardView(r *http.Request) (timeCardView, error) {
 
 func maxTime(a, b time.Time) time.Time {
 	if a.After(b) {
+		return a
+	}
+	return b
+}
+
+func minTime(a, b time.Time) time.Time {
+	if a.Before(b) {
 		return a
 	}
 	return b

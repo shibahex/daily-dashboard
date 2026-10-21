@@ -171,8 +171,8 @@ func (c Client) EntryForm(entryID string) (EntryForm, error) {
 
 // ---------- changing the diary ----------
 
-// AddFood logs quantity servings of a food to a meal today.
-func (s *Syncer) AddFood(foodID, weightID string, quantity float64, meal string) (Cache, error) {
+// AddFood logs quantity servings of a food to a meal on date (YYYY-MM-DD).
+func (s *Syncer) AddFood(date, foodID, weightID string, quantity float64, meal string) (Cache, error) {
 	meal = text.Collapse(meal)
 	if err := checkIDs(foodID, weightID); err != nil {
 		return Cache{}, err
@@ -183,11 +183,11 @@ func (s *Syncer) AddFood(foodID, weightID string, quantity float64, meal string)
 	if meal == "" || len([]rune(meal)) > 40 {
 		return Cache{}, problem.Invalidf("pick a meal")
 	}
-	return s.change(map[string]any{"op": "add", "date": today(), "food_id": foodID, "weight_id": weightID, "quantity": quantity, "meal": meal})
+	return s.change(map[string]any{"op": "add", "date": date, "food_id": foodID, "weight_id": weightID, "quantity": quantity, "meal": meal})
 }
 
 // EditFood changes an entry's amount, serving size or meal (mealID is the meal's position).
-func (s *Syncer) EditFood(entryID, weightID string, quantity float64, mealID string) (Cache, error) {
+func (s *Syncer) EditFood(date, entryID, weightID string, quantity float64, mealID string) (Cache, error) {
 	if err := checkIDs(entryID, weightID); err != nil {
 		return Cache{}, err
 	}
@@ -197,14 +197,14 @@ func (s *Syncer) EditFood(entryID, weightID string, quantity float64, mealID str
 	if !mealPosition.MatchString(mealID) {
 		return Cache{}, problem.Invalidf("pick a meal")
 	}
-	return s.change(map[string]any{"op": "edit", "date": today(), "entry_id": entryID, "weight_id": weightID, "quantity": quantity, "meal_id": mealID})
+	return s.change(map[string]any{"op": "edit", "date": date, "entry_id": entryID, "weight_id": weightID, "quantity": quantity, "meal_id": mealID})
 }
 
-func (s *Syncer) DeleteFood(entryID string) (Cache, error) {
+func (s *Syncer) DeleteFood(date, entryID string) (Cache, error) {
 	if err := checkIDs(entryID); err != nil {
 		return Cache{}, err
 	}
-	return s.change(map[string]any{"op": "delete", "date": today(), "entry_id": entryID})
+	return s.change(map[string]any{"op": "delete", "date": date, "entry_id": entryID})
 }
 
 // LogWeight sends a weigh-in (lb) to MyFitnessPal.
@@ -214,12 +214,17 @@ func (s *Syncer) LogWeight(day string, lb float64) error {
 }
 
 func (s *Syncer) change(request map[string]any) (Cache, error) {
+	if date, _ := request["date"].(string); !validDate(date) {
+		return Cache{}, problem.Invalidf("bad day")
+	}
 	cache, err := s.Change(request)
 	if err != nil {
 		return cache, problem.Unavailablef(err.Error())
 	}
 	return cache, nil
 }
+
+func validDate(date string) bool { _, err := time.Parse("2006-01-02", date); return err == nil }
 
 func checkIDs(ids ...string) error {
 	for _, id := range ids {

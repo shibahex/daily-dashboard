@@ -20,7 +20,12 @@
 </head>
 <body hx-boost="true">
 <header>
-  <div class="left"><h1>Daily Dashboard</h1><span class="date">{{longDay .Today}}</span></div>
+  <div class="left"><h1>Daily Dashboard</h1>{{with .Nav}}<span class="date day-nav">
+    <a class="edit-btn" href="/?day={{.Prev}}" title="The day before" aria-label="The day before">‹</a>
+    <span>{{longDay .Day}}</span>
+    {{if .IsToday}}<span class="edit-btn off" aria-hidden="true">›</span>{{else}}<a class="edit-btn" href="{{if .NextIsToday}}/{{else}}/?day={{.Next}}{{end}}" title="The day after" aria-label="The day after">›</a>
+    <a class="edit-btn" href="/">Today</a>{{end}}</span>
+  {{else}}<span class="date">{{longDay .Today}}</span>{{end}}</div>
   <div class="right">
     <span hx-get="/streak" hx-trigger="load, checklist-changed from:body, plan-changed from:body" hx-swap="innerHTML"></span>
     {{if .Admin}}<a class="account-link{{if eq .Tab "admin"}} on{{end}}" href="/admin">Admin</a>{{end}}

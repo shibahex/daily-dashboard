@@ -11,7 +11,7 @@
 
 {{define "card-session"}}
 <div class="card" hx-disinherit="*" id="card-session"{{if not .Editing}} hx-get="/cards/session" hx-trigger="plan-changed[!this.contains(event.target)] from:body"{{end}} hx-swap="outerHTML">
-  {{template "card-head" dict "Title" "Today's training" "URL" "/cards/session" "Editing" .Editing}}
+  {{template "card-head" dict "Title" .Heading "URL" "/cards/session" "Editing" .Editing}}
   {{if .Editing}}
   <form hx-post="/cards/session" hx-target="closest .card" hx-swap="outerHTML">
     <div class="editor">
@@ -40,8 +40,8 @@
     {{template "row-editor" .ItemsEditor}}
   </form>
   {{else}}
-  {{if not .IsToday}}<div class="past-day"><b>{{longDay .Day}}</b>
-    <button class="edit-btn" hx-get="/cards/checklist" hx-target="#card-checklist" hx-swap="outerHTML">Back to today</button></div>{{end}}
+  {{if not .OnPageDay}}<div class="past-day"><b>{{longDay .Day}}</b>
+    <button class="edit-btn" hx-get="/cards/checklist" hx-target="#card-checklist" hx-swap="outerHTML">Back to {{.PageDay}}</button></div>{{end}}
   <div class="small muted">{{add .Done .Skipped}} of {{.Total}} done{{if .Skipped}} ({{.Skipped}} skipped){{end}}{{if and .Complete .Total}} · day complete ✓{{end}}</div>
   <div class="progress"><div class="d" style="width:{{.DonePercent}}%"></div><div class="s" style="width:{{.SkippedPercent}}%"></div></div>
   {{range .Items}}
@@ -97,7 +97,7 @@
   <p class="small muted note">Log a few weigh-ins to see your trend.</p>
   {{end}}
   <form class="weight-row w-log" hx-post="/weight" hx-target="closest .card" hx-swap="outerHTML">
-    <input class="txt" name="lb" type="number" step="0.1" placeholder="Today" value="{{if .TodayLB}}{{pounds .TodayLB}}{{end}}"><span class="muted">lb</span>
+    <input class="txt" name="lb" type="number" step="0.1" placeholder="{{capitalize .DayName}}" value="{{if .TodayLB}}{{pounds .TodayLB}}{{end}}"><span class="muted">lb</span>
     <button class="sm primary">{{if .TodayLB}}Update{{else}}Log{{end}}</button>
     {{if .TodayLB}}<button class="sm ghost" name="remove" value="1">Remove</button>{{end}}
   </form>
@@ -149,13 +149,13 @@
   <p class="muted small">Timewarrior isn't available. Start the dashboard with <code>nix run</code> from the site folder.</p>
   {{else}}
   {{with .Running}}<div class="small tracking">● Tracking <b>{{.Label}}</b> · {{duration .Tracked}}</div>{{end}}
-  <div class="time-totals"><div><div class="big">{{duration .Today}}</div><div class="small muted">today</div></div>
-    <div><div class="big">{{duration .Week}}</div><div class="small muted">this week</div></div></div>
+  <div class="time-totals"><div><div class="big">{{duration .Today}}</div><div class="small muted">{{.DayName}}</div></div>
+    <div><div class="big">{{duration .Week}}</div><div class="small muted">{{.WeekName}}</div></div></div>
   {{range .Labels}}
   <div class="time-label"><div class="small spread"><span class="wrap">{{.Label}}</span><span class="muted">{{duration .Tracked}}</span></div>
     <div class="progress tight"><div class="d" style="width:{{.Percent}}%"></div></div></div>
   {{else}}
-  <p class="small muted flush">Nothing tracked this week. Press <b>Start</b> on a task to start the clock; <b>Stop</b> or <b>Done</b> stops it.</p>
+  <p class="small muted flush">Nothing tracked {{.WeekName}}. Press <b>Start</b> on a task to start the clock; <b>Stop</b> or <b>Done</b> stops it.</p>
   {{end}}
   <p class="flush-bottom"><a href="/history#card-timelog" class="small link">Edit or add time →</a></p>
   {{end}}
