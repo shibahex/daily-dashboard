@@ -9,7 +9,7 @@
 <link rel="stylesheet" href="/static/css/base.css">
 <link rel="stylesheet" href="/static/css/account.css">
 <link rel="stylesheet" href="/static/css/components.css">
-<script src="/static/js/keys.js" defer></script>
+<script src="/static/js/keys.js" integrity="{{sri "keys.js"}}" defer></script>
 </head>
 <body>
 <main class="sign-in">
@@ -45,8 +45,8 @@
     {{end}}
     {{if or (not .Invite) .Username}}
     <label>{{if .Reset}}New password{{else}}Password{{end}}
-      <input class="txt" type="password" name="password" data-password required{{if or .Setup .Invite}} maxlength="256" autocomplete="new-password"{{else}} autocomplete="current-password"{{end}}{{if or .Username .Invite}} autofocus{{end}}>
-      {{if or .Setup .Invite}}<small class="muted">A few random words is easy to remember and hard to guess. It never leaves this browser.</small>{{end}}</label>
+      <input class="txt" type="password" name="password" data-password required{{if or .Setup .Invite}} minlength="12" maxlength="256" autocomplete="new-password"{{else}} autocomplete="current-password"{{end}}{{if or .Username .Invite}} autofocus{{end}}>
+      {{if or .Setup .Invite}}<small class="muted">At least 12 characters: a few random words is easy to remember and hard to guess. It never leaves this browser.</small>{{end}}</label>
     {{if or .Setup .Invite}}
     <label>Password again
       <input class="txt" type="password" name="confirm" data-confirm required maxlength="256" autocomplete="new-password"></label>
@@ -162,7 +162,12 @@
 <div class="account" id="account-card">
   <div class="card">
     <h2>Signed in as {{.Username}}</h2>
-    <p class="muted">{{.Sessions}} {{plural .Sessions "browser" "browsers"}} signed in. Sessions last 30 days.</p>
+    <p class="muted">{{.Sessions}} {{plural .Sessions "browser" "browsers"}} signed in. A browser stays signed in for up to 30 days, or until it goes unused for 7.</p>
+    <div class="devices">{{range .Devices}}
+      <div class="device"><span><b>{{or .Agent "A browser"}}</b>{{if .Current}} · <span class="ok">this one</span>{{end}}
+        <small class="muted">signed in {{isoDay .Created}}{{if not .LastUsed.IsZero}} · last used {{isoDay .LastUsed}}{{end}}</small></span>
+        {{if not .Current}}<button class="sm ghost" hx-post="/account/devices/end" hx-vals="{{vals "id" .ID}}" hx-target="#account-card" hx-swap="outerHTML" hx-confirm="Log that browser out?">Log out</button>{{end}}</div>
+    {{end}}</div>
     <div class="row">
       <button class="sm" hx-post="/account/logout" hx-swap="none">Log out</button>
       {{if gt .Sessions 1}}<button class="sm" hx-post="/account/logout-others" hx-target="#account-card" hx-swap="outerHTML">Log out everywhere else</button>{{end}}
@@ -176,7 +181,7 @@
     <p class="sign-in-error" role="alert" data-keys-error hidden></p>
     <input type="text" name="username" value="{{.Username}}" autocomplete="username" hidden>
     <label>Current password <input class="txt" type="password" name="current_password" data-current required autocomplete="current-password"></label>
-    <label>New password <input class="txt" type="password" name="new_password" data-password required maxlength="256" autocomplete="new-password"></label>
+    <label>New password <input class="txt" type="password" name="new_password" data-password required minlength="12" maxlength="256" autocomplete="new-password"></label>
     <label>New password again <input class="txt" type="password" name="new_confirm" data-confirm required maxlength="256" autocomplete="new-password"></label>
     <div><button class="sm primary">Change password</button></div>
   </form>

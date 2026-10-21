@@ -132,6 +132,21 @@ Everyone's data is encrypted, the host's too (except the computer's own Taskwarr
 - **Needs HTTPS** (or `localhost`): browsers only do this encryption on secure pages.
 - **What it doesn't stop:** whoever runs the server could change the page's code to catch passwords as they're typed (true of any website), or read the non-note data in memory while you're signed in. A weak password can be guessed, so pick a strong one.
 
+## Checking the page's code
+
+Your notes are only as private as the scripts that handle them, and those come from the server. So the dashboard tells your browser the exact hash of each script it loads (Subresource Integrity), and a changed script won't run. To check that the server is running the published code, open the page's source (Ctrl+U) and compare each script's `integrity` value with this list from the repository (a test keeps it up to date):
+
+| Script | Hash |
+|---|---|
+| `app.js` | `sha384-x4P57jWFp4HhDk5IjeNYX2Ha+F/gKpEl4ChhZR832MRt20cQFrXeFIuRkX0Rh5uP` |
+| `keys.js` | `sha384-YWhyKFAFw9SpVngTxBKocy3mpEEPjfNTUfi2Qvx925xiFG9JwMQG4AJWBUE7kQ3u` |
+| `notes.js` | `sha384-iW4AiXCfNgQnKveb3A39gXIDQGefd5rlBvVGT5CeA8cMmPOz2/eGusX9YGt9ctl+` |
+| `assistant.js` | `sha384-w6MFlsIwwSS5mfrkyUmKaSphhUJJPcNe67dFvnsPMJVzvqYpY31knMcZRCkOpEex` |
+| `htmx.js` | `sha384-HGfztofotfshcF7+8n44JQL2oJmowVChPTg48S+jvZoztPfvwD79OC/LTtG6dMp+` |
+| `htmx-sse.js` | `sha384-fw+eTlCc7suMV/1w/7fr2/PmwElUIt5i82bi+qTiLXvjRXZ2/FkiTNA/w0MhXnGI` |
+| `marked.js` | `sha384-IvVdUXkhyoD0shbjhiiOnuiTbervTaB0VJcnEcg3shUAMVOOF6lKj4ozJrCwvz6s` |
+| `purify.js` | `sha384-a7SzOxErzJ3ZpQz0zJ32d67dSitNzPcbfybc/ykU9KJhMgZkwqfSxlhhdJRS+XGL` |
+
 ## Your data
 
 None of this is tracked by git:

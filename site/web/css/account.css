@@ -35,3 +35,7 @@ header .account-link:hover, header .account-link.on { color: var(--ink); }
 a.sign-in-btn { display: block; text-align: center; text-decoration: none; border-radius: 6px; background: var(--accent); color: var(--on-accent); }
 .check-line { display: flex; align-items: center; gap: 8px; font-size: 14px; }
 .check-line input { accent-color: var(--accent); }
+/* The signed-in browsers on the Account page. */
+.devices { display: flex; flex-direction: column; gap: 6px; margin: 4px 0 10px; }
+.device { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 14px; }
+.device small { display: block; }

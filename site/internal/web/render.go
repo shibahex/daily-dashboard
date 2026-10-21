@@ -2,6 +2,8 @@ package web
 
 import (
 	"bytes"
+	"crypto/sha512"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"html/template"
@@ -23,14 +25,51 @@ import (
 // templateSet is every file in web/templates, parsed together so they can use each other's
 // {{define}}s. It re-parses when a file changes, so editing a template only needs a reload.
 type templateSet struct {
-	dir      string
+	dir, js  string
 	mu       sync.Mutex
 	parsed   *template.Template
 	parsedAt time.Time
+
+	hashMu sync.Mutex
+	hashes map[string]scriptHash // sri's cache, by file
+}
+
+type scriptHash struct {
+	modTime time.Time
+	value   string
 }
 
 func newTemplateSet(webDir string) *templateSet {
-	return &templateSet{dir: filepath.Join(webDir, "templates")}
+	return &templateSet{dir: filepath.Join(webDir, "templates"), js: filepath.Join(webDir, "js"), hashes: map[string]scriptHash{}}
+}
+
+// sri is the integrity value of one of the dashboard's scripts (web/js/name): the browser runs it
+// only if it's exactly that file. The same values are listed in the guide (docs/dashboard.md,
+// checked by a test), so anyone can compare what their browser loaded with the published code.
+func (t *templateSet) sri(name string) (string, error) {
+	path := filepath.Join(t.js, filepath.Base(name))
+	info, err := os.Stat(path)
+	if err != nil {
+		return "", err
+	}
+	t.hashMu.Lock()
+	defer t.hashMu.Unlock()
+	if cached, ok := t.hashes[path]; ok && cached.modTime.Equal(info.ModTime()) {
+		return cached.value, nil
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	value := scriptIntegrity(data)
+	t.hashes[path] = scriptHash{info.ModTime(), value}
+	return value, nil
+}
+
+// scriptIntegrity is a script's Subresource Integrity value (sha384, base64).
+func scriptIntegrity(data []byte) string {
+	sum := sha512.Sum384(data)
+	return "sha384-" + base64.StdEncoding.EncodeToString(sum[:])
 }
 
 func (t *templateSet) current() (*template.Template, error) {
@@ -44,7 +83,7 @@ func (t *templateSet) current() (*template.Template, error) {
 		}
 	}
 	if changed {
-		parsed, err := template.New("").Funcs(templateFuncs).ParseFiles(files...)
+		parsed, err := template.New("").Funcs(templateFuncs).Funcs(template.FuncMap{"sri": t.sri}).ParseFiles(files...)
 		if err != nil {
 			return nil, err
 		}

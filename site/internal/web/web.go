@@ -58,6 +58,7 @@ func (ui *UI) Routes(mux *http.ServeMux) {
 	page("/account", ui.accountPage)
 	change("/account/logout", ui.logout)
 	change("/account/logout-others", ui.logoutOthers)
+	change("/account/devices/end", ui.endDevice)
 	change("/account/password", ui.changePassword)
 	change("/account/token", ui.makeToken)
 	change("/account/token/remove", ui.removeToken)

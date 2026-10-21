@@ -144,6 +144,7 @@ func (ui *UI) signedInWith(w http.ResponseWriter, r *http.Request, session strin
 		return
 	}
 	auth.SetSessionCookie(w, session)
+	ui.Auth.SetSessionAgent(session, browserName(r.UserAgent()))
 	if newCode {
 		ui.renderSignIn(w, http.StatusOK, signInView{Username: user.Username, ShowRecovery: true})
 		return
@@ -261,6 +262,7 @@ type accountView struct {
 	Username    string
 	Admin       bool
 	Sessions    int
+	Devices     []auth.Device
 	HasToken    bool
 	NewToken    string // shown once, right after it's made
 	Encrypted   bool   // the data is encrypted on disk (everyone but the host)
@@ -296,6 +298,7 @@ type keyChoice struct {
 func (ui *UI) accountView(r *http.Request) accountView {
 	user := ui.user(r)
 	return accountView{Username: user.Username, Admin: user.IsAdmin(), Sessions: ui.Auth.SessionCount(user.ID),
+		Devices:  ui.Auth.Devices(user.ID, auth.SessionFrom(r)),
 		HasToken: ui.Auth.HasToken(user.ID), Connections: ui.connectionsView(r), Encrypted: ui.Workspaces.Encrypted(user), Sealed: sealedNotes(user)}
 }
 
@@ -389,6 +392,39 @@ func (ui *UI) logout(w http.ResponseWriter, r *http.Request) {
 	auth.ClearSessionCookie(w)
 	w.Header().Set("HX-Redirect", "/login")
 	nothing(w)
+}
+
+// endDevice logs one of the user's other browsers out.
+func (ui *UI) endDevice(w http.ResponseWriter, r *http.Request) {
+	if err := ui.Auth.EndDevice(ui.user(r).ID, r.FormValue("id")); err != nil {
+		fail(w, err)
+		return
+	}
+	ui.Workspaces.Prune(ui.user(r).ID) // its key copy goes too
+	announce(w, say("That browser is logged out"))
+	ui.render(w, "account-card", ui.accountView(r))
+}
+
+// browserName is a short name for a browser from its User-Agent ("Firefox on Linux").
+func browserName(agent string) string {
+	name := "A browser"
+	for _, b := range []struct{ token, name string }{
+		{"Edg/", "Edge"}, {"OPR/", "Opera"}, {"Firefox/", "Firefox"}, {"Chrome/", "Chrome"}, {"Safari/", "Safari"},
+	} {
+		if strings.Contains(agent, b.token) {
+			name = b.name
+			break
+		}
+	}
+	for _, os := range []struct{ token, name string }{
+		{"Android", "Android"}, {"iPhone", "iPhone"}, {"iPad", "iPad"}, {"Windows", "Windows"},
+		{"Mac OS X", "macOS"}, {"CrOS", "ChromeOS"}, {"Linux", "Linux"},
+	} {
+		if strings.Contains(agent, os.token) {
+			return name + " on " + os.name
+		}
+	}
+	return name
 }
 
 func (ui *UI) logoutOthers(w http.ResponseWriter, r *http.Request) {

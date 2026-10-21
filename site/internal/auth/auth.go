@@ -25,11 +25,15 @@ import (
 
 	"dashboard/internal/jsonfile"
 	"dashboard/internal/problem"
+	"dashboard/internal/text"
 )
 
 const (
 	SessionLength = 30 * 24 * time.Hour
-	InviteLength  = 7 * 24 * time.Hour
+	// SessionIdle ends a session that hasn't been used for this long (a forgotten or stolen
+	// cookie stops working sooner).
+	SessionIdle  = 7 * 24 * time.Hour
+	InviteLength = 7 * 24 * time.Hour
 
 	// After freeLoginTries wrong passwords in a row (for one username, or from one address),
 	// each try waits twice as long as the last, up to maxLoginWait.
@@ -103,9 +107,20 @@ func (p Policy) Clean() Policy {
 }
 
 type session struct {
-	User    string    `json:"user"`
-	Created time.Time `json:"created"`
-	Expires time.Time `json:"expires"`
+	User     string    `json:"user"`
+	Created  time.Time `json:"created"`
+	Expires  time.Time `json:"expires"`
+	LastUsed time.Time `json:"last_used,omitzero"`
+	Agent    string    `json:"agent,omitempty"` // the browser, as it says, for the device list
+}
+
+// ended reports whether a session is past its 30 days or unused for SessionIdle.
+func (s session) ended(now time.Time) bool {
+	last := s.LastUsed
+	if last.IsZero() {
+		last = s.Created
+	}
+	return !now.Before(s.Expires) || now.Sub(last) > SessionIdle
 }
 
 // invite lets someone set a password: a new account, or a reset for an existing one.
@@ -133,13 +148,14 @@ type state struct {
 	DefaultPolicy Policy            `json:"default_policy"`
 }
 
+// failures are wrong passwords in a row, kept in a file so a restart doesn't reset them.
 type failures struct {
-	count   int
-	retryAt time.Time
+	Count   int       `json:"count"`
+	RetryAt time.Time `json:"retry_at"`
 }
 
 type Auth struct {
-	accountsFile, sessionsFile, setupCodeFile string
+	accountsFile, sessionsFile, setupCodeFile, failedFile string
 
 	mu        sync.Mutex
 	state     state
@@ -158,6 +174,7 @@ func New(dataDir string) (*Auth, error) {
 		accountsFile:  filepath.Join(dataDir, "accounts.json"),
 		sessionsFile:  filepath.Join(dataDir, "sessions.json"),
 		setupCodeFile: filepath.Join(dataDir, "setup-code"),
+		failedFile:    filepath.Join(dataDir, "login-failures.json"),
 		sessions:      map[string]session{},
 		failed:        map[string]*failures{},
 		now:           time.Now,
@@ -167,6 +184,7 @@ func New(dataDir string) (*Auth, error) {
 	}
 	if len(a.state.Users) > 0 {
 		jsonfile.Read(a.sessionsFile, &a.sessions)
+		jsonfile.Read(a.failedFile, &a.failed)
 		a.dropExpired()
 		return a, nil
 	}
@@ -350,7 +368,7 @@ func (a *Auth) login(username, ip string, check func(*User) (bool, error)) (stri
 	}
 	for _, key := range keys {
 		if f := a.failed[key]; f != nil {
-			if wait := f.retryAt.Sub(a.now()); wait > 0 {
+			if wait := f.RetryAt.Sub(a.now()); wait > 0 {
 				return "", TooManyTries{Wait: wait}
 			}
 		}
@@ -375,16 +393,18 @@ func (a *Auth) login(username, ip string, check func(*User) (bool, error)) (stri
 				f = &failures{}
 				a.failed[key] = f
 			}
-			f.count++
-			if f.count >= freeLoginTries {
-				f.retryAt = a.now().Add(loginWait(f.count))
+			f.Count++
+			if f.Count >= freeLoginTries {
+				f.RetryAt = a.now().Add(loginWait(f.Count))
 			}
 		}
+		jsonfile.Write(a.failedFile, a.failed)
 		return "", errWrongLogin
 	}
 	for _, key := range keys {
 		delete(a.failed, key)
 	}
+	jsonfile.Write(a.failedFile, a.failed)
 
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -463,7 +483,7 @@ func (a *Auth) startSession(userID string) (string, error) {
 	a.dropExpired()
 	secret := newSecret()
 	now := a.now()
-	a.sessions[fingerprint(secret)] = session{User: userID, Created: now, Expires: now.Add(SessionLength)}
+	a.sessions[fingerprint(secret)] = session{User: userID, Created: now, Expires: now.Add(SessionLength), LastUsed: now}
 	return secret, jsonfile.Write(a.sessionsFile, a.sessions)
 }
 
@@ -475,15 +495,67 @@ func (a *Auth) Session(secret string) (User, bool) {
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	saved, found := a.sessions[fingerprint(secret)]
-	if !found || !a.now().Before(saved.Expires) {
+	id := fingerprint(secret)
+	saved, found := a.sessions[id]
+	if !found || saved.ended(a.now()) {
 		return User{}, false
 	}
 	user := a.userByID(saved.User)
 	if user == nil || user.Disabled {
 		return User{}, false
 	}
+	if a.now().Sub(saved.LastUsed) > time.Hour { // noted hourly, not on every request
+		saved.LastUsed = a.now()
+		a.sessions[id] = saved
+		jsonfile.Write(a.sessionsFile, a.sessions)
+	}
 	return *user, true
+}
+
+// SetSessionAgent notes which browser a session is, for the device list.
+func (a *Auth) SetSessionAgent(secret, agent string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if s, found := a.sessions[fingerprint(secret)]; found {
+		s.Agent = text.Truncate(agent, 200)
+		a.sessions[fingerprint(secret)] = s
+		jsonfile.Write(a.sessionsFile, a.sessions)
+	}
+}
+
+// Device is one signed-in browser, for the Account page.
+type Device struct {
+	ID                string // the session's fingerprint
+	Agent             string
+	Created, LastUsed time.Time
+	Current           bool // the browser asking
+}
+
+// Devices lists the user's signed-in browsers, the most recently used first.
+func (a *Auth) Devices(userID, current string) []Device {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.dropExpired()
+	var devices []Device
+	for id, s := range a.sessions {
+		if s.User == userID {
+			devices = append(devices, Device{ID: id, Agent: s.Agent, Created: s.Created, LastUsed: s.LastUsed,
+				Current: id == fingerprint(current)})
+		}
+	}
+	slices.SortFunc(devices, func(x, y Device) int { return y.LastUsed.Compare(x.LastUsed) })
+	return devices
+}
+
+// EndDevice logs one of the user's browsers out.
+func (a *Auth) EndDevice(userID, id string) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if s, found := a.sessions[id]; !found || s.User != userID {
+		return problem.NotFoundf("That browser isn't signed in")
+	}
+	delete(a.sessions, id)
+	return jsonfile.Write(a.sessionsFile, a.sessions)
 }
 
 // Logout ends one session.
@@ -529,7 +601,7 @@ func (a *Auth) endSessions(userID, keep string) error {
 func (a *Auth) dropExpired() {
 	now := a.now()
 	for id, saved := range a.sessions {
-		if !now.Before(saved.Expires) {
+		if saved.ended(now) {
 			delete(a.sessions, id)
 		}
 	}

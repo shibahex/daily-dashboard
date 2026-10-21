@@ -511,3 +511,69 @@ func TestGuardTellsHandlersTheUser(t *testing.T) {
 		t.Fatalf("a regular user got %d from an admin page", w.Code)
 	}
 }
+
+func TestSessionsEndWhenIdle(t *testing.T) {
+	a, _, session := setUp(t)
+	now := time.Now()
+	a.now = func() time.Time { return now }
+	now = now.Add(6 * 24 * time.Hour)
+	if _, ok := a.Session(session); !ok {
+		t.Fatal("six idle days should still be signed in")
+	}
+	now = now.Add(6 * 24 * time.Hour) // used on day 6, so idle only 6 days again
+	if _, ok := a.Session(session); !ok {
+		t.Fatal("using it should keep it going")
+	}
+	now = now.Add(8 * 24 * time.Hour)
+	if _, ok := a.Session(session); ok {
+		t.Fatal("eight idle days should end it")
+	}
+}
+
+func TestDevices(t *testing.T) {
+	a, _, first := setUp(t)
+	second, err := a.Login("me", goodPassword, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.SetSessionAgent(second, "Firefox on Linux")
+	devices := a.Devices(a.Users()[0].ID, first)
+	if len(devices) != 2 {
+		t.Fatalf("devices = %+v", devices)
+	}
+	var other Device
+	for _, d := range devices {
+		if !d.Current {
+			other = d
+		}
+	}
+	if other.Agent != "Firefox on Linux" {
+		t.Errorf("the other browser = %+v", other)
+	}
+	if err := a.EndDevice("someone-else", other.ID); err == nil {
+		t.Error("only the owner may end a session")
+	}
+	if err := a.EndDevice(a.Users()[0].ID, other.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := a.Session(second); ok {
+		t.Error("the ended browser is still signed in")
+	}
+	if _, ok := a.Session(first); !ok {
+		t.Error("this browser should stay signed in")
+	}
+}
+
+func TestLoginWaitSurvivesARestart(t *testing.T) {
+	a, dir, _ := setUp(t)
+	for range freeLoginTries {
+		a.Login("me", "guess guess guess", "")
+	}
+	again, err := New(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := again.Login("me", goodPassword, ""); !errors.As(err, new(TooManyTries)) {
+		t.Fatal("a restart shouldn't reset the wait")
+	}
+}

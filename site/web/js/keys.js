@@ -52,22 +52,61 @@ const Keys = (() => {
 
   // ---------- sealing ----------
 
-  async function seal(key, bytes) {
+  // Everything is sealed with a label (AES-GCM's additional data) saying whose it is and what it
+  // is, so the server can't pass one sealed thing off as another.
+  const params = (iv, label) => label === undefined ? { name: "AES-GCM", iv } : { name: "AES-GCM", iv, additionalData: text.encode(label) };
+
+  async function seal(key, bytes, label) {
     const iv = crypto.getRandomValues(new Uint8Array(12));
-    const sealed = new Uint8Array(await subtle.encrypt({ name: "AES-GCM", iv }, key, bytes));
+    const sealed = new Uint8Array(await subtle.encrypt(params(iv, label), key, bytes));
     const out = new Uint8Array(12 + sealed.length);
     out.set(iv);
     out.set(sealed, 12);
     return b64(out);
   }
 
-  async function open(key, sealed) {
+  async function open(key, sealed, label) {
     const bytes = unb64(sealed);
-    return new Uint8Array(await subtle.decrypt({ name: "AES-GCM", iv: bytes.slice(0, 12) }, key, bytes.slice(12)));
+    return new Uint8Array(await subtle.decrypt(params(bytes.slice(0, 12), label), key, bytes.slice(12)));
   }
 
-  const sealText = (key, s) => seal(key, text.encode(s));
-  const openText = async (key, sealed) => new TextDecoder().decode(await open(key, sealed));
+  // openLabeled opens what was sealed with label, or, made before labels, without one (it gets
+  // its label the next time it's sealed).
+  const openLabeled = (key, sealed, label) => open(key, sealed, label).catch(() => open(key, sealed));
+
+  const label = (user, what) => `dashboard/v1/${user.toLowerCase()}/${what}`;
+
+  // The notes' key, wrapped with a password's or a recovery code's key (which: "password", "recovery").
+  const wrapKey = (kek, raw, user, which) => seal(kek, raw, label(user, "notes-key/" + which));
+  const openWrap = (kek, wrapped, user, which) => openLabeled(kek, wrapped, label(user, "notes-key/" + which));
+
+  // ---------- sealed blobs (notes, chat, settings) ----------
+  // Each holds a counter (seq) that goes up with every save, and this browser remembers the
+  // highest it has seen: a server handing back an older copy is caught, not shown and saved over.
+
+  const seqKey = kind => `sealed-seq:${username().toLowerCase()}:${kind}`;
+  function seenSeq(kind) {
+    try { return Number(localStorage.getItem(seqKey(kind)) || 0); } catch { return 0; }
+  }
+  function remember(kind, seq) {
+    try { if (seq > seenSeq(kind)) localStorage.setItem(seqKey(kind), String(seq)); } catch {}
+  }
+
+  async function openBlob(key, kind, sealed) {
+    const value = JSON.parse(new TextDecoder().decode(await openLabeled(key, sealed, label(username(), kind))));
+    if ((value.seq || 0) < seenSeq(kind)) {
+      throw new Error(`The server sent an older copy of your ${kind} than this browser has seen, so it isn't shown or saved over. Reload; if it stays, the server's copy was rolled back.`);
+    }
+    remember(kind, value.seq || 0);
+    return value;
+  }
+
+  // sealBlob seals value with its counter one up; call saved() once the server has taken it.
+  async function sealBlob(key, kind, value) {
+    value.seq = (value.seq || 0) + 1;
+    return seal(key, text.encode(JSON.stringify(value)), label(username(), kind));
+  }
+  const saved = (kind, value) => remember(kind, value.seq || 0);
 
   // ---------- kept in this browser ----------
   // The notes' key is kept as a key the page can use but never read out (non-extractable).
@@ -104,7 +143,7 @@ const Keys = (() => {
 
   // unlock opens the notes' key with the password (wrapped) or a key that opens it, and keeps it.
   async function unlockWith(kek, wrapped) {
-    const raw = await open(kek, wrapped);
+    const raw = await openWrap(kek, wrapped, username(), "password");
     await keep("notes", await aesKey(raw));
   }
 
@@ -128,8 +167,13 @@ const Keys = (() => {
 
   // ---------- forms ----------
 
+  // The password is the only thing between a copy of the server's files and someone's notes
+  // (guessing is slow, but not slow enough for short passwords), so it must be long.
+  const MIN_PASSWORD = 12;
+
   function checkNewPassword(name, password, confirm) {
     if (!password) return "Pick a password";
+    if ([...password].length < MIN_PASSWORD) return `Use at least ${MIN_PASSWORD} characters: a few random words is easy to remember`;
     if ([...password].length > 256) return "Use at most 256 characters for your password";
     if (password.toLowerCase() === name.toLowerCase()) return "Your password can't be your username";
     if (password.split("").every(c => c === password[0])) return "Your password can't be one character repeated";
@@ -161,8 +205,8 @@ const Keys = (() => {
     const recovery = await fromRecovery(name, code);
     const raw = crypto.getRandomValues(new Uint8Array(32));
     set(form, "recovery", recovery.proof);
-    set(form, "notes_password", await seal(kek, raw));
-    set(form, "notes_recovery", await seal(recovery.kek, raw));
+    set(form, "notes_password", await wrapKey(kek, raw, name, "password"));
+    set(form, "notes_recovery", await wrapKey(recovery.kek, raw, name, "recovery"));
     sessionStorage.setItem("recoveryCode", code);
   }
 
@@ -202,9 +246,9 @@ const Keys = (() => {
         const old = await fromRecovery(name, typed.value);
         set(form, "old_recovery", old.proof);
         if (form.dataset.notesRecovery) {
-          const raw = await open(old.kek, form.dataset.notesRecovery)
+          const raw = await openWrap(old.kek, form.dataset.notesRecovery, name, "recovery")
             .catch(() => { throw new Error("That recovery code doesn't match"); });
-          set(form, "notes_password", await seal(kek, raw));
+          set(form, "notes_password", await wrapKey(kek, raw, name, "password"));
         }
         sessionStorage.removeItem("recoveryCode"); // the old code stays theirs
       }
@@ -225,9 +269,9 @@ const Keys = (() => {
       set(form, "password", next.proof);
       if (form.hasAttribute("data-sealed")) {
         const wrapped = await wrappedKey();
-        const raw = await open(old.kek, wrapped.password)
+        const raw = await openWrap(old.kek, wrapped.password, name, "password")
           .catch(() => { throw new Error("Your current password is wrong"); });
-        set(form, "notes_password", await seal(next.kek, raw));
+        set(form, "notes_password", await wrapKey(next.kek, raw, name, "password"));
       }
       hide(current); hide(password); hide(confirm);
     },
@@ -240,9 +284,9 @@ const Keys = (() => {
       set(form, "recovery", recovery.proof);
       if (form.hasAttribute("data-sealed")) {
         const { kek } = await fromPassword(name, password.value);
-        const raw = await open(kek, (await wrappedKey()).password)
+        const raw = await openWrap(kek, (await wrappedKey()).password, name, "password")
           .catch(() => { throw new Error("That password is wrong"); });
-        set(form, "notes_recovery", await seal(recovery.kek, raw));
+        set(form, "notes_recovery", await wrapKey(recovery.kek, raw, name, "recovery"));
       }
       sessionStorage.setItem("newRecoveryCode", code);
       hide(password);
@@ -310,5 +354,5 @@ const Keys = (() => {
     }
   });
 
-  return { supported: !!subtle, notesKey, unlockWithPassword, sealText, openText, forgetAll };
+  return { supported: !!subtle, notesKey, unlockWithPassword, openBlob, sealBlob, saved, forgetAll };
 })();

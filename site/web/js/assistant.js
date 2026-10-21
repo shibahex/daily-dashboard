@@ -19,7 +19,11 @@
     return node;
   };
   const $ = name => root.querySelector(`[data-${name}]`);
-  const markdown = text => DOMPurify.sanitize(marked.parse(text || ""));
+  const markdown = text => DOMPurify.sanitize(marked.parse(text || ""), {
+    // Text to read, never a form or anything this page's scripts react to (data-*).
+    FORBID_TAGS: ["form", "input", "button", "textarea", "select", "option", "style", "iframe", "object", "embed"],
+    ALLOW_DATA_ATTR: false,
+  });
 
   // ---------- talking to the server ----------
 
@@ -47,7 +51,7 @@
     const answer = await getJSON("/assistant/chat");
     version = answer.version;
     if (answer.blob) {
-      chat = JSON.parse(await Keys.openText(key, answer.blob));
+      chat = await Keys.openBlob(key, "chat", answer.blob);
     } else if (answer.plain?.length) {
       // The chat the server-side AI kept: sealed here, then the server deletes its copy.
       chat = { messages: answer.plain.map(m => ({ role: m.role, text: m.text || "", tools: m.tools || [], error: m.error })), api: [] };
@@ -60,10 +64,11 @@
   }
 
   async function saveChat(sealed) {
-    const fields = { version, blob: await Keys.sealText(key, JSON.stringify(chat)) };
+    const fields = { version, blob: await Keys.sealBlob(key, "chat", chat) };
     if (sealed) fields.sealed = "1";
     try {
       version = (await post("/assistant/chat", fields)).version;
+      Keys.saved("chat", chat);
     } catch (e) {
       toast("The chat wasn't saved: " + e.message, { bad: true });
     }
@@ -74,14 +79,15 @@
   async function loadSettings() {
     const answer = await getJSON("/assistant/keys");
     settingsVersion = answer.version;
-    if (answer.blob) settings = JSON.parse(await Keys.openText(key, answer.blob));
+    if (answer.blob) settings = await Keys.openBlob(key, "settings", answer.blob);
   }
 
   // saveSettings seals them; with dropOld the server deletes a key it kept from before.
   async function saveSettings(dropOld) {
-    const fields = { version: settingsVersion, blob: await Keys.sealText(key, JSON.stringify(settings)) };
+    const fields = { version: settingsVersion, blob: await Keys.sealBlob(key, "settings", settings) };
     if (dropOld) fields.sealed = "1";
     settingsVersion = (await post("/assistant/keys", fields)).version;
+    Keys.saved("settings", settings);
   }
 
   // keyProblem is why the AI can't run with this key, or "".
@@ -147,6 +153,12 @@
 
   async function runTool(block) {
     if (block.name === "save_note") {
+      // Replacing a note is the user's call: what the AI read (a food name, a card) may have
+      // asked it to. The old text is kept in the note's history either way.
+      if (await SealedNotes.exists(block.input.title) &&
+          !confirm(`The AI wants to replace your note “${block.input.title}”. Allow it?`)) {
+        return { text: "The user didn't allow replacing that note.", isError: true };
+      }
       const done = await SealedNotes.saveNote(block.input.title, block.input.text);
       return { text: `Note "${block.input.title}" ${done}.`, isError: false };
     }

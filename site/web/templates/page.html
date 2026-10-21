@@ -16,15 +16,15 @@
 <link rel="stylesheet" href="/static/css/components.css">
 <script src="/static/js/htmx.js" integrity="sha384-HGfztofotfshcF7+8n44JQL2oJmowVChPTg48S+jvZoztPfvwD79OC/LTtG6dMp+"></script>
 <script src="/static/js/htmx-sse.js" integrity="sha384-fw+eTlCc7suMV/1w/7fr2/PmwElUIt5i82bi+qTiLXvjRXZ2/FkiTNA/w0MhXnGI"></script>
-<script src="/static/js/app.js" defer></script>
+<script src="/static/js/app.js" integrity="{{sri "app.js"}}" defer></script>
 <!-- Notes are decrypted and shown in the browser (keys.js, notes.js): Markdown, made safe.
      The libraries are served from here (pinned copies: htmx 2.0.4, htmx-ext-sse 2.2.2, marked 18.1.0,
      DOMPurify 3.4.16), so no other site may run scripts on these pages. -->
 <script src="/static/js/marked.js" integrity="sha384-IvVdUXkhyoD0shbjhiiOnuiTbervTaB0VJcnEcg3shUAMVOOF6lKj4ozJrCwvz6s" defer></script>
 <script src="/static/js/purify.js" integrity="sha384-a7SzOxErzJ3ZpQz0zJ32d67dSitNzPcbfybc/ykU9KJhMgZkwqfSxlhhdJRS+XGL" defer></script>
-<script src="/static/js/keys.js" defer></script>
-<script src="/static/js/notes.js" defer></script>
-<script src="/static/js/assistant.js" defer></script>
+<script src="/static/js/keys.js" integrity="{{sri "keys.js"}}" defer></script>
+<script src="/static/js/notes.js" integrity="{{sri "notes.js"}}" defer></script>
+<script src="/static/js/assistant.js" integrity="{{sri "assistant.js"}}" defer></script>
 <meta name="dashboard-user" content="{{.User}}">
 {{if .Sealed}}<meta name="dashboard-sealed" content="1">{{end}}
 </head>
