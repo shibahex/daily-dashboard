@@ -60,7 +60,7 @@ With [Tailscale](https://tailscale.com), `tailscale serve --bg 1628` gives it an
 
 The **Nutrition today** card shows what you've eaten against your MyFitnessPal goals: calories (goal − food + exercise), protein/carbs/fat, where the calories came from, the cholesterol-related limits (sat fat, fiber, sodium, cholesterol, sugar, potassium) and each meal's foods.
 
-- Connect it on the **Account** page: paste the Cookie header of a myfitnesspal.com request (DevTools → Network → the first request → Request Headers → `cookie` → Copy value; the page shows the steps). MyFitnessPal needs the whole header, since its `remember_me` cookie is what keeps you signed in. The [MyFitnessPal MCP](https://github.com/Mason-Levyy/myfitnesspal-mcp) checks it and saves it in your own folder. `mfp_fetch.py` runs with that package through `uv`.
+- Connect it on the **Account** page: paste the Cookie header of a myfitnesspal.com request (DevTools → Network → the first request → Request Headers → `cookie` → Copy value; the page shows the steps). MyFitnessPal needs the whole header, since its `remember_me` cookie is what keeps you signed in. The [MyFitnessPal MCP](https://github.com/Mason-Levyy/myfitnesspal-mcp) checks it and saves it in your own folder. The dashboard then reads and changes your diary itself, keeping the login between requests, so a day loads in under a second; when MyFitnessPal stops accepting the login, the MCP renews it in its headless browser (if set up).
 - The server syncs every 10 minutes, when the page is opened with stale data, and with **↻ Sync**. The result is cached in `data/mfp.json`.
 - **Log food:** **+ Log food** (or **+ Add to …** under a meal) searches MyFitnessPal's food database. Pick a result, then the number of servings, the serving size and the meal; a preview shows the calories and macros before you add it.
 - **Edit or remove:** open a meal and use ✎ to change the amount, serving size or meal (MyFitnessPal's own edit form) or ✕ to remove a food. Changes go straight to your MyFitnessPal diary for the day shown.
@@ -143,7 +143,7 @@ Your notes are only as private as the scripts that handle them, and those come f
 
 | Script | Hash |
 |---|---|
-| `app.js` | `sha384-Gg1ffnqWJoxRV2v807lyn4nf54HEVaTsKi9WZolWdENUdRZpeBH5dU0GCm74jARd` |
+| `app.js` | `sha384-vS5CAPlqRgKO8DtZjcdK3xQSbSVZDM/vfCkp8572pj0WqgIczLLd/vh6TKsiZoPm` |
 | `keys.js` | `sha384-x7klcKfrC1CwDgEGr/LFl9sbE57XelWNP0gAGhEAM6o5/W996bZ6cF1zOd544sAS` |
 | `notes.js` | `sha384-iW4AiXCfNgQnKveb3A39gXIDQGefd5rlBvVGT5CeA8cMmPOz2/eGusX9YGt9ctl+` |
 | `assistant.js` | `sha384-uLIZVTojzM6GDa++2XMCLV99f3gt4wTtKDLKGbx674gmjvoUKdAa/6cbPAtC0US9` |
@@ -164,6 +164,5 @@ None of this is tracked by git:
 
 ## Code
 
-- `site/cmd/dashboard`: the Go server's entry point; `site/internal/` holds one package per area: `auth` (accounts, sessions, invites, policy), `workspace` (each user's folder and services), `taskwarrior`, `timewarrior`, `myfitnesspal`, `anki` (and its gateway), `assistant` (what the server gives the AI in the browser), `mcp` (starting MCP tools and talking to them), `sandbox` and `egress` (the tools' sandbox and its proxy), `vault` (encrypting each person's data), `web` and `api` (the HTTP handlers). One dependency (goldmark, for Markdown). `nix run` builds it.
-- `site/mfp_fetch.py`: MyFitnessPal reads and writes, run through the MyFitnessPal MCP's Python package.
+- `site/cmd/dashboard`: the Go server's entry point; `site/internal/` holds one package per area: `auth` (accounts, sessions, invites, policy), `workspace` (each user's folder and services), `taskwarrior`, `timewarrior`, `myfitnesspal`, `anki` (and its gateway), `assistant` (what the server gives the AI in the browser), `mcp` (starting MCP tools and talking to them), `sandbox` and `egress` (the tools' sandbox and its proxy), `vault` (encrypting each person's data), `web` and `api` (the HTTP handlers). Two dependencies: goldmark (Markdown) and golang.org/x/net/html (reading MyFitnessPal's pages). `nix run` builds it.
 - `site/web/`: the pages. `templates/` has the HTML (one file per tab), rendered on the server and updated in place with [HTMX](https://htmx.org); styles are in `css/` (one file per area) and `js/app.js` does the few things HTMX can't (toasts, shortcuts, dragging cards, timed refreshes); `js/keys.js`, `notes.js` and `assistant.js` handle what the server must never see (passwords, notes, the AI chat). No build step: edit a file and reload the page.

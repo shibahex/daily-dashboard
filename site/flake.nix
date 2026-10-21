@@ -20,13 +20,13 @@
         pname = "health-dashboard-server";
         version = "0.1.0";
         src = ./.;
-        vendorHash = "sha256-Xv4CTILTM7Ys4nlB1CKgrQxUJj4LQz23k9v9dWnhHYE=";
+        vendorHash = "sha256-ZAeN2uupjG5trOKZs69/FazUXWYSLq7I7vFTl1uGcJM=";
         subPackages = [ "cmd/dashboard" ];
       };
 
       dashboard = pkgs.writeShellApplication {
         name = "health-dashboard";
-        # uv runs mfp_fetch.py with the MyFitnessPal MCP package for the MyFitnessPal sync.
+        # uv runs the MyFitnessPal MCP (connecting, renewing its login, and the AI's tools).
         # bubblewrap, socat, bash and coreutils make the AI agents' sandbox (internal/sandbox).
         runtimeInputs = [ pkgs.timewarrior pkgs.uv pkgs.bubblewrap pkgs.socat pkgs.bash pkgs.coreutils pkgs.nodejs_22 pkgs.python312 ];
         text = ''

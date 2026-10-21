@@ -1,6 +1,7 @@
 package myfitnesspal
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"sync"
@@ -14,12 +15,11 @@ import (
 const (
 	SyncEvery    = 10 * time.Minute // background sync
 	StaleAfter   = 5 * time.Minute  // a page asking for older data starts a sync
-	fetchTimeout = 150 * time.Second
-	writeTimeout = 150 * time.Second
+	fetchTimeout = 90 * time.Second
 )
 
 // Cache is today's synced diary (data/mfp.json). Earlier days the Today tab looks at are kept in memory
-// (Syncer.Day). Data is mfp_fetch.py's answer, kept as is.
+// (Syncer.Day). Data is a Day.
 type Cache struct {
 	Data      json.RawMessage `json:"data,omitempty"`
 	FetchedAt float64         `json:"fetched_at,omitempty"` // unix seconds
@@ -34,7 +34,7 @@ type day struct {
 }
 
 // Syncer keeps the cache fresh: in the background, on request, and after every change.
-// One MyFitnessPal run happens at a time.
+// One sync or change runs at a time.
 type Syncer struct {
 	client    Client
 	store     *store.Store
@@ -85,7 +85,7 @@ func (s *Syncer) Sync() Cache {
 	}
 	defer s.unlock()
 	s.busy.Store(true)
-	data, err := s.client.Run(map[string]any{"op": "fetch", "date": today()}, fetchTimeout)
+	data, err := s.client.Fetch(today())
 	return s.save(data, err)
 }
 
@@ -96,13 +96,16 @@ func (s *Syncer) SyncInBackground() {
 	}
 }
 
-// Change runs a diary change (add, edit or delete a food, log a weigh-in). mfp_fetch.py answers
-// with the refreshed day it changed, which becomes the cache (today's, or an earlier day's).
-func (s *Syncer) Change(request map[string]any) (Cache, error) {
+// Change runs a diary change (add, edit or delete a food, log a weigh-in) on date, then reads
+// that day again, which becomes the cache (today's, or an earlier day's).
+func (s *Syncer) Change(date string, op func(ctx context.Context) error) (Cache, error) {
 	s.mu.Lock()
 	defer s.unlock()
 	s.busy.Store(true)
-	data, err := s.client.Run(request, writeTimeout)
+	if err := s.client.call(writeTimeout, op); err != nil {
+		return s.Cached(), err
+	}
+	data, err := s.client.Fetch(date)
 	if err != nil {
 		return s.Cached(), err
 	}
@@ -221,7 +224,7 @@ func (s *Syncer) FetchDay(date string) Cache {
 	s.mu.Lock()
 	defer s.unlock()
 	s.busy.Store(true)
-	data, err := s.client.Run(map[string]any{"op": "fetch", "date": date}, fetchTimeout)
+	data, err := s.client.Fetch(date)
 	if err != nil {
 		message := err.Error()
 		s.pastMu.Lock()
@@ -235,3 +238,13 @@ func (s *Syncer) FetchDay(date string) Cache {
 }
 
 func today() string { return time.Now().Format("2006-01-02") }
+
+// Fetch reads a day (YYYY-MM-DD) as the cache keeps it.
+func (c Client) Fetch(date string) (json.RawMessage, error) {
+	var day Day
+	err := c.call(fetchTimeout, func(ctx context.Context) (err error) { day, err = c.fetch(ctx, date); return err })
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(day)
+}

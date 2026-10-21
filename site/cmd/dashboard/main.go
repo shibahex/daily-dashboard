@@ -63,7 +63,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("loading the secrets key: %v", err)
 	}
-	mfp := myfitnesspal.NewClientFromEnv(filepath.Join(siteDir, "mfp_fetch.py"))
+	mfp := myfitnesspal.NewClientFromEnv()
 	workspaces := workspace.NewManager(paths, mfp, anki.NewClientFromEnv(), gateway, box)
 	workspaces.Credentials = account.Credentials
 	tools, sandboxErr := sandbox.Find()

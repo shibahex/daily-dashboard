@@ -1,13 +1,13 @@
-// Package myfitnesspal talks to MyFitnessPal through the MyFitnessPal MCP (mfp-mcp), whose
-// Python package does the signed-in requests. site/mfp_fetch.py runs inside that package and
-// answers one JSON request per run.
+// Package myfitnesspal reads and changes the user's MyFitnessPal diary over HTTP (mfp.go), with
+// the login the MyFitnessPal MCP (mfp-mcp) saves. The MCP itself is what AI agents use, and it
+// signs the user in (Connect) and renews an expired login in its headless browser.
 package myfitnesspal
 
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -27,11 +27,10 @@ const (
 	RepoURL = "https://github.com/Mason-Levyy/myfitnesspal-mcp"
 )
 
-// Client runs mfp_fetch.py, either in a local checkout of the MCP or with the released package.
+// Client is one user's MyFitnessPal. The MCP comes from a local checkout or the released package.
 type Client struct {
 	CheckoutDir string // MFP_MCP_DIR: a local checkout; empty uses the released package
 	BrowserPath string // MFP_BROWSER_PATH: the browser the MCP renews the login with
-	ScriptPath  string // site/mfp_fetch.py
 
 	// A user's own folders for the MCP's saved login (config) and browser profile (data).
 	// Empty uses this computer's own (~/.config/myfitnesspal-mcp): the host account.
@@ -74,11 +73,10 @@ func (c Client) CookiePath() string {
 }
 
 // NewClientFromEnv reads MFP_MCP_DIR and MFP_BROWSER_PATH.
-func NewClientFromEnv(scriptPath string) Client {
+func NewClientFromEnv() Client {
 	return Client{
 		CheckoutDir: config.ExpandHome(os.Getenv("MFP_MCP_DIR")),
 		BrowserPath: os.Getenv("MFP_BROWSER_PATH"),
-		ScriptPath:  scriptPath,
 	}
 }
 
@@ -135,39 +133,32 @@ func (c Client) MCPServer() mcp.Server {
 	return server
 }
 
-// Run sends one request to mfp_fetch.py ({"op": "fetch"}, {"op": "search", ...}) and returns
-// its JSON answer.
-func (c Client) Run(request map[string]any, timeout time.Duration) (json.RawMessage, error) {
+// call runs op signed in. When MyFitnessPal no longer accepts the login, the MCP's headless
+// browser renews it (when set up) and op runs once more: an auth failure means nothing was done.
+func (c Client) call(timeout time.Duration, op func(ctx context.Context) error) error {
 	if !c.Setup().SignedIn {
-		return nil, errors.New("MyFitnessPal isn't connected yet. Connect it on the Account page.")
+		return errors.New("MyFitnessPal isn't connected yet. Connect it on the Account page.")
 	}
-	requestJSON, _ := json.Marshal(request)
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	cmd := c.command(ctx, "python", c.ScriptPath, string(requestJSON))
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout, cmd.Stderr = &stdout, &stderr
-	runErr := cmd.Run()
-	if ctx.Err() == context.DeadlineExceeded {
-		return nil, errors.New("MyFitnessPal took too long to answer")
+	err := op(ctx)
+	if errors.Is(err, errSignedOut) && c.renewLogin(ctx) {
+		err = op(ctx)
 	}
-	var execErr *exec.Error
-	if errors.As(runErr, &execErr) {
-		return nil, errors.New("uv isn't available (start the dashboard with nix run)")
-	}
+	return err
+}
 
-	// The answer is the last line; anything before it is the package's own output.
-	answer := json.RawMessage(text.LastLine(stdout.String(), ""))
-	var fields map[string]json.RawMessage
-	if json.Unmarshal(answer, &fields) != nil {
-		return nil, errors.New(text.LastLine(stderr.String(), "MyFitnessPal sync failed"))
+// renewLogin has the MCP revisit MyFitnessPal in its browser profile and save the fresh cookies.
+// It reports whether the saved login changed.
+func (c Client) renewLogin(ctx context.Context) bool {
+	before, _ := os.Stat(c.CookiePath())
+	cmd := c.command(ctx, "python", "-c", "from myfitnesspal_mcp import refresh; refresh.refresh_session()")
+	if output, err := cmd.CombinedOutput(); err != nil {
+		log.Printf("renewing the MyFitnessPal login: %s", text.LastLine(string(output), err.Error()))
+		return false
 	}
-	if problem, failed := fields["error"]; failed {
-		var message string
-		json.Unmarshal(problem, &message)
-		return nil, errors.New(message)
-	}
-	return answer, nil
+	after, err := os.Stat(c.CookiePath())
+	return err == nil && (before == nil || !after.ModTime().Equal(before.ModTime()))
 }
 
 // command runs program inside the MCP package's environment (uv run), with the user's own
@@ -212,6 +203,7 @@ func (c Client) Connect(token string) error {
 	if err := cmd.Run(); err != nil {
 		return problem.Invalidf("MyFitnessPal didn't accept that token: " + authFailure(output.String(), err))
 	}
+	c.session().reset()
 	return nil
 }
 
@@ -230,6 +222,7 @@ func (c Client) Disconnect() error {
 	if c.ConfigHome == "" {
 		return problem.Invalidf("This account uses the server computer's own MyFitnessPal login")
 	}
+	c.session().reset()
 	for _, path := range []string{filepath.Dir(c.CookiePath()), filepath.Join(c.DataHome, "myfitnesspal-mcp")} {
 		if err := os.RemoveAll(path); err != nil {
 			return err

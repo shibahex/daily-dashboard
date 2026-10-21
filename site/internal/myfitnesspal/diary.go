@@ -1,6 +1,7 @@
 package myfitnesspal
 
 import (
+	"context"
 	"encoding/json"
 	"regexp"
 	"strings"
@@ -114,7 +115,11 @@ func (f Food) ServingOptions() []Serving {
 	return []Serving{{WeightID: f.DefaultWeightID, Label: "1 serving", Multiplier: 1}}
 }
 
-const lookupTimeout = 90 * time.Second
+// A lookup or change normally takes a second; the rest is for renewing the login.
+const (
+	lookupTimeout = 90 * time.Second
+	writeTimeout  = 90 * time.Second
+)
 
 // Search looks a food up in MyFitnessPal's database.
 func (c Client) Search(query string) ([]Food, error) {
@@ -122,15 +127,12 @@ func (c Client) Search(query string) ([]Food, error) {
 	if !ok {
 		return nil, problem.Invalidf("type what to search for")
 	}
-	answer, err := c.Run(map[string]any{"op": "search", "query": query}, lookupTimeout)
+	var foods []Food
+	err := c.call(lookupTimeout, func(ctx context.Context) (err error) { foods, err = c.search(ctx, query); return err })
 	if err != nil {
 		return nil, problem.Unavailablef(err.Error())
 	}
-	var found struct {
-		Results []Food `json:"results"`
-	}
-	json.Unmarshal(answer, &found)
-	return found.Results, nil
+	return foods, nil
 }
 
 // ---------- editing an entry ----------
@@ -160,12 +162,11 @@ func (c Client) EntryForm(entryID string) (EntryForm, error) {
 	if !numericID.MatchString(entryID) {
 		return EntryForm{}, problem.Invalidf("bad entry")
 	}
-	answer, err := c.Run(map[string]any{"op": "entry", "entry_id": entryID}, lookupTimeout)
+	var form EntryForm
+	err := c.call(lookupTimeout, func(ctx context.Context) (err error) { form, err = c.entryForm(ctx, entryID); return err })
 	if err != nil {
 		return EntryForm{}, problem.Unavailablef(err.Error())
 	}
-	var form EntryForm
-	json.Unmarshal(answer, &form)
 	return form, nil
 }
 
@@ -183,7 +184,7 @@ func (s *Syncer) AddFood(date, foodID, weightID string, quantity float64, meal s
 	if meal == "" || len([]rune(meal)) > 40 {
 		return Cache{}, problem.Invalidf("pick a meal")
 	}
-	return s.change(map[string]any{"op": "add", "date": date, "food_id": foodID, "weight_id": weightID, "quantity": quantity, "meal": meal})
+	return s.change(date, func(ctx context.Context) error { return s.client.addFood(ctx, date, foodID, weightID, quantity, meal) })
 }
 
 // EditFood changes an entry's amount, serving size or meal (mealID is the meal's position).
@@ -197,27 +198,29 @@ func (s *Syncer) EditFood(date, entryID, weightID string, quantity float64, meal
 	if !mealPosition.MatchString(mealID) {
 		return Cache{}, problem.Invalidf("pick a meal")
 	}
-	return s.change(map[string]any{"op": "edit", "date": date, "entry_id": entryID, "weight_id": weightID, "quantity": quantity, "meal_id": mealID})
+	return s.change(date, func(ctx context.Context) error {
+		return s.client.editFood(ctx, date, entryID, weightID, quantity, mealID)
+	})
 }
 
 func (s *Syncer) DeleteFood(date, entryID string) (Cache, error) {
 	if err := checkIDs(entryID); err != nil {
 		return Cache{}, err
 	}
-	return s.change(map[string]any{"op": "delete", "date": date, "entry_id": entryID})
+	return s.change(date, func(ctx context.Context) error { return s.client.deleteFood(ctx, date, entryID) })
 }
 
 // LogWeight sends a weigh-in (lb) to MyFitnessPal.
 func (s *Syncer) LogWeight(day string, lb float64) error {
-	_, err := s.change(map[string]any{"op": "weight", "date": day, "lb": lb})
+	_, err := s.change(day, func(ctx context.Context) error { return s.client.logWeight(ctx, day, lb) })
 	return err
 }
 
-func (s *Syncer) change(request map[string]any) (Cache, error) {
-	if date, _ := request["date"].(string); !validDate(date) {
+func (s *Syncer) change(date string, op func(ctx context.Context) error) (Cache, error) {
+	if !validDate(date) {
 		return Cache{}, problem.Invalidf("bad day")
 	}
-	cache, err := s.Change(request)
+	cache, err := s.Change(date, op)
 	if err != nil {
 		return cache, problem.Unavailablef(err.Error())
 	}
