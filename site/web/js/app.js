@@ -67,14 +67,15 @@ function hasOpenPanel(card) {
 }
 
 // The heatmap starts at this week and the chat at the newest message.
-function scrollToEnd(root) {
+// A freshly swapped log jumps to the end at once (the CSS smooth scroll would visibly run up from
+// the top); new text in a log that is already there glides.
+function scrollToEnd(root, behavior = "instant") {
   root.querySelectorAll("[data-scroll-end]").forEach(box => {
-    box.scrollLeft = box.scrollWidth;
-    box.scrollTop = box.scrollHeight;
+    box.scrollTo({ left: box.scrollWidth, top: box.scrollHeight, behavior });
   });
 }
-htmx.onLoad(scrollToEnd);
-document.body.addEventListener("htmx:sseMessage", () => scrollToEnd(document));
+htmx.onLoad(root => scrollToEnd(root));
+document.body.addEventListener("htmx:sseMessage", () => scrollToEnd(document, "smooth"));
 
 // ---------- meals stay open ----------
 
