@@ -3,7 +3,7 @@
 // dashboard's server. The server gives what isn't private (the dashboard's instructions, the plan
 // and data: /assistant/setup) and runs the MCP tools the AI calls (MyFitnessPal, Anki:
 // /assistant/tool). Notes are read and saved here (notes.js). The chat is kept sealed like the
-// notes (/assistant/chat): the server can't read it either.
+// notes (/assistant/chat), and so is the API key (/assistant/keys): the server has neither.
 
 (() => {
   const API = "https://api.anthropic.com/v1/messages";
@@ -11,6 +11,7 @@
   const MAX_NOTES = 192 * 1024;
 
   let root, setup, tools = [], chat = { messages: [], api: [] }, version = 0, key = null, busy = null;
+  let settings = { anthropicKey: "" }, settingsVersion = 0;
 
   const el = (tag, props = {}, ...children) => {
     const node = Object.assign(document.createElement(tag), props);
@@ -66,6 +67,28 @@
     } catch (e) {
       toast("The chat wasn't saved: " + e.message, { bad: true });
     }
+  }
+
+  // ---------- the sealed settings (the API key) ----------
+
+  async function loadSettings() {
+    const answer = await getJSON("/assistant/keys");
+    settingsVersion = answer.version;
+    if (answer.blob) settings = JSON.parse(await Keys.openText(key, answer.blob));
+  }
+
+  // saveSettings seals them; with dropOld the server deletes a key it kept from before.
+  async function saveSettings(dropOld) {
+    const fields = { version: settingsVersion, blob: await Keys.sealText(key, JSON.stringify(settings)) };
+    if (dropOld) fields.sealed = "1";
+    settingsVersion = (await post("/assistant/keys", fields)).version;
+  }
+
+  // keyProblem is why the AI can't run with this key, or "".
+  function keyProblem(apiKey) {
+    if (!apiKey) return "Add your Anthropic API key on the Account page first";
+    if (apiKey.startsWith("sk-ant-oat")) return "The AI in your browser needs an Anthropic API key (sk-ant-api…); a Claude subscription token only works with Claude Code";
+    return "";
   }
 
   // validHistory keeps the API history short enough and starting with a plain user message
@@ -139,7 +162,7 @@
     const response = await fetch(API, {
       method: "POST", signal,
       headers: {
-        "content-type": "application/json", "x-api-key": setup.key, "anthropic-version": "2023-06-01",
+        "content-type": "application/json", "x-api-key": settings.anthropicKey, "anthropic-version": "2023-06-01",
         "anthropic-dangerous-direct-browser-access": "true",
       },
       body: JSON.stringify({
@@ -312,6 +335,14 @@
 
   async function refresh() {
     setup = await getJSON("/assistant/setup");
+    await loadSettings();
+    if (setup.oldKey) {
+      // A key the server kept from before: sealed here, then the server deletes its copy.
+      if (!settings.anthropicKey) settings.anthropicKey = setup.oldKey;
+      delete setup.oldKey;
+      await saveSettings(true);
+    }
+    setup.problem ||= keyProblem(settings.anthropicKey);
     renderTop();
     renderAll();
     tools = [];
@@ -352,6 +383,35 @@
       $("log").replaceChildren(el("p", { className: "sign-in-error" }, e.message));
     }
   }
+
+  // ---------- the key, on the Account page ----------
+
+  htmx.onLoad(async node => {
+    const form = node.querySelector?.("form[data-browser-key]");
+    if (!form) return;
+    const saved = form.querySelector("[data-browser-key-saved]");
+    const error = form.parentElement.querySelector("[data-browser-key-error]");
+    const fail = message => { error.textContent = message; error.hidden = false; };
+    key = await Keys.notesKey().catch(() => null);
+    if (!key) return fail("Unlock your notes on the Docs tab first: your key is encrypted with them.");
+    try {
+      await loadSettings();
+      saved.hidden = !settings.anthropicKey;
+    } catch (e) { return fail(e.message); }
+    form.onsubmit = async event => {
+      event.preventDefault();
+      error.hidden = true;
+      const value = form.elements.key.value.trim();
+      if (value && (value.length > 500 || /\s/.test(value))) return fail("That doesn't look like an API key");
+      settings.anthropicKey = value;
+      try {
+        await saveSettings(true);
+        form.elements.key.value = "";
+        saved.hidden = !value;
+        toast(value ? "Key saved in your browser's encrypted settings" : "Key removed");
+      } catch (e) { fail(e.message); }
+    };
+  });
 
   htmx.onLoad(node => {
     const found = node.querySelector?.("[data-browser-chat]");

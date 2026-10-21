@@ -111,6 +111,16 @@
 
   <div class="card">
     <h2>AI keys</h2>
+    {{if .Sealed}}
+    <p class="muted">Your AI runs in this browser and talks to Anthropic directly, with your own API key. The key is encrypted here, like your notes: the server never has it.</p>
+    <form class="row" data-browser-key>
+      <label class="grow">Anthropic API key <span class="ok small" data-browser-key-saved hidden>· saved</span><small class="muted">An API key (sk-ant-api…): a Claude subscription token only works with Claude Code.</small>
+        <input class="txt" type="password" name="key" autocomplete="off" spellcheck="false" placeholder="Paste a key, or leave empty and save to remove"></label>
+      <button class="sm primary">Save</button>
+      <a class="small muted" href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener noreferrer">Get a key</a>
+    </form>
+    <p class="sign-in-error" data-browser-key-error hidden></p>
+    {{else}}
     <p class="muted">The MCPs tab uses your own key for each AI, so your chats use your own credit, and the AI runs in a sandbox that holds no other login. Keys are stored encrypted.</p>
     {{range .Keys}}
     <form class="row" hx-post="/account/keys" hx-target="#connections-card" hx-swap="outerHTML">
@@ -121,8 +131,10 @@
       <a class="small muted" href="{{.Where}}" target="_blank" rel="noopener noreferrer">Get a key</a>
     </form>
     {{end}}
+    {{end}}
+    {{if .Host}}
     <h3>Local model</h3>
-    <p class="muted">Use a model from your own Ollama, llama.cpp (<code>llama-server</code>), LM Studio or any server with the OpenAI-style API (<code>/v1/models</code>, <code>/v1/chat/completions</code>). The dashboard runs nothing: it only connects to the address you give. Your admin has to turn on <b>Local model</b> for you. Pick it in the AI menu on the MCPs tab.</p>
+    <p class="muted">Use a model from your own Ollama, llama.cpp (<code>llama-server</code>), LM Studio or any server with the OpenAI-style API (<code>/v1/models</code>, <code>/v1/chat/completions</code>). The dashboard runs nothing: it only connects to the address you give. Only the host account has this, since the server connects to that address. Turn on <b>Local model</b> for yourself on the Admin page, then pick it in the AI menu on the MCPs tab.</p>
     <form class="row" hx-post="/account/local" hx-target="#connections-card" hx-swap="outerHTML">
       <label class="grow">Address <input class="txt" name="url" value="{{.LocalURL}}" placeholder="localhost:11434" autocomplete="off" spellcheck="false"></label>
       <label class="grow">Model
@@ -141,6 +153,7 @@
       <button class="sm primary">Save</button>
     </form>
     <p class="small muted">Save the address and its models show up to pick from. Empty address removes it. Examples: <code>localhost:11434</code> (Ollama), <code>localhost:8080</code> (llama.cpp), <code>localhost:1234</code> (LM Studio) or an <code>https://…/v1</code> endpoint; <code>/v1</code> is added when there's no path. The model needs to handle tool calls.</p>
+    {{end}}
   </div>
 </div>
 {{end}}

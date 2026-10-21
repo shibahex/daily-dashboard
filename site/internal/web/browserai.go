@@ -22,7 +22,8 @@ import (
 
 // The AI in the browser: for everyone whose notes are sealed, the MCPs tab's AI runs in their
 // browser (web/js/assistant.js), which talks to Anthropic directly with the user's key, so their
-// notes never pass through the server. The server gives it what isn't private (the dashboard's
+// notes never pass through the server. The key is kept sealed in the browser too ("settings"):
+// the server never has it. The server gives it what isn't private (the dashboard's
 // instructions, the plan and data), and runs the MCP tools it calls (MyFitnessPal, Anki), each
 // in the user's sandbox like the server-side AI's.
 
@@ -59,14 +60,10 @@ func (ui *UI) assistantSetup(w http.ResponseWriter, r *http.Request) {
 		"instructions": !conversation.NoInstructions,
 		"edit":         user.Policy.EditFiles && user.Policy.ReadFiles,
 	}
-	key := ws.Secrets.Get(assistant.APIKeys["claude"].Name)
-	switch {
-	case key == "":
-		answer["problem"] = "Add your Anthropic API key on the Account page first"
-	case strings.HasPrefix(key, "sk-ant-oat"):
-		answer["problem"] = "The AI in your browser needs an Anthropic API key (sk-ant-api…); a Claude subscription token only works with Claude Code"
-	default:
-		answer["key"] = key
+	// A key saved on the server before keys moved into the browser: handed over once, for the
+	// browser to seal; it's deleted when the browser saves its settings (sealed=1).
+	if old := ws.Secrets.Get(assistant.APIKeys["claude"].Name); old != "" {
+		answer["oldKey"] = old
 	}
 	enabled := allowedMCPs(user.Policy, conversation)
 	var mcps []browserMCP

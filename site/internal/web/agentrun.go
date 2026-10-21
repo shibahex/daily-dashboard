@@ -218,6 +218,11 @@ func localServer(ws *workspace.Workspace) localmodel.Server {
 // turns Claude Code's Anthropic requests into OpenAI-style chat completions. It only ever calls
 // that one server, and the key stays out here.
 func (run *agentRun) relayLocal() (string, error) {
+	if !run.ws.Host {
+		// The server connects to whatever address is saved: only its owner may point it at their
+		// own network, so nobody else can use it to look around the LAN.
+		return "", problem.Forbiddenf("Local models are only for the host account")
+	}
 	server := localServer(run.ws)
 	if server.Base == "" {
 		return "", problem.Invalidf("Add your local model server's address on the Account page first")

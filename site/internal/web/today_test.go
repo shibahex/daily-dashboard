@@ -65,7 +65,7 @@ func TestEarlierDayTemplatesRender(t *testing.T) {
 		"card-time":      timeCardView{Available: true, DayName: "yesterday", WeekName: "that week"},
 		"card-goals": goalsCardView{DayName: "yesterday", Syncing: true, Nutrition: &nutritionView{DayName: "yesterday",
 			Meals: []myfitnesspal.Meal{{Name: "Lunch", Entries: []myfitnesspal.Entry{{Name: "Eggs", EntryID: "12"}}}}}},
-		"connections-card": connectionsView{LocalURL: "http://localhost:11434/v1", LocalModel: "gone:1b", LocalModels: []string{"qwen3:8b", "llama3.2"}},
+		"connections-card": connectionsView{Host: true, LocalURL: "http://localhost:11434/v1", LocalModel: "gone:1b", LocalModels: []string{"qwen3:8b", "llama3.2"}},
 	}
 	for name, view := range views {
 		html, err := ui.renderToHTML(name, view)

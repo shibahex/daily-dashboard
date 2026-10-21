@@ -205,6 +205,8 @@ func (ui *UI) Routes(mux *http.ServeMux) {
 	change("/assistant/settings", ui.assistantSettings)
 	page("/assistant/chat", ui.sealedData("chat"))
 	change("/assistant/chat", ui.saveSealedData("chat"))
+	page("/assistant/keys", ui.sealedData("settings"))
+	change("/assistant/keys", ui.saveSealedData("settings"))
 }
 
 // serverAIOnly refuses the server-side AI to accounts whose notes are sealed: it would need their

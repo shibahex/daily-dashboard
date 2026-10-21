@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"dashboard/internal/assistant"
 	"dashboard/internal/auth"
 	"dashboard/internal/httpx"
 	"dashboard/internal/problem"
@@ -83,6 +84,9 @@ func (ui *UI) saveSealedData(kind string) http.HandlerFunc {
 			// The old chat, and the AI programs' own copies of it (their resumable sessions).
 			ws.Conversations.StartNew(ws.Conversations.Load().Provider)
 			os.RemoveAll(ws.Paths.DataFile("agent-home"))
+		case kind == "settings" && sealed != "":
+			// The API key saved here before: the browser has sealed it.
+			ws.Secrets.Set(assistant.APIKeys["claude"].Name, "")
 		}
 		writeNoStoreJSON(w, map[string]int{"version": saved})
 	}

@@ -265,6 +265,9 @@ func (ui *UI) sendMessage(w http.ResponseWriter, r *http.Request) {
 // brings their own: no chat spends the server's sign-in, and the sandbox holds no other login.
 func agentKey(ws *workspace.Workspace, provider assistant.Provider) ([]string, error) {
 	if provider.ID() == "local" {
+		if !ws.Host {
+			return nil, problem.Forbiddenf("Local models are only for the host account")
+		}
 		if ws.Secrets.Get(localURLSecret) == "" {
 			return nil, problem.Invalidf("Add your local model server's address on the Account page first")
 		}

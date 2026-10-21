@@ -11,15 +11,15 @@ import (
 )
 
 // Sealed blobs are encrypted end to end: the user's browser encrypts them with a key only it
-// has (see web/js/keys.js), and the server keeps blobs it can't read: the notes ("notes") and
-// the AI chat ("chat"). The version goes up with every save, so a tab working on an old copy
-// can't overwrite a newer one.
+// has (see web/js/keys.js), and the server keeps blobs it can't read: the notes ("notes"), the
+// AI chat ("chat") and the browser AI's settings, with the user's API key ("settings"). The
+// version goes up with every save, so a tab working on an old copy can't overwrite a newer one.
 
 // SealedMax is the most a blob may hold (base64).
 const SealedMax = 8 << 20
 
 // SealedKinds are the blobs there are.
-var SealedKinds = []string{"notes", "chat"}
+var SealedKinds = []string{"notes", "chat", "settings"}
 
 type sealedBlob struct {
 	Version int    `json:"version"`

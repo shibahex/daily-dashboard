@@ -194,7 +194,9 @@ func (t *turn) finish(stopped bool, state *os.ProcessState, waitErr error, stder
 		// CLIs often exit with a code like 143 on SIGTERM rather than dying from the signal.
 		t.reply.Error = "Stopped"
 	case t.errorMessage != "" || exitCode != 0 || waitErr != nil:
-		log.Printf("%s exited %d: %s", t.provider.ID(), exitCode, text.Truncate(stderr, 2000))
+		// Only that it failed: its output can hold the user's messages and notes, which don't
+		// belong in the server's log. The reason is shown to the user in the chat instead.
+		log.Printf("%s exited %d (%d bytes of error output, not logged)", t.provider.ID(), exitCode, len(stderr))
 		if t.errorMessage != "" || t.reply.Text == "" {
 			message := t.errorMessage
 			if message == "" {

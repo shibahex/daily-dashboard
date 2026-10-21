@@ -274,6 +274,7 @@ type accountView struct {
 // connectionsView is the user's own MyFitnessPal, Anki and AI keys.
 type connectionsView struct {
 	Host         bool // uses the server computer's own logins
+	Sealed       bool // the AI runs in the browser, which keeps the key (assistant.js)
 	MyFitnessPal bool // signed in
 	Anki         anki.Status
 	AnkiURL      string
@@ -301,7 +302,7 @@ func (ui *UI) accountView(r *http.Request) accountView {
 func (ui *UI) connectionsView(r *http.Request) connectionsView {
 	ws := ui.ws(r)
 	ankiClient := ws.Anki()
-	view := connectionsView{Host: ws.Host, MyFitnessPal: ws.MyFitnessPal.Client().Setup().SignedIn,
+	view := connectionsView{Host: ws.Host, Sealed: sealedNotes(ui.user(r)), MyFitnessPal: ws.MyFitnessPal.Client().Setup().SignedIn,
 		Anki: ankiClient.Status(), AnkiURL: ankiClient.URL}
 	for _, provider := range auth.KnownProviders {
 		if provider == "local" {
@@ -309,6 +310,9 @@ func (ui *UI) connectionsView(r *http.Request) connectionsView {
 		}
 		key := assistant.APIKeys[provider]
 		view.Keys = append(view.Keys, keyChoice{Provider: provider, Label: key.Label, Where: key.Where, Hint: key.Hint, Set: ws.Secrets.Has(key.Name)})
+	}
+	if !ws.Host {
+		return view // local models are the host's only
 	}
 	view.LocalURL, view.LocalModel = ws.Secrets.Get(localURLSecret), ws.Secrets.Get(localModelSecret)
 	view.LocalKey = ws.Secrets.Has(assistant.APIKeys["local"].Name)
@@ -361,6 +365,9 @@ func (ui *UI) saveAPIKey(w http.ResponseWriter, r *http.Request) {
 	key, known := assistant.APIKeys[r.FormValue("provider")]
 	value := strings.TrimSpace(r.FormValue("key"))
 	switch {
+	case sealedNotes(ui.user(r)):
+		// Their AI runs in their browser, which keeps the key sealed: it never comes here.
+		ui.renderConnections(w, r, "", problem.Forbiddenf("Your key is kept in your browser: save it in the form above"))
 	case !known:
 		ui.renderConnections(w, r, "", problem.Invalidf("Pick a provider"))
 	case len(value) > 500 || strings.ContainsAny(value, " \t\r\n"):
@@ -488,6 +495,10 @@ const (
 
 // saveLocal stores (or, with an empty address, removes) the local model server settings.
 func (ui *UI) saveLocal(w http.ResponseWriter, r *http.Request) {
+	if !ui.user(r).Host {
+		ui.renderConnections(w, r, "", problem.Forbiddenf("Local models are only for the host account"))
+		return
+	}
 	secrets := ui.ws(r).Secrets
 	key := assistant.APIKeys["local"]
 	model := strings.TrimSpace(r.FormValue("model"))
