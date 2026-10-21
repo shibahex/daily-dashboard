@@ -64,7 +64,7 @@ func TestSetupChecksTheNewAccount(t *testing.T) {
 	a, _ := newTestAuth(t)
 	code := a.SetupCode()
 	bad := map[string][3]string{
-		"short password":    {"me", "short", "short"},
+		"empty password":    {"me", "", ""},
 		"not matching":      {"me", goodPassword, goodPassword + "!"},
 		"password = name":   {"administrator1", "administrator1", "administrator1"},
 		"one character":     {"me", "aaaaaaaaaaaaaaa", "aaaaaaaaaaaaaaa"},
@@ -307,7 +307,7 @@ func TestInvites(t *testing.T) {
 	if name, reset, ok := a.InviteFor(code); !ok || name != "friend" || reset {
 		t.Fatalf("the invite page should know the username: %q %v %v", name, reset, ok)
 	}
-	if _, err := a.AcceptInvite(code, "short", "short"); err == nil {
+	if _, err := a.AcceptInvite(code, goodPassword, goodPassword+"!"); err == nil {
 		t.Fatal("the invite still checks the password")
 	}
 	session, err := a.AcceptInvite(code, goodPassword, goodPassword)

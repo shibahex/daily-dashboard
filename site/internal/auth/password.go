@@ -20,7 +20,6 @@ const (
 	saltBytes        = 16
 	hashBytes        = 32
 
-	minPasswordLength = 12
 	maxPasswordLength = 256
 	maxUsernameLength = 32
 )
@@ -75,8 +74,8 @@ func checkUsername(name string) error {
 func checkNewPassword(username, password, confirm string) error {
 	length := utf8.RuneCountInString(password)
 	switch {
-	case length < minPasswordLength:
-		return problem.Invalidf("Use at least 12 characters for your password")
+	case length == 0:
+		return problem.Invalidf("Pick a password")
 	case length > maxPasswordLength:
 		return problem.Invalidf("Use at most 256 characters for your password")
 	case strings.EqualFold(password, username):

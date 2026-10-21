@@ -110,7 +110,7 @@ Each answer runs in a sandbox ([bubblewrap](https://github.com/containers/bubble
 
 ## Security
 
-- **Passwords:** at least 12 characters, stored only as a salted PBKDF2-SHA256 hash (600,000 rounds) in `data/accounts.json`.
+- **Passwords:** stored only as a salted PBKDF2-SHA256 hash (600,000 rounds) in `data/accounts.json`.
 - **Sessions:** logging in gives the browser a random cookie that lasts 30 days. It's `HttpOnly`, `SameSite=Strict` and, over HTTPS, `Secure`; the server keeps only a hash of it in `data/sessions.json`. The Account page logs you out, logs out your other browsers, or changes your password (which also logs out your other browsers).
 - **Wrong passwords:** after 5 wrong tries in a row for a username, or from one address, each try waits twice as long as the last (1 s, 2 s, 4 s… up to 15 minutes). A wrong username and a wrong password look the same.
 - **Bar plugin:** each person makes their own token on the Account page; it only works for the plugin's API (`/api/…`), only shows that person's data, and only its hash is stored.
