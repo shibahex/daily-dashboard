@@ -128,19 +128,24 @@ func TestEncryptionLifecycle(t *testing.T) {
 	}
 }
 
-// The host keeps plain files, opened as before.
-func TestHostIsNotEncrypted(t *testing.T) {
+// The host's folder is encrypted like everyone's.
+func TestHostIsEncrypted(t *testing.T) {
 	m, _ := encryptedManager(t)
 	host := auth.User{ID: "cccc", Username: "host", Host: true}
-	if created, err := m.SignIn(host, "pw", "rc", "s"); err != nil || created {
+	m.For(host).Store.CreateNote("Host diary")
+	if err := m.Unlock(host, auth.BySession, "old-session"); !errors.Is(err, ErrSignInAgain) {
+		t.Fatalf("a plain host folder's session should sign in again: %v", err)
+	}
+	if created, err := m.SignIn(host, "pw", "rc", "s"); err != nil || !created {
 		t.Fatalf("SignIn = %v, %v", created, err)
 	}
-	if m.Encrypted(host) || m.Unlock(host, auth.BySession, "anything") != nil {
-		t.Error("the host should need no unlocking")
+	if !m.Encrypted(host) || exists(m.plainDir(host.ID)) {
+		t.Error("the host's folder should be encrypted, and the plain one gone")
 	}
-	if filepath.Dir(m.For(host).Paths.Plan()) != m.plainDir(host.ID) {
-		t.Error("the host should use its plain folder")
+	if ws := m.For(host); filepath.Dir(ws.Paths.Plan()) != m.memoryDir(host.ID) || !ws.Store.IsNote("host-diary.md") {
+		t.Error("the host should work from memory, with its notes")
 	}
+	noLeak(t, m.vaultDir(host.ID), "Host diary")
 }
 
 // The plugin's token keeps its own key copy, so the bar plugin opens the data after a restart.

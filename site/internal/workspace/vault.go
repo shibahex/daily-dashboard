@@ -13,7 +13,7 @@ import (
 	"dashboard/internal/vault"
 )
 
-// Every user but the host has their data encrypted on disk, in site/data/vaults/<id>/: their
+// Every user's data is encrypted on disk, the host's too, in site/data/vaults/<id>/: their
 // keyring (keys.json) and the encrypted copy of their folder (data/). It's unlocked by their
 // password at sign-in, and after that by the key copy kept for that browser's session (or the
 // plugin's token), so a restarted server unlocks it again at their next request without asking.
@@ -43,7 +43,7 @@ func (m *Manager) keys(id string) *vault.Keys      { return vault.NewKeys(m.vaul
 func (m *Manager) memoryDir(id string) string      { return filepath.Join(m.memory, id) }
 func (m *Manager) unlockedMarker(id string) string { return filepath.Join(m.memory, id+".unlocked") }
 func (m *Manager) plainDir(id string) string       { return filepath.Join(m.paths.UsersDir(), id) }
-func (m *Manager) encrypted(user auth.User) bool   { return !user.Host && m.keys(user.ID).Exists() }
+func (m *Manager) encrypted(user auth.User) bool   { return m.keys(user.ID).Exists() }
 func (m *Manager) mirror(id string, key *vault.Key) *vault.Mirror {
 	return vault.NewMirror(filepath.Join(m.vaultDir(id), "data"), m.memoryDir(id), key)
 }
@@ -54,13 +54,10 @@ func slotName(kind, secret string) string { return kind + ":" + auth.Fingerprint
 // Encrypted reports whether the user's data is encrypted on disk, for the admin page.
 func (m *Manager) Encrypted(user auth.User) bool { return m.encrypted(user) }
 
-// Unlock makes sure the request's user can use their data: the host and anyone still in a plain
-// folder (only through the plugin's token) need nothing; an encrypted user's data is decrypted
-// with the key copy for this session or token. kind and secret are auth.CredentialFrom's.
+// Unlock makes sure the request's user can use their data: anyone still in a plain folder (only
+// through the plugin's token) needs nothing; an encrypted user's data is decrypted with the key
+// copy for this session or token. kind and secret are auth.CredentialFrom's.
 func (m *Manager) Unlock(user auth.User, kind, secret string) error {
-	if user.Host {
-		return nil
-	}
 	if !m.encrypted(user) {
 		if kind == auth.ByToken {
 			return nil // a plain folder; it's encrypted when they next sign in with their password
@@ -112,9 +109,6 @@ func (m *Manager) unlock(user auth.User, key *vault.Key) error {
 // recovery is the proof of a recovery code the browser made in case this is the first time;
 // created reports that it was used, so the browser shows that code.
 func (m *Manager) SignIn(user auth.User, password, recovery, session string) (created bool, err error) {
-	if user.Host {
-		return false, nil
-	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	keys := m.keys(user.ID)
@@ -190,9 +184,6 @@ func (m *Manager) HasEncryptedData(user auth.User) bool { return m.encrypted(use
 // can't be opened any more, so it's deleted and the account starts empty with newRecovery as
 // its recovery code. Every old session and token copy is dropped. startedOver reports which.
 func (m *Manager) Reset(user auth.User, password, session, oldRecovery, newRecovery string) (startedOver bool, err error) {
-	if user.Host {
-		return false, nil
-	}
 	m.Lock(user.ID)
 	if !m.keys(user.ID).Exists() {
 		return m.SignIn(user, password, newRecovery, session)

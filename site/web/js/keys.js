@@ -182,7 +182,9 @@ const Keys = (() => {
       const password = form.querySelector("[data-password]"), confirm = form.querySelector("[data-confirm]");
       const problem = checkNewPassword(name, password.value, confirm.value);
       if (problem) throw new Error(problem);
-      set(form, "proof", (await fromPassword(name, password.value)).proof);
+      const { proof, kek } = await fromPassword(name, password.value);
+      set(form, "proof", proof);
+      await offerNewKeys(form, name, kek);
       hide(password); hide(confirm);
     },
     // Joining from an invite, or a reset: with the old recovery code typed, the notes' key is

@@ -76,8 +76,7 @@ func (ui *UI) createAccount(w http.ResponseWriter, r *http.Request) {
 		ui.renderSignIn(w, problem.Status(err), signInView{Setup: true, Code: formText(r, "code"), Username: username, Error: err.Error()})
 		return
 	}
-	auth.SetSessionCookie(w, session)
-	http.Redirect(w, r, "/", http.StatusSeeOther)
+	ui.signedInWith(w, r, session, func(user auth.User) (bool, error) { return ui.useKeys(user, keys, session) })
 }
 
 func (ui *UI) loginPage(w http.ResponseWriter, r *http.Request) {

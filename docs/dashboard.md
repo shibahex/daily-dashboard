@@ -121,7 +121,7 @@ Each answer runs in a sandbox ([bubblewrap](https://github.com/containers/bubble
 
 ## Encrypted data
 
-Everyone's data but the host's is encrypted, so whoever runs the server can't read it. Notes go further: the server never has them readable at all.
+Everyone's data is encrypted, the host's too (except the computer's own Taskwarrior, Timewarrior, MyFitnessPal login and Anki, which the host shares with its terminal tools), so whoever runs the server can't read it. Notes go further: the server never has them readable at all.
 
 - **Your password never leaves your browser.** The sign-in page turns it into two things: a proof that signs you in (all the server gets) and a key that only your browser has.
 - **Notes are encrypted end to end.** Your browser encrypts and decrypts them with that key (`web/js/keys.js`, `web/js/notes.js`); the server stores one scrambled blob. Even with someone's login, or watching the network, the notes can't be read without their password. Notes from before are sealed the first time you open the Docs tab, and their plain copies deleted.

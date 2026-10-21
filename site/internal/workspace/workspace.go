@@ -13,7 +13,7 @@
 // It's encrypted on disk (site/data/vaults/<id>/, see vault.go): while the user is signed in it's
 // decrypted into memory and used from there. The host account (the server's owner) keeps this
 // computer's own Taskwarrior, Timewarrior, MyFitnessPal login and Anki, so the terminal tools
-// keep showing the same tasks, and its folder (site/data/users/<id>/) isn't encrypted.
+// keep showing the same tasks: those stay where they are, outside the encrypted folder.
 package workspace
 
 import (
