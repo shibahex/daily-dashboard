@@ -1,4 +1,4 @@
-# Health Dashboard
+# Daily Dashboard
 
 **Your food, workouts, tasks and flashcards in one place, with MCP support that can manage all of it.**
 
