@@ -94,3 +94,16 @@ func TestEncryptionTemplatesRender(t *testing.T) {
 		}
 	}
 }
+
+// The serving preview swaps only itself: without its own target it would take its form's (the
+// whole Nutrition card) and replace the card with one line.
+func TestFoodPreviewSwapsOnlyItself(t *testing.T) {
+	ui := &UI{templates: newTemplateSet("../../web")}
+	html, err := ui.renderToHTML("food-preview", foodPickView{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(html), `hx-target="this"`) {
+		t.Errorf("the preview has no target of its own:\n%s", html)
+	}
+}

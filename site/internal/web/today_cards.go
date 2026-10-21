@@ -313,6 +313,14 @@ type weightCardView struct {
 type sparkline struct {
 	Path     string
 	From, To time.Time
+	Points   []sparkPoint // each weigh-in, to hover over
+}
+
+// sparkPoint is one weigh-in on the trend, placed in percent of the chart's width and height.
+type sparkPoint struct {
+	Left, Top float64
+	Day       time.Time
+	LB        float64
 }
 
 func (ui *UI) renderWeightCard(r *http.Request) (template.HTML, error) {
@@ -367,6 +375,7 @@ func weightTrend(weights []store.Weight, since string) *sparkline {
 	low, high = low-1, high+1
 	const width, height = 300.0, 60.0
 	var path strings.Builder
+	trend := &sparkline{}
 	for i, p := range points {
 		x := float64(i) / float64(len(points)-1) * width
 		y := height - (p.LB-low)/(high-low)*height
@@ -375,10 +384,12 @@ func weightTrend(weights []store.Weight, since string) *sparkline {
 			command = "M"
 		}
 		fmt.Fprintf(&path, "%s%.1f,%.1f ", command, x, y)
+		day, _ := time.ParseInLocation("2006-01-02", p.Date, time.Local)
+		trend.Points = append(trend.Points, sparkPoint{Left: x / width * 100, Top: y / height * 100, Day: day, LB: p.LB})
 	}
-	from, _ := time.ParseInLocation("2006-01-02", points[0].Date, time.Local)
-	to, _ := time.ParseInLocation("2006-01-02", points[len(points)-1].Date, time.Local)
-	return &sparkline{Path: strings.TrimSpace(path.String()), From: from, To: to}
+	trend.Path = strings.TrimSpace(path.String())
+	trend.From, trend.To = trend.Points[0].Day, trend.Points[len(trend.Points)-1].Day
+	return trend
 }
 
 func (ui *UI) weightCard(w http.ResponseWriter, r *http.Request) {

@@ -91,7 +91,10 @@
     <div class="goal"><b>{{pounds .Plan.Best}}</b><span>lowest</span></div>
   </div>
   {{with .Trend}}
-  <svg class="spark" viewBox="0 0 300 60" preserveAspectRatio="none"><path d="{{.Path}}" fill="none" stroke="var(--accent)" stroke-width="2" vector-effect="non-scaling-stroke"/></svg>
+  <div class="spark-wrap">
+    <svg class="spark" viewBox="0 0 300 60" preserveAspectRatio="none"><path d="{{.Path}}" fill="none" stroke="var(--accent)" stroke-width="2" vector-effect="non-scaling-stroke"/></svg>
+    {{range .Points}}<span class="spark-point{{if gt .Left 70.0}} right{{else if lt .Left 30.0}} left{{end}}" style="left:{{.Left}}%;top:{{.Top}}%" tabindex="0"><span class="tip">{{shortDay .Day}} · <b>{{pounds .LB}} lb</b></span></span>{{end}}
+  </div>
   <div class="small muted spread"><span>{{monthDay .From}}</span><span>{{monthDay .To}}</span></div>
   {{else}}
   <p class="small muted note">Log a few weigh-ins to see your trend.</p>

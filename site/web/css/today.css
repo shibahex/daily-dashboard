@@ -65,3 +65,15 @@ svg.spark { width: 100%; height: 60px; display: block; margin-top: 10px; }
 .day-nav .edit-btn { text-decoration: none; font-size: 15px; padding: 0 6px; }
 .day-nav .edit-btn.off { opacity: .3; cursor: default; }
 .day-nav .edit-btn.off:hover { background: none; color: var(--muted); }
+/* Weight trend: hover (or tap) a weigh-in for its date and weight. */
+.spark-wrap { position: relative; margin-top: 10px; }
+.spark-wrap svg.spark { margin-top: 0; }
+.spark-point { position: absolute; width: 18px; height: 18px; margin: -9px 0 0 -9px; border-radius: 50%; cursor: default; outline: none; }
+.spark-point::after { content: ""; position: absolute; inset: 5px; border-radius: 50%; background: var(--accent); opacity: 0; transition: opacity .1s; }
+.spark-point:hover::after, .spark-point:focus::after { opacity: 1; }
+.spark-point .tip { display: none; position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); white-space: nowrap;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 3px 8px; font-size: 12.5px; color: var(--ink);
+  box-shadow: 0 2px 8px rgb(0 0 0 / .25); z-index: 2; pointer-events: none; }
+.spark-point.right .tip { left: auto; right: -4px; transform: none; }
+.spark-point.left .tip { left: -4px; transform: none; }
+.spark-point:hover .tip, .spark-point:focus .tip { display: block; }

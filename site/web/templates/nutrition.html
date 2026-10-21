@@ -96,7 +96,7 @@
 </div>
 {{end}}
 
-{{define "food-preview"}}<span class="fp-preview" hx-post="/food/preview" hx-include="closest form" hx-trigger="input from:closest form delay:200ms, change from:closest form" hx-swap="outerHTML">≈ {{template "food-macros" .Preview}}</span>{{end}}
+{{define "food-preview"}}<span class="fp-preview" hx-post="/food/preview" hx-include="closest form" hx-trigger="input from:closest form delay:200ms, change from:closest form" hx-target="this" hx-swap="outerHTML">≈ {{template "food-macros" .Preview}}</span>{{end}}
 
 {{define "food-edit"}}
 <div class="panel food-panel">
