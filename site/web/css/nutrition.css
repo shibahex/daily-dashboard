@@ -47,3 +47,13 @@
 .fp-preview { font-size: 13px; color: var(--muted); }
 @media (max-width: 700px) { .limits { grid-template-columns: repeat(2, 1fr); } }
 .pick-title { margin-bottom: 6px; }
+/* Waiting on MyFitnessPal (searching, adding, saving, removing take a few seconds): the button
+   spins and a note says what's happening. htmx marks the form or button waiting with .htmx-request. */
+.busy-note { display: none; font-size: 13px; color: var(--muted); }
+.food-panel .htmx-request .busy-note { display: inline; }
+.food-panel .htmx-request button.primary, .food-btns button.htmx-request { position: relative; color: transparent !important; }
+.food-panel .htmx-request button.primary::after, .food-btns button.htmx-request::after {
+  content: ""; position: absolute; left: 50%; top: 50%; width: 14px; height: 14px; margin: -7px 0 0 -7px;
+  border: 2px solid var(--on-accent); border-right-color: transparent; border-radius: 50%; animation: busy-spin .7s linear infinite; }
+.food-btns button.htmx-request::after { border-color: var(--muted); border-right-color: transparent; }
+@keyframes busy-spin { to { transform: rotate(360deg); } }

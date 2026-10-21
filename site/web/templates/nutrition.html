@@ -61,7 +61,7 @@
   <form class="row" hx-post="/food/search" hx-target="closest .food-panel" hx-swap="outerHTML" hx-disabled-elt="find button">
     <input type="hidden" name="meal" value="{{.Meal}}">
     <input class="txt grow" name="query" value="{{.Query}}" placeholder="Search MyFitnessPal foods, e.g. greek yogurt" maxlength="100" required autofocus>
-    <button class="sm primary">Search</button>
+    <button class="sm primary">Search</button><span class="busy-note">Searching MyFitnessPal…</span>
     <button type="button" class="sm" hx-get="/panel/close" hx-target="closest .food-panel" hx-swap="outerHTML">Cancel</button>
   </form>
   {{if .Error}}<p class="err small flush">{{.Error}}</p>
@@ -91,6 +91,7 @@
       {{template "food-preview" .}}
       <span><button type="button" class="sm" hx-post="/food/search" hx-include="closest form" hx-target="closest .food-panel" hx-swap="outerHTML">Back</button>
         <button class="sm primary">Add</button></span>
+      <span class="busy-note">Adding to MyFitnessPal…</span>
     </div>
   </form>
 </div>
@@ -109,7 +110,7 @@
       <select class="txt" name="serving">{{range .Form.Servings}}<option value="{{.ID}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>{{end}}</select>
       in <select class="txt" name="meal">{{range .Form.Meals}}<option value="{{.ID}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>{{end}}</select>
     </div>
-    <div class="row end"><button type="button" class="sm" hx-get="/panel/close" hx-target="closest .food-panel" hx-swap="outerHTML">Cancel</button><button class="sm primary">Save</button></div>
+    <div class="row end"><span class="busy-note">Saving in MyFitnessPal…</span><button type="button" class="sm" hx-get="/panel/close" hx-target="closest .food-panel" hx-swap="outerHTML">Cancel</button><button class="sm primary">Save</button></div>
   </form>
   {{end}}
 </div>
