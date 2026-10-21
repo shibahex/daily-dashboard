@@ -369,3 +369,35 @@ func serverAILabels(user auth.User) []string {
 	}
 	return labels
 }
+
+// ---------- model lists ----------
+
+// assistantModels lists the models a server-side AI can use with the user's key, asking its
+// maker (assistant.ListModels). The key comes from the browser for this one question, as it does
+// for a run. Claude Code's own short names (opus, sonnet…) come first; if the maker can't be
+// asked, those are all there is.
+func (ui *UI) assistantModels(w http.ResponseWriter, r *http.Request) {
+	user := ui.user(r)
+	r.ParseMultipartForm(1 << 16)
+	provider, ok := serverProviders.Get(r.FormValue("provider"))
+	if !ok || !slices.Contains(serverAIs(user), provider.ID()) {
+		fail(w, problem.Forbiddenf("Your admin hasn't turned on that AI for you, or it can't run here"))
+		return
+	}
+	models := slices.Clone(provider.Models())
+	answer := map[string]any{}
+	key := strings.TrimSpace(r.FormValue("key"))
+	if key != "" && len(key) < 500 {
+		found, err := assistant.ListModels(r.Context(), provider.ID(), key)
+		if err != nil {
+			answer["error"] = err.Error()
+		}
+		for _, m := range found {
+			if !slices.ContainsFunc(models, func(have assistant.Model) bool { return have.ID == m.ID }) {
+				models = append(models, m)
+			}
+		}
+	}
+	answer["models"] = models
+	writeNoStoreJSON(w, answer)
+}

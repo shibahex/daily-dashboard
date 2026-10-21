@@ -19,6 +19,7 @@
   // The sealed settings: { anthropicKey, claudeCodeKey, openaiKey, geminiKey, localURL (".../v1"), localModel, localKey }.
   let settings = {}, settingsVersion = 0;
   let localModels = null; // what the local server lists, once asked
+  const modelLists = {};   // what each other AI's maker lists for the user's key, once asked
 
   const el = (tag, props = {}, ...children) => {
     const node = Object.assign(document.createElement(tag), props);
@@ -220,6 +221,26 @@
       }
       if (done) break;
     }
+  }
+
+  // listModels asks which models the chosen AI can use with the user's key: Anthropic directly
+  // for Claude in the browser, the server for an AI on the server (which gets the key for runs
+  // anyway). It keeps the answer for the page's life; on failure the built-in list stays.
+  async function listModels() {
+    const provider = setup.provider;
+    if (provider === "local" || modelLists[provider]) return;
+    if (provider === "claude") {
+      if (!settings.anthropicKey || settings.anthropicKey.startsWith("sk-ant-oat")) return;
+      const response = await fetch("https://api.anthropic.com/v1/models?limit=1000", {
+        headers: { "x-api-key": settings.anthropicKey, "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" },
+      }).catch(() => null);
+      if (!response?.ok) return;
+      modelLists.claude = ((await response.json()).data || []).map(m => ({ id: m.id, label: m.display_name || m.id }));
+      return;
+    }
+    if (!onServer()) return;
+    const answer = await post("/assistant/models", { provider, key: serverKeys[provider][0]() || "" }).catch(() => null);
+    if (answer?.models?.length) modelLists[provider] = answer.models;
   }
 
   // problem is why the chosen AI can't run, or "".
@@ -533,11 +554,12 @@
   }
 
   const providerNames = { claude: "Claude", local: "Local model", "claude-code": "Claude Code (server)", codex: "Codex (server)", gemini: "Gemini CLI (server)" };
+  const shortNames = { claude: "Claude", local: "Local model", "claude-code": "Claude Code", codex: "Codex", gemini: "Gemini CLI" };
 
   function renderTop() {
     const status = $("status");
     status.classList.toggle("off", !!setup.problem);
-    status.lastChild.textContent = `${providerNames[setup.provider] || "AI"} · ${setup.problem ? "needs setup" : onServer() ? "on the server" : "in your browser"}`;
+    status.lastChild.textContent = `${shortNames[setup.provider] || "AI"} · ${setup.problem ? "needs setup" : onServer() ? "on the server" : "in your browser"}`;
     // What's wrong gets its own line under the bar, with where to fix it.
     const notice = $("problem");
     notice.hidden = !setup.problem;
@@ -575,7 +597,9 @@
     }
     const names = setup.provider === "local"
       ? [...new Set([...(localModels || []), setup.model || settings.localModel].filter(Boolean))].map(id => ({ id, label: id }))
-      : onServer() ? [{ id: "", label: "Default model" }, ...setup.models] : setup.models;
+      : onServer() ? [{ id: "", label: "Default model" }, ...(modelLists[setup.provider] || setup.models)]
+      : modelLists[setup.provider] || setup.models;
+    if (setup.model && !names.some(m => m.id === setup.model)) names.push({ id: setup.model, label: setup.model });
     const chosen = setup.model || (setup.provider === "local" ? settings.localModel : "");
     const model = el("select", { className: "pill", title: "Which model it uses" },
       ...names.map(m => el("option", { value: m.id, selected: m.id === chosen, textContent: m.label })));
@@ -614,6 +638,7 @@
     if (setup.provider === "local" && settings.localURL && localModels === null) {
       localModels = await listLocalModels().catch(() => []);
     }
+    if (!setup.problem) await listModels().catch(() => {});
     renderTop();
     renderAll();
     tools = [];

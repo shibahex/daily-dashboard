@@ -188,6 +188,7 @@ func (ui *UI) Routes(mux *http.ServeMux) {
 	change("/assistant/tool", ui.assistantTool)
 	change("/assistant/settings", ui.assistantSettings)
 	change("/assistant/run", ui.assistantRun)
+	change("/assistant/models", ui.assistantModels)
 	change("/account/server-ai", ui.setServerAI)
 	page("/assistant/chat", ui.sealedData("chat"))
 	change("/assistant/chat", ui.saveSealedData("chat"))
