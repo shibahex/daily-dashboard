@@ -47,7 +47,7 @@
 {{end}}
 
 {{define "card-skips"}}
-<div class="card" hx-disinherit="*" id="card-skips" hx-get="/history/skips" hx-trigger="tasks-changed from:body, checklist-changed[!this.contains(event.target)] from:body" hx-swap="outerHTML">
+<div class="card" hx-disinherit="*" id="card-skips" hx-get="/history/skips" hx-trigger="tasks-changed from:body, checklist-changed from:body" hx-swap="outerHTML">
   <div class="card-head"><h2>Skipped &amp; why</h2></div>
   {{range .Days}}
   <div class="hist-day"><h3><span>{{longDay .Day}}</span>

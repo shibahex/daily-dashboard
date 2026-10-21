@@ -1,7 +1,7 @@
 {{/* The goals card: today's MyFitnessPal diary once it's synced, the plan's goals before that.
      While a sync runs it checks back every few seconds (unless a food form is open). */}}
 {{define "card-goals"}}
-<div class="card" hx-disinherit="*" id="card-goals"{{if not .Editing}} hx-get="/cards/goals" hx-trigger="plan-changed[!this.contains(event.target)] from:body, nutrition-changed[!this.contains(event.target)] from:body{{if .Syncing}}, every 5s [!hasOpenPanel(this)]{{end}}"{{end}} hx-swap="outerHTML">
+<div class="card" hx-disinherit="*" id="card-goals"{{if not .Editing}} hx-get="/cards/goals" hx-trigger="plan-changed from:body, nutrition-changed from:body{{if .Syncing}}, tick-5 from:body{{end}}"{{end}} hx-swap="outerHTML">
   {{with .Nutrition}}{{template "nutrition" .}}{{else}}
   {{template "card-head" dict "Title" "Daily goals" "URL" "/cards/goals" "Editing" .Editing}}
   {{if .Editing}}

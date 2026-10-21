@@ -134,7 +134,7 @@
 
 {{/* ---------- the Today card ---------- */}}
 {{define "card-tasks"}}
-<div class="card" hx-disinherit="*" id="card-tasks" hx-get="/cards/tasks" hx-trigger="tasks-changed from:body, every 120s [!document.hidden &amp;&amp; !hasOpenPanel(this)]" hx-swap="outerHTML">
+<div class="card" hx-disinherit="*" id="card-tasks" hx-get="/cards/tasks" hx-trigger="tasks-changed from:body, tick-120 from:body" hx-swap="outerHTML">
   <div class="card-head"><h2>Due &amp; overdue tasks</h2></div>
   {{range .Rows}}{{template "task-row" .}}{{else}}<p class="muted">Nothing due today. 🎉</p>{{end}}
 </div>

@@ -1,17 +1,20 @@
-// The AI in the browser, for everyone whose notes are sealed: this page talks to Anthropic
-// directly with the user's own key, so their notes go straight there and never through the
-// dashboard's server. The server gives what isn't private (the dashboard's instructions, the plan
-// and data: /assistant/setup) and runs the MCP tools the AI calls (MyFitnessPal, Anki:
-// /assistant/tool). Notes are read and saved here (notes.js). The chat is kept sealed like the
-// notes (/assistant/chat), and so is the API key (/assistant/keys): the server has neither.
+// The MCPs tab's AI, which runs in this browser: it talks to Anthropic, or to a model on this
+// computer (Ollama, LM Studio, llama.cpp), directly, so the user's notes go straight there and
+// never through the dashboard's server. The server gives what isn't private (the dashboard's
+// instructions, the plan and data: /assistant/setup) and runs the MCP tools the AI calls
+// (MyFitnessPal, Anki: /assistant/tool). Notes are read and saved here (notes.js). The chat is
+// kept sealed like the notes (/assistant/chat), and so are the keys and the local model's address
+// (/assistant/keys): the server has none of them.
 
 (() => {
-  const API = "https://api.anthropic.com/v1/messages";
+  const ANTHROPIC = "https://api.anthropic.com/v1/messages";
   const MAX_TURNS = 20; // tool rounds in one answer
   const MAX_NOTES = 192 * 1024;
 
   let root, setup, tools = [], chat = { messages: [], api: [] }, version = 0, key = null, busy = null;
-  let settings = { anthropicKey: "" }, settingsVersion = 0;
+  // The sealed settings: { anthropicKey, localURL (".../v1"), localModel, localKey }.
+  let settings = {}, settingsVersion = 0;
+  let localModels = null; // what the local server lists, once asked
 
   const el = (tag, props = {}, ...children) => {
     const node = Object.assign(document.createElement(tag), props);
@@ -30,7 +33,7 @@
   async function getJSON(path) {
     const response = await fetch(path, { headers: { Accept: "application/json" } });
     const answer = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(answer.error || (await response.text().catch(() => "")) || response.statusText);
+    if (!response.ok) throw new Error(answer.error || response.statusText);
     return answer;
   }
 
@@ -74,7 +77,7 @@
     }
   }
 
-  // ---------- the sealed settings (the API key) ----------
+  // ---------- the sealed settings (keys, the local model) ----------
 
   async function loadSettings() {
     const answer = await getJSON("/assistant/keys");
@@ -82,7 +85,7 @@
     if (answer.blob) settings = await Keys.openBlob(key, "settings", answer.blob);
   }
 
-  // saveSettings seals them; with dropOld the server deletes a key it kept from before.
+  // saveSettings seals them; with dropOld the server deletes the keys it kept from before.
   async function saveSettings(dropOld) {
     const fields = { version: settingsVersion, blob: await Keys.sealBlob(key, "settings", settings) };
     if (dropOld) fields.sealed = "1";
@@ -90,15 +93,41 @@
     Keys.saved("settings", settings);
   }
 
-  // keyProblem is why the AI can't run with this key, or "".
-  function keyProblem(apiKey) {
-    if (!apiKey) return "Add your Anthropic API key on the Account page first";
-    if (apiKey.startsWith("sk-ant-oat")) return "The AI in your browser needs an Anthropic API key (sk-ant-api…); a Claude subscription token only works with Claude Code";
+  // localBase is the local server's API address from what was typed: on this computer only, since
+  // the page may only reach that (and nothing else on the network), ending in /v1 by default.
+  function localBase(typed) {
+    const text = typed.trim();
+    const url = new URL(text.includes("://") ? text : "http://" + text);
+    if (!["localhost", "127.0.0.1"].includes(url.hostname)) {
+      throw new Error("The local model has to run on this computer (localhost)");
+    }
+    const path = url.pathname.replace(/\/+$/, "");
+    return url.origin + (path || "/v1");
+  }
+
+  async function listLocalModels() {
+    const headers = settings.localKey ? { Authorization: "Bearer " + settings.localKey } : {};
+    const response = await fetch(settings.localURL + "/models", { headers }).catch(() => null);
+    if (!response?.ok) {
+      throw new Error(`Couldn't reach ${settings.localURL}: is it running, and does it allow this page (see the Account page)?`);
+    }
+    return ((await response.json()).data || []).map(m => m.id).filter(Boolean);
+  }
+
+  // problem is why the chosen AI can't run, or "".
+  function problem() {
+    if (setup.provider === "local") {
+      if (!settings.localURL) return "Add your local model's address on the Account page first";
+      if (!(setup.model || settings.localModel)) return "Pick a local model on the Account page first";
+      return "";
+    }
+    if (!settings.anthropicKey) return "Add your Anthropic API key on the Account page first";
+    if (settings.anthropicKey.startsWith("sk-ant-oat")) return "The AI needs an Anthropic API key (sk-ant-api…); a Claude subscription token only works with Claude Code";
     return "";
   }
 
-  // validHistory keeps the API history short enough and starting with a plain user message
-  // (a tool result can't come first), with roles taking turns.
+  // validHistory keeps the history short enough and starting with a plain user message (a tool
+  // result can't come first), with roles taking turns.
   function validHistory(api) {
     let list = api.slice(-60);
     while (list.length && (list[0].role !== "user" || Array.isArray(list[0].content) && list[0].content.some(b => b.type === "tool_result"))) {
@@ -168,10 +197,28 @@
 
   // ---------- one answer ----------
 
-  // stream sends the history to Anthropic and reads the answer as it's written; onText gets the
-  // text so far. It returns the answer's blocks and why it stopped.
-  async function stream(signal, onText) {
-    const response = await fetch(API, {
+  // readEvents calls onData with each server-sent event's data, as the answer comes.
+  async function readEvents(response, onData) {
+    const reader = response.body.getReader(), decoder = new TextDecoder();
+    let buffer = "";
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let cut;
+      while ((cut = buffer.search(/\r?\n\r?\n/)) >= 0) {
+        const event = buffer.slice(0, cut);
+        buffer = buffer.slice(cut).replace(/^\r?\n\r?\n/, "");
+        const data = event.split(/\r?\n/).filter(l => l.startsWith("data:")).map(l => l.slice(5).trim()).join("\n");
+        if (data && data !== "[DONE]") onData(JSON.parse(data));
+      }
+    }
+  }
+
+  // streamClaude sends the history to Anthropic and reads the answer as it's written; onText
+  // gets the text so far. It returns the answer's blocks and why it stopped.
+  async function streamClaude(signal, onText) {
+    const response = await fetch(ANTHROPIC, {
       method: "POST", signal,
       headers: {
         "content-type": "application/json", "x-api-key": settings.anthropicKey, "anthropic-version": "2023-06-01",
@@ -187,41 +234,99 @@
       throw new Error(answer.error?.message || `Anthropic answered ${response.status}`);
     }
     const blocks = [];
-    let stop = "", buffer = "";
-    const reader = response.body.getReader(), decoder = new TextDecoder();
-    for (;;) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      let cut;
-      while ((cut = buffer.indexOf("\n\n")) >= 0) {
-        const event = buffer.slice(0, cut);
-        buffer = buffer.slice(cut + 2);
-        const data = event.split("\n").find(l => l.startsWith("data:"))?.slice(5).trim();
-        if (!data) continue;
-        const e = JSON.parse(data);
-        if (e.type === "content_block_start") {
-          blocks[e.index] = { ...e.content_block, partial: "" };
-        } else if (e.type === "content_block_delta") {
-          const block = blocks[e.index];
-          if (e.delta.type === "text_delta") {
-            block.text = (block.text || "") + e.delta.text;
-            onText(blocks.filter(b => b?.type === "text").map(b => b.text || "").join(""));
-          }
-          if (e.delta.type === "input_json_delta") block.partial += e.delta.partial_json;
-        } else if (e.type === "content_block_stop") {
-          const block = blocks[e.index];
-          if (block.type === "tool_use") block.input = block.partial ? JSON.parse(block.partial) : {};
-        } else if (e.type === "message_delta") {
-          stop = e.delta.stop_reason || stop;
-        } else if (e.type === "error") {
-          throw new Error(e.error?.message || "Anthropic reported an error");
+    let stop = "";
+    await readEvents(response, e => {
+      if (e.type === "content_block_start") {
+        blocks[e.index] = { ...e.content_block, partial: "" };
+      } else if (e.type === "content_block_delta") {
+        const block = blocks[e.index];
+        if (e.delta.type === "text_delta") {
+          block.text = (block.text || "") + e.delta.text;
+          onText(blocks.filter(b => b?.type === "text").map(b => b.text || "").join(""));
         }
+        if (e.delta.type === "input_json_delta") block.partial += e.delta.partial_json;
+      } else if (e.type === "content_block_stop") {
+        const block = blocks[e.index];
+        if (block.type === "tool_use") block.input = block.partial ? JSON.parse(block.partial) : {};
+      } else if (e.type === "message_delta") {
+        stop = e.delta.stop_reason || stop;
+      } else if (e.type === "error") {
+        throw new Error(e.error?.message || "Anthropic reported an error");
       }
-    }
+    });
     const content = blocks.filter(Boolean).map(({ partial, ...b }) => b)
       .filter(b => b.type === "tool_use" || (b.type === "text" && b.text));
     return { content, stop };
+  }
+
+  // asChatMessages turns the history (Anthropic's shape, which the chat keeps) into the
+  // OpenAI-style messages a local server takes.
+  function asChatMessages(system) {
+    const out = [{ role: "system", content: system }];
+    for (const m of chat.api) {
+      const blocks = typeof m.content === "string" ? [{ type: "text", text: m.content }] : m.content;
+      if (m.role === "assistant") {
+        const calls = blocks.filter(b => b.type === "tool_use").map(b => ({
+          id: b.id, type: "function", function: { name: b.name, arguments: JSON.stringify(b.input || {}) },
+        }));
+        const text = blocks.filter(b => b.type === "text").map(b => b.text).join("");
+        out.push({ role: "assistant", content: text || null, ...(calls.length ? { tool_calls: calls } : {}) });
+        continue;
+      }
+      for (const b of blocks.filter(b => b.type === "tool_result")) {
+        out.push({ role: "tool", tool_call_id: b.tool_use_id, content: String(b.content ?? "") });
+      }
+      const text = blocks.filter(b => b.type === "text").map(b => b.text).join("\n\n");
+      if (text) out.push({ role: "user", content: text });
+    }
+    return out;
+  }
+
+  // streamLocal does what streamClaude does with the local server's chat completions, and gives
+  // back the answer in Anthropic's shape.
+  async function streamLocal(signal, onText) {
+    const headers = { "content-type": "application/json" };
+    if (settings.localKey) headers.Authorization = "Bearer " + settings.localKey;
+    const list = allTools().map(t => ({ type: "function", function: { name: t.name, description: t.description, parameters: t.input_schema } }));
+    const response = await fetch(settings.localURL + "/chat/completions", {
+      method: "POST", signal, headers,
+      body: JSON.stringify({
+        model: setup.model || settings.localModel, stream: true,
+        messages: asChatMessages(await systemPrompt()), ...(list.length ? { tools: list } : {}),
+      }),
+    }).catch(e => {
+      if (e.name === "AbortError") throw e;
+      throw new Error(`Couldn't reach your local model at ${settings.localURL}: is it running, and does it allow this page?`);
+    });
+    if (!response.ok) {
+      const answer = await response.json().catch(() => ({}));
+      throw new Error(answer.error?.message || answer.error || `Your local model answered ${response.status}`);
+    }
+    let text = "", finish = "";
+    const calls = [];
+    await readEvents(response, e => {
+      if (e.error) throw new Error(e.error.message || String(e.error));
+      for (const choice of e.choices || []) {
+        if (choice.delta?.content) { text += choice.delta.content; onText(text); }
+        for (const [i, piece] of (choice.delta?.tool_calls || []).entries()) {
+          const at = piece.index ?? i;
+          const call = calls[at] ||= { id: "", name: "", arguments: "" };
+          if (piece.id) call.id = piece.id;
+          call.name += piece.function?.name || "";
+          call.arguments += piece.function?.arguments || "";
+        }
+        if (choice.finish_reason) finish = choice.finish_reason;
+      }
+    });
+    const content = [];
+    if (text) content.push({ type: "text", text });
+    calls.filter(Boolean).forEach((call, i) => {
+      let input = {};
+      try { input = call.arguments ? JSON.parse(call.arguments) : {}; } catch {}
+      content.push({ type: "tool_use", id: call.id || `call_${Date.now()}_${i}`, name: call.name, input });
+    });
+    const usedTools = content.some(b => b.type === "tool_use");
+    return { content, stop: usedTools || finish === "tool_calls" ? "tool_use" : "end_turn" };
   }
 
   async function answer(question) {
@@ -231,6 +336,7 @@
     chat.api = validHistory(chat.api);
     busy = new AbortController();
     renderAll();
+    const stream = setup.provider === "local" ? streamLocal : streamClaude;
     let paragraphs = [];
     try {
       for (let turn = 0; turn < MAX_TURNS; turn++) {
@@ -298,7 +404,7 @@
     log.replaceChildren(...chat.messages.map(bubble));
     if (!chat.messages.length) {
       log.append(el("div", { className: "chat-empty" }, el("h3", {}, "Ask about your food, notes or cards"),
-        el("p", {}, "It reads your notes here in your browser and sends them straight to Anthropic: this server never sees them.")));
+        el("p", {}, "It reads your notes here in your browser and sends them straight to the AI: this server never sees them.")));
     }
     log.scrollTo({ top: log.scrollHeight, behavior: "instant" });
     const field = $("form").elements.message;
@@ -307,10 +413,12 @@
     $("stop").hidden = !busy;
   }
 
+  const providerNames = { claude: "Claude", local: "Local model" };
+
   function renderTop() {
     const status = $("status");
     status.classList.toggle("off", !!setup.problem);
-    status.lastChild.textContent = setup.problem || "Claude · in your browser";
+    status.lastChild.textContent = setup.problem || `${providerNames[setup.provider]} · in your browser`;
     const toggles = $("toggles");
     toggles.replaceChildren();
     for (const m of setup.mcps || []) {
@@ -324,8 +432,19 @@
     prompt.onclick = () => change({ instructions: "toggle" });
     toggles.append(prompt);
 
+    const parts = [];
+    if ((setup.providers || []).length > 1) {
+      const which = el("select", { className: "pill", title: "Which AI answers" },
+        ...setup.providers.map(id => el("option", { value: id, selected: id === setup.provider, textContent: providerNames[id] })));
+      which.onchange = () => change({ provider: which.value });
+      parts.push(which);
+    }
+    const names = setup.provider === "local"
+      ? [...new Set([...(localModels || []), setup.model || settings.localModel].filter(Boolean))].map(id => ({ id, label: id }))
+      : setup.models;
+    const chosen = setup.model || (setup.provider === "local" ? settings.localModel : "");
     const model = el("select", { className: "pill", title: "Which model it uses" },
-      ...setup.models.map(m => el("option", { value: m.id, selected: m.id === setup.model, textContent: m.label })));
+      ...names.map(m => el("option", { value: m.id, selected: m.id === chosen, textContent: m.label })));
     model.onchange = () => change({ model: model.value });
     const fresh = el("button", { type: "button", className: "pill", title: "Start over" }, "New chat");
     fresh.onclick = async () => {
@@ -334,7 +453,7 @@
       renderAll();
       await saveChat();
     };
-    $("tools").replaceChildren(model, fresh);
+    $("tools").replaceChildren(...parts, model, fresh);
   }
 
   async function change(fields) {
@@ -345,16 +464,22 @@
     } catch (e) { toast(e.message, { bad: true }); }
   }
 
+  // takeOldKeys seals the keys the server kept from before, then has it delete them.
+  async function takeOldKeys(old) {
+    for (const [field, value] of Object.entries(old || {})) {
+      if (!settings[field]) settings[field] = value;
+    }
+    await saveSettings(true);
+  }
+
   async function refresh() {
     setup = await getJSON("/assistant/setup");
     await loadSettings();
-    if (setup.oldKey) {
-      // A key the server kept from before: sealed here, then the server deletes its copy.
-      if (!settings.anthropicKey) settings.anthropicKey = setup.oldKey;
-      delete setup.oldKey;
-      await saveSettings(true);
+    if (setup.oldKeys) await takeOldKeys(setup.oldKeys);
+    setup.problem ||= problem();
+    if (setup.provider === "local" && settings.localURL && localModels === null) {
+      localModels = await listLocalModels().catch(() => []);
     }
-    setup.problem ||= keyProblem(settings.anthropicKey);
     renderTop();
     renderAll();
     tools = [];
@@ -396,35 +521,6 @@
     }
   }
 
-  // ---------- the key, on the Account page ----------
-
-  htmx.onLoad(async node => {
-    const form = node.querySelector?.("form[data-browser-key]");
-    if (!form) return;
-    const saved = form.querySelector("[data-browser-key-saved]");
-    const error = form.parentElement.querySelector("[data-browser-key-error]");
-    const fail = message => { error.textContent = message; error.hidden = false; };
-    key = await Keys.notesKey().catch(() => null);
-    if (!key) return fail("Unlock your notes on the Docs tab first: your key is encrypted with them.");
-    try {
-      await loadSettings();
-      saved.hidden = !settings.anthropicKey;
-    } catch (e) { return fail(e.message); }
-    form.onsubmit = async event => {
-      event.preventDefault();
-      error.hidden = true;
-      const value = form.elements.key.value.trim();
-      if (value && (value.length > 500 || /\s/.test(value))) return fail("That doesn't look like an API key");
-      settings.anthropicKey = value;
-      try {
-        await saveSettings(true);
-        form.elements.key.value = "";
-        saved.hidden = !value;
-        toast(value ? "Key saved in your browser's encrypted settings" : "Key removed");
-      } catch (e) { fail(e.message); }
-    };
-  });
-
   htmx.onLoad(node => {
     const found = node.querySelector?.("[data-browser-chat]");
     if (!found) return;
@@ -439,5 +535,75 @@
     });
     $("stop").onclick = () => busy?.abort();
     start();
+  });
+
+  // ---------- the AI's settings, on the Account page ----------
+  // Typed keys replace the saved ones; an empty box keeps what's saved, and "-" removes it.
+
+  htmx.onLoad(async node => {
+    const form = node.querySelector?.("form[data-browser-key]");
+    if (!form) return;
+    const saved = form.querySelector("[data-browser-key-saved]");
+    const picker = form.querySelector("[data-local-models]");
+    const error = form.parentElement.querySelector("[data-browser-key-error]");
+    const fail = message => { error.textContent = message; error.hidden = false; };
+    form.querySelectorAll("[data-origin]").forEach(n => { n.textContent = location.origin; });
+    key = await Keys.notesKey().catch(() => null);
+    if (!key) return fail("Unlock your notes on the Docs tab first: these settings are encrypted with them.");
+
+    const showModels = names => {
+      const all = [...new Set([...names, settings.localModel].filter(Boolean))];
+      picker.replaceChildren(el("option", { value: "", textContent: all.length ? "Pick a model…" : "Save the address, then pick one" }),
+        ...all.map(id => el("option", { value: id, selected: id === settings.localModel, textContent: id })));
+    };
+    const refreshModels = async () => {
+      if (!settings.localURL) return showModels([]);
+      try { showModels(await listLocalModels()); error.hidden = true; }
+      catch (e) { showModels([]); fail(e.message); }
+    };
+    try {
+      await loadSettings();
+      saved.hidden = !settings.anthropicKey;
+      form.elements.local_url.value = settings.localURL || "";
+      showModels([]);
+      if (settings.localURL) refreshModels();
+    } catch (e) { return fail(e.message); }
+
+    form.querySelector("[data-list-models]").onclick = async () => {
+      try {
+        settings.localURL = localBase(form.elements.local_url.value);
+        await refreshModels();
+      } catch (e) { fail(e.message); }
+    };
+    form.onsubmit = async event => {
+      event.preventDefault();
+      error.hidden = true;
+      const take = (field, setting) => {
+        const value = form.elements[field].value.trim();
+        if (value === "-") delete settings[setting];
+        else if (value) {
+          if (value.length > 500 || /\s/.test(value)) throw new Error("That doesn't look like a key");
+          settings[setting] = value;
+        }
+      };
+      try {
+        take("key", "anthropicKey");
+        take("local_key", "localKey");
+        const address = form.elements.local_url.value.trim();
+        if (!address || address === "-") {
+          delete settings.localURL;
+          delete settings.localModel;
+        } else {
+          settings.localURL = localBase(address);
+          settings.localModel = picker.value || settings.localModel;
+        }
+        await saveSettings(true);
+        form.elements.key.value = form.elements.local_key.value = "";
+        form.elements.local_url.value = settings.localURL || "";
+        saved.hidden = !settings.anthropicKey;
+        toast("Saved in your browser's encrypted settings");
+        await refreshModels();
+      } catch (e) { fail(e.message); }
+    };
   });
 })();

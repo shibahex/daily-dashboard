@@ -8,7 +8,7 @@
 //	docs/          their notes
 //	taskrc, task/  their Taskwarrior; timewarrior/ their Timewarrior
 //	mfp/           their MyFitnessPal login (the MCP's config and browser profile)
-//	assistant/     config files for the AI agent's runs
+//	agent-home/    the home of the sandbox the AI's MCP tools run in
 //
 // It's encrypted on disk (site/data/vaults/<id>/, see vault.go): while the user is signed in it's
 // decrypted into memory and used from there. The host account (the server's owner) keeps this
@@ -46,10 +46,8 @@ type Workspace struct {
 	Tasks         *tasks.Service
 	Time          timewarrior.Client
 	MyFitnessPal  *myfitnesspal.Syncer
-	Secrets       *secrets.Store // the user's AI API keys, sealed
-	Conversations *assistant.Conversations
-	Chat          *assistant.Runner
-	Live          *assistant.LiveAnswer
+	Secrets       *secrets.Store           // the user's AI API keys, sealed
+	Conversations *assistant.Conversations // the AI's settings (it runs in the browser)
 
 	mu   sync.Mutex
 	anki anki.Client   // changes when the user connects their Anki: read it with Anki()
@@ -70,24 +68,19 @@ func (w *Workspace) setAnki(client anki.Client) {
 	w.anki = client
 }
 
-// close ends the workspace's background work: its sync, and any answer being written.
+// close ends the workspace's background work: its sync.
 func (w *Workspace) close() {
 	close(w.stop)
-	w.Chat.Stop()
 	<-w.done // a sync still writing would leave files behind
-	for i := 0; w.Chat.Busy() && i < 50; i++ {
-		time.Sleep(100 * time.Millisecond) // ...and so would an answer being saved
-	}
 }
 
 // Manager opens each user's workspace once and keeps it.
 type Manager struct {
-	paths     config.Paths        // the server's
-	mfp       myfitnesspal.Client // where the MCP comes from; each user gets their own login folder
-	hostAnki  anki.Client         // the Anki on this computer, for the host account
-	gateway   *anki.Gateway
-	providers assistant.Providers
-	box       *secrets.Box
+	paths    config.Paths        // the server's
+	mfp      myfitnesspal.Client // where the MCP comes from; each user gets their own login folder
+	hostAnki anki.Client         // the Anki on this computer, for the host account
+	gateway  *anki.Gateway
+	box      *secrets.Box
 
 	mu       sync.Mutex
 	open     map[string]*Workspace
@@ -105,10 +98,10 @@ type Manager struct {
 }
 
 func NewManager(paths config.Paths, mfp myfitnesspal.Client, hostAnki anki.Client, gateway *anki.Gateway,
-	providers assistant.Providers, box *secrets.Box) *Manager {
+	box *secrets.Box) *Manager {
 	os.MkdirAll(paths.UsersDir(), 0o700)
 	memory, memErr := vault.MemoryDir()
-	return &Manager{paths: paths, mfp: mfp, hostAnki: hostAnki, gateway: gateway, providers: providers, box: box,
+	return &Manager{paths: paths, mfp: mfp, hostAnki: hostAnki, gateway: gateway, box: box,
 		open: map[string]*Workspace{}, unlocked: map[string]*unlocked{}, memory: memory, memErr: memErr,
 		Credentials: func(string) []string { return nil }, LockAfter: 30 * time.Minute}
 }
@@ -260,9 +253,7 @@ func (m *Manager) openWorkspace(user auth.User, dir string) *Workspace {
 	ws.Secrets = secrets.NewStore(m.box, dir, user.ID)
 	ws.Tasks = tasks.NewService(taskClient, ws.Time)
 	ws.MyFitnessPal = myfitnesspal.NewSyncer(mfp, files, paths.DataFile("mfp.json"))
-	ws.Conversations = assistant.NewConversations(paths.DataFile("chat.json"), m.providers)
-	ws.Chat = assistant.NewRunner()
-	ws.Live = assistant.NewLiveAnswer()
+	ws.Conversations = assistant.NewConversations(paths.DataFile("chat.json"))
 	return ws
 }
 

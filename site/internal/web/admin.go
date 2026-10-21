@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"time"
 
-	"dashboard/internal/assistant"
 	"dashboard/internal/auth"
 	"dashboard/internal/problem"
 )
@@ -35,8 +34,7 @@ func (ui *UI) adminView(r *http.Request) adminView {
 		view.Encrypted[user.ID] = ui.Workspaces.Encrypted(user)
 	}
 	for _, id := range auth.KnownProviders {
-		provider, _ := ui.Providers.Get(id)
-		view.Providers = append(view.Providers, choice{ID: id, Label: provider.Label()})
+		view.Providers = append(view.Providers, choice{ID: id, Label: providerLabels[id]})
 	}
 	for _, id := range auth.KnownMCPs {
 		view.MCPs = append(view.MCPs, choice{ID: id, Label: mcpLabels[id]})
@@ -45,6 +43,9 @@ func (ui *UI) adminView(r *http.Request) adminView {
 }
 
 var mcpLabels = map[string]string{"myfitnesspal": "MyFitnessPal", "anki": "Anki"}
+
+// providerLabels name the AIs the browser can run.
+var providerLabels = map[string]string{"claude": "Claude", "local": "Local model (on their own computer)"}
 
 func (ui *UI) adminPage(w http.ResponseWriter, r *http.Request) {
 	ui.renderPage(r, w, "admin", "Admin", "admin", ui.adminView(r))
@@ -153,7 +154,7 @@ func policyFrom(r *http.Request) auth.Policy {
 	r.ParseForm()
 	return auth.Policy{
 		Providers: r.Form["providers"], MCPs: r.Form["mcps"],
-		Web: r.FormValue("web") == "on", ReadFiles: r.FormValue("read_files") == "on", EditFiles: r.FormValue("edit_files") == "on",
+		EditFiles: r.FormValue("edit_files") == "on",
 	}.Clean()
 }
 
@@ -167,24 +168,6 @@ func (ui *UI) setUserPolicy(w http.ResponseWriter, r *http.Request) {
 
 func (ui *UI) setDefaultPolicy(w http.ResponseWriter, r *http.Request) {
 	ui.renderAdmin(w, r, "Saved the settings for new users", ui.Auth.SetDefaultPolicy(policyFrom(r)), nil)
-}
-
-// ---------- the policy in the MCPs tab ----------
-
-// allowedProvider is the provider the user's chat uses: the chosen one if their policy allows
-// it, else the first one it does.
-func allowedProvider(policy auth.Policy, providers assistant.Providers, chosen string) (assistant.Provider, bool) {
-	if policy.AllowsProvider(chosen) {
-		if provider, ok := providers.Get(chosen); ok {
-			return provider, true
-		}
-	}
-	for _, id := range policy.Providers {
-		if provider, ok := providers.Get(id); ok {
-			return provider, true
-		}
-	}
-	return nil, false
 }
 
 func expiresIn(t time.Time) string {

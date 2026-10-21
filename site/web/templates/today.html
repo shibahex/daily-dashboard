@@ -10,7 +10,7 @@
 {{end}}
 
 {{define "card-session"}}
-<div class="card" hx-disinherit="*" id="card-session"{{if not .Editing}} hx-get="/cards/session" hx-trigger="plan-changed[!this.contains(event.target)] from:body"{{end}} hx-swap="outerHTML">
+<div class="card" hx-disinherit="*" id="card-session"{{if not .Editing}} hx-get="/cards/session" hx-trigger="plan-changed from:body"{{end}} hx-swap="outerHTML">
   {{template "card-head" dict "Title" .Heading "URL" "/cards/session" "Editing" .Editing}}
   {{if .Editing}}
   <form hx-post="/cards/session" hx-target="closest .card" hx-swap="outerHTML">
@@ -32,7 +32,7 @@
 {{end}}
 
 {{define "card-checklist"}}
-<div class="card" hx-disinherit="*" id="card-checklist"{{if not .Editing}} hx-get="/cards/checklist?day={{.DayKey}}" hx-trigger="checklist-changed[!this.contains(event.target)] from:body, plan-changed[!this.contains(event.target)] from:body"{{end}} hx-swap="outerHTML">
+<div class="card" hx-disinherit="*" id="card-checklist"{{if not .Editing}} hx-get="/cards/checklist?day={{.DayKey}}" hx-trigger="checklist-changed from:body, plan-changed from:body"{{end}} hx-swap="outerHTML">
   {{template "card-head" dict "Title" "Daily checklist" "URL" "/cards/checklist" "Editing" .Editing}}
   {{if .Editing}}
   <form hx-post="/cards/checklist" hx-target="closest .card" hx-swap="outerHTML">
@@ -73,7 +73,7 @@
 {{end}}
 
 {{define "card-weight"}}
-<div class="card" hx-disinherit="*" id="card-weight"{{if not .Editing}} hx-get="/cards/weight" hx-trigger="checklist-changed[!this.contains(event.target)] from:body, plan-changed[!this.contains(event.target)] from:body"{{end}} hx-swap="outerHTML">
+<div class="card" hx-disinherit="*" id="card-weight"{{if not .Editing}} hx-get="/cards/weight" hx-trigger="checklist-changed from:body, plan-changed from:body"{{end}} hx-swap="outerHTML">
   {{template "card-head" dict "Title" "Weight" "URL" "/cards/weight" "Editing" .Editing}}
   {{if .Editing}}
   <form class="editor" hx-post="/cards/weight" hx-target="closest .card" hx-swap="outerHTML">
@@ -106,7 +106,7 @@
 {{end}}
 
 {{define "card-week"}}
-<div class="card" hx-disinherit="*" id="card-week"{{if not .Editing}} hx-get="/cards/week" hx-trigger="plan-changed[!this.contains(event.target)] from:body"{{end}} hx-swap="outerHTML">
+<div class="card" hx-disinherit="*" id="card-week"{{if not .Editing}} hx-get="/cards/week" hx-trigger="plan-changed from:body"{{end}} hx-swap="outerHTML">
   {{template "card-head" dict "Title" "This week" "URL" "/cards/week" "Editing" .Editing}}
   {{if .Editing}}
   <form class="editor" hx-post="/cards/week" hx-target="closest .card" hx-swap="outerHTML">
@@ -143,7 +143,7 @@
 {{end}}
 
 {{define "card-time"}}
-<div class="card" hx-disinherit="*" id="card-time" hx-get="/cards/time" hx-trigger="time-changed from:body, tasks-changed from:body{{if .Running}}, every 30s [!document.hidden]{{end}}" hx-swap="outerHTML">
+<div class="card" hx-disinherit="*" id="card-time" hx-get="/cards/time" hx-trigger="time-changed from:body, tasks-changed from:body{{if .Running}}, tick-30 from:body{{end}}" hx-swap="outerHTML">
   <div class="card-head"><h2>Time tracked</h2></div>
   {{if not .Available}}
   <p class="muted small">Timewarrior isn't available. Start the dashboard with <code>nix run</code> from the site folder.</p>

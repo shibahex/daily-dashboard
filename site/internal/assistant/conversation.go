@@ -11,7 +11,9 @@ import (
 // The MCP servers the tab knows, in order. Both are on unless the user turned one off.
 var KnownMCPs = auth.KnownMCPs
 
-// Conversation is the chat kept in data/chat.json until "New chat".
+// Conversation is data/chat.json: the AI's settings (which MCPs, "Attach prompt", the model). It
+// also held the chat of the server-side AI there used to be, which the browser seals once
+// (web/sealed.go) and the server then forgets.
 type Conversation struct {
 	Provider  string            `json:"provider"`
 	SessionID string            `json:"session_id,omitempty"` // the CLI's id, to resume
@@ -60,32 +62,15 @@ func (c *Conversation) EnabledMCPs() []string {
 	return enabled
 }
 
-// Model is the chosen model for the conversation's provider ("" = its default).
-func (c *Conversation) Model() string { return c.Models[c.Provider] }
-
-func (c *Conversation) SetModel(model string) {
-	if c.Models == nil {
-		c.Models = map[string]string{}
-	}
-	c.Models[c.Provider] = model
-}
-
 // Conversations loads and saves data/chat.json.
 type Conversations struct {
-	path      string
-	providers Providers
-	mu        sync.Mutex
+	path string
+	mu   sync.Mutex
 }
 
-func NewConversations(path string, providers Providers) *Conversations {
-	return &Conversations{path: path, providers: providers}
-}
+func NewConversations(path string) *Conversations { return &Conversations{path: path} }
 
-// oldClaudeModels maps model names saved before the menu used Claude Code's own values.
-var oldClaudeModels = map[string]string{"claude-opus-5-5": "opus", "claude-sonnet-5-5": "sonnet",
-	"claude-fable-5-1": "fable", "claude-haiku-5-5": "haiku"}
-
-// Load returns the saved conversation, or a new one with the default provider.
+// Load returns the saved conversation, or a new one.
 func (cs *Conversations) Load() *Conversation {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
@@ -93,12 +78,6 @@ func (cs *Conversations) Load() *Conversation {
 	jsonfile.Read(cs.path, conversation)
 	if conversation.Messages == nil {
 		conversation.Messages = []Message{}
-	}
-	if newer, ok := oldClaudeModels[conversation.Models["claude"]]; ok {
-		conversation.Models["claude"] = newer
-	}
-	if _, known := cs.providers.Get(conversation.Provider); !known {
-		conversation.Provider = cs.providers.Default().ID()
 	}
 	return conversation
 }

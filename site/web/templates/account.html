@@ -110,50 +110,22 @@
   </div>
 
   <div class="card">
-    <h2>AI keys</h2>
-    {{if .Sealed}}
-    <p class="muted">Your AI runs in this browser and talks to Anthropic directly, with your own API key. The key is encrypted here, like your notes: the server never has it.</p>
-    <form class="row" data-browser-key>
-      <label class="grow">Anthropic API key <span class="ok small" data-browser-key-saved hidden>· saved</span><small class="muted">An API key (sk-ant-api…): a Claude subscription token only works with Claude Code.</small>
-        <input class="txt" type="password" name="key" autocomplete="off" spellcheck="false" placeholder="Paste a key, or leave empty and save to remove"></label>
-      <button class="sm primary">Save</button>
-      <a class="small muted" href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener noreferrer">Get a key</a>
+    <h2>AI</h2>
+    <p class="muted">The MCPs tab's AI runs in this browser. It talks to Anthropic, or to a model on this computer, directly: your notes and chats never pass through the server. These keys and addresses are encrypted here, like your notes: the server never has them.</p>
+    <form class="ai-settings" data-browser-key hx-boost="false">
+      <label>Anthropic API key <span class="ok small" data-browser-key-saved hidden>· saved</span>
+        <small class="muted">An API key (sk-ant-api…): a Claude subscription token only works with Claude Code. <a class="link" href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener noreferrer">Get a key</a></small>
+        <input class="txt" type="password" name="key" autocomplete="off" spellcheck="false" placeholder="Paste a key; leave empty to keep it, or type - to remove it"></label>
+      <h3>Local model</h3>
+      <p class="small muted">Ollama, LM Studio or llama.cpp (<code>llama-server</code>) on <b>this computer</b>, with the OpenAI-style API. Let this page reach it: for Ollama, start it with <code>OLLAMA_ORIGINS=<span data-origin></span></code>; in LM Studio, turn on CORS; llama.cpp allows it already. The model needs to handle tool calls.</p>
+      <label>Address <input class="txt" name="local_url" autocomplete="off" spellcheck="false" placeholder="localhost:11434 (Ollama), localhost:1234 (LM Studio), localhost:8080 (llama.cpp)"></label>
+      <label>Model <span class="row"><select class="txt grow" name="local_model" data-local-models><option value="">Save the address, then pick one</option></select>
+        <button type="button" class="sm" data-list-models>List models</button></span></label>
+      <label>API key <small class="muted">(only if your server wants one)</small>
+        <input class="txt" type="password" name="local_key" autocomplete="off" spellcheck="false" placeholder="Leave empty to keep it, or type - to remove it"></label>
+      <div><button class="sm primary">Save</button></div>
     </form>
     <p class="sign-in-error" data-browser-key-error hidden></p>
-    {{else}}
-    <p class="muted">The MCPs tab uses your own key for each AI, so your chats use your own credit, and the AI runs in a sandbox that holds no other login. Keys are stored encrypted.</p>
-    {{range .Keys}}
-    <form class="row" hx-post="/account/keys" hx-target="#connections-card" hx-swap="outerHTML">
-      <input type="hidden" name="provider" value="{{.Provider}}">
-      <label class="grow">{{.Label}} {{if .Set}}<span class="ok small">· saved</span>{{end}}{{with .Hint}}<small class="muted">Accepts {{.}}.</small>{{end}}
-        <input class="txt" type="password" name="key" autocomplete="off" spellcheck="false" placeholder="{{if .Set}}Leave empty and save to remove{{else}}Paste a key{{end}}"></label>
-      <button class="sm{{if not .Set}} primary{{end}}">{{if .Set}}Replace{{else}}Save{{end}}</button>
-      <a class="small muted" href="{{.Where}}" target="_blank" rel="noopener noreferrer">Get a key</a>
-    </form>
-    {{end}}
-    {{end}}
-    {{if .Host}}
-    <h3>Local model</h3>
-    <p class="muted">Use a model from your own Ollama, llama.cpp (<code>llama-server</code>), LM Studio or any server with the OpenAI-style API (<code>/v1/models</code>, <code>/v1/chat/completions</code>). The dashboard runs nothing: it only connects to the address you give. Only the host account has this, since the server connects to that address. Turn on <b>Local model</b> for yourself on the Admin page, then pick it in the AI menu on the MCPs tab.</p>
-    <form class="row" hx-post="/account/local" hx-target="#connections-card" hx-swap="outerHTML">
-      <label class="grow">Address <input class="txt" name="url" value="{{.LocalURL}}" placeholder="localhost:11434" autocomplete="off" spellcheck="false"></label>
-      <label class="grow">Model
-        {{if .LocalModels}}
-        <select class="txt" name="model">
-          <option value=""{{if not .LocalModel}} selected{{end}}>Pick a model…</option>
-          {{$saved := .LocalModel}}{{$listed := false}}
-          {{range .LocalModels}}<option{{if eq . $saved}} selected{{$listed = true}}{{end}}>{{.}}</option>{{end}}
-          {{if and $saved (not $listed)}}<option selected>{{$saved}}</option>{{end}}
-        </select>
-        {{else}}
-        <input class="txt" name="model" value="{{.LocalModel}}" placeholder="{{if .LocalURL}}Type its name{{else}}Save the address first{{end}}" autocomplete="off" spellcheck="false">
-        {{end}}
-        {{with .LocalError}}<small class="muted">Couldn't list its models: {{.}}</small>{{end}}</label>
-      <label class="grow">API key {{if .LocalKey}}<span class="ok small">· saved</span>{{end}}<input class="txt" type="password" name="key" autocomplete="off" spellcheck="false" placeholder="{{if .LocalKey}}Leave empty to keep it{{else}}Optional{{end}}"></label>
-      <button class="sm primary">Save</button>
-    </form>
-    <p class="small muted">Save the address and its models show up to pick from. Empty address removes it. Examples: <code>localhost:11434</code> (Ollama), <code>localhost:8080</code> (llama.cpp), <code>localhost:1234</code> (LM Studio) or an <code>https://…/v1</code> endpoint; <code>/v1</code> is added when there's no path. The model needs to handle tool calls.</p>
-    {{end}}
   </div>
 </div>
 {{end}}
@@ -186,19 +158,34 @@
     <div><button class="sm primary">Change password</button></div>
   </form>
 
-  {{if or .Encrypted .Sealed}}
-  <form class="card" hx-post="/account/recovery" hx-target="#account-card" hx-swap="outerHTML" data-keys="recovery"{{if .Sealed}} data-sealed{{end}}>
-    <h2>Your data is encrypted</h2>
-    <p class="muted">Your notes are encrypted here in your browser: the server only ever has them scrambled. Your other data (plan, food, tasks, chats, logins) is encrypted on the server's disk and opens while you're signed in. If you forget your password, your recovery code is the only way back in.</p>
+  <form class="card" hx-post="/account/recovery" hx-target="#account-card" hx-swap="outerHTML" data-keys="recovery" data-sealed>
+    <h2>Your notes and recovery code</h2>
+    <p class="muted">Your notes, AI chat and AI keys are encrypted here in your browser: the server only ever has them scrambled. If you forget your password, your recovery code is the only way back in.</p>
     {{if .NewRecovery}}
     <div hidden><p>Your new recovery code. Save it now: it's only shown once, and the old one no longer works.</p>
     <input class="txt token" readonly data-new-recovery-code data-select-all aria-label="Your new recovery code"></div>
     {{end}}
     <p class="sign-in-error" role="alert" data-keys-error hidden></p>
-    {{if .Sealed}}<label>Your password <input class="txt" type="password" name="recovery_password" data-password required autocomplete="current-password"></label>{{end}}
+    <label>Your password <input class="txt" type="password" name="recovery_password" data-password required autocomplete="current-password"></label>
     <div class="row"><button class="sm">New recovery code</button> <span class="small muted">The old one stops working.</span></div>
   </form>
-  {{end}}
+
+  <div class="card">
+    <h2>Your other data on the server's disk</h2>
+    {{if .Encrypted}}
+    <p class="muted">Your plan, checklist, weight, tasks, time and food are encrypted on the server's disk. The server opens them while you're signed in (it builds your pages from them) and locks them when you log out, after 30 idle minutes, and when it stops; meanwhile your MyFitnessPal sync waits.</p>
+    <p class="muted small">On a server whose disk is already encrypted and that only you use, this adds little, and losing both your password and recovery code would lose this data. You can turn it off; your notes stay encrypted either way.</p>
+    <button class="sm" hx-post="/account/storage/plain" hx-target="#account-card" hx-swap="outerHTML" hx-confirm="Stop encrypting your plan, tasks, time and food on the server's disk? They'll be kept as plain files. Your notes, chat and keys stay encrypted.">Stop encrypting it</button>
+    {{else}}
+    <p class="muted">Your plan, checklist, weight, tasks, time and food are kept as plain files on the server's disk{{if .PlainStorage}}, as you chose{{end}}. Anyone who can read the server's files can read them. Your notes, chat and keys are encrypted either way.</p>
+    <form class="row" hx-post="/account/storage/encrypt" hx-target="#account-card" hx-swap="outerHTML" data-keys="encrypt">
+      <p class="sign-in-error" role="alert" data-keys-error hidden></p>
+      <label class="grow">Your password <input class="txt" type="password" name="encrypt_password" data-password required autocomplete="current-password"></label>
+      <button class="sm primary">Encrypt it</button>
+    </form>
+    <p class="small muted">You'll get a new recovery code, for this data and your notes.</p>
+    {{end}}
+  </div>
 
   <div class="card">
     <h2>Bar plugin token</h2>

@@ -7,19 +7,18 @@ import (
 	"strconv"
 	"strings"
 
-	"dashboard/internal/assistant"
 	"dashboard/internal/auth"
 	"dashboard/internal/httpx"
 	"dashboard/internal/problem"
 )
 
-// Sealed data: for everyone but the host, notes and the AI chat are encrypted end to end. The
+// Sealed data: everyone's notes, AI chat and AI keys are encrypted end to end. The
 // browser holds the key (web/js/keys.js) and does everything with them (notes.js, assistant.js);
 // the server only stores the encrypted blobs and the user's wrapped key, and can read neither.
 
-// sealedNotes reports whether the user's notes (and AI chat) are sealed: every account but the
-// host's, once its browser has made the key (at its first sign-in since).
-func sealedNotes(user auth.User) bool { return !user.Host && user.NotesKey != nil }
+// sealedNotes reports whether the user's notes (and AI chat) are sealed: every account, once its
+// browser has made the key (at its first sign-in since; until then it's asked to sign in).
+func sealedNotes(user auth.User) bool { return user.NotesKey != nil }
 
 // notesKey answers with the user's wrapped notes key, for their browser to open.
 func (ui *UI) notesKey(w http.ResponseWriter, r *http.Request) {
@@ -85,8 +84,8 @@ func (ui *UI) saveSealedData(kind string) http.HandlerFunc {
 			ws.Conversations.StartNew(ws.Conversations.Load().Provider)
 			os.RemoveAll(ws.Paths.DataFile("agent-home"))
 		case kind == "settings" && sealed != "":
-			// The API key saved here before: the browser has sealed it.
-			ws.Secrets.Set(assistant.APIKeys["claude"].Name, "")
+			// Keys saved here before keys moved into the browser: it has sealed them.
+			ws.Secrets.Clear()
 		}
 		writeNoStoreJSON(w, map[string]int{"version": saved})
 	}

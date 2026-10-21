@@ -1,5 +1,6 @@
-// Package secrets keeps small secrets (users' AI API keys) encrypted on disk with the server's
-// key (site/data/secret.key), so a copied or backed-up user folder doesn't give them away.
+// Package secrets read the AI keys users once kept on the server (sealed with site/data/
+// secret.key), from before keys moved into their browser: the browser takes them over once and
+// the server clears them (web/sealed.go). Nothing new is stored here.
 package secrets
 
 import (
@@ -111,4 +112,15 @@ func (s *Store) Set(name, value string) error {
 		sealed[name] = s.box.Seal(value, s.owner+"/"+name)
 	}
 	return jsonfile.Write(s.file, sealed)
+}
+
+// Clear forgets every secret (the file goes).
+func (s *Store) Clear() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	err := os.Remove(s.file)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	return err
 }

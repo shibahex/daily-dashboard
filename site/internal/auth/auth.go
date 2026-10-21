@@ -66,6 +66,9 @@ type User struct {
 	// NotesKey is the key to the user's end-to-end encrypted notes, wrapped in their browser
 	// with their password and with their recovery code. The server can't open either.
 	NotesKey *NotesKey `json:"notes_key,omitempty"`
+	// PlainStorage: the user chose not to keep their data (plan, tasks, food…) encrypted on the
+	// server's disk. Their notes, chat and keys stay end to end either way.
+	PlainStorage bool `json:"plain_storage,omitempty"`
 }
 
 func (u User) IsAdmin() bool { return u.Role == Admin }
@@ -73,18 +76,20 @@ func (u User) IsAdmin() bool { return u.Role == Admin }
 // Policy is what a user's AI agent may use. Admins set it, and the server checks it again for
 // every message, whatever the page sent.
 type Policy struct {
-	Providers []string `json:"providers"`  // "claude", "codex", "gemini", "local"
+	Providers []string `json:"providers"`  // the AIs their browser may run: "claude", "local"
 	MCPs      []string `json:"mcps"`       // "myfitnesspal", "anki"
-	Web       bool     `json:"web"`        // web search and fetch
-	ReadFiles bool     `json:"read_files"` // read the user's own notes and data in the sandbox
-	EditFiles bool     `json:"edit_files"` // change the user's own notes and plan
+	EditFiles bool     `json:"edit_files"` // the AI may save the user's notes (it always reads them)
+
+	// Kept only to read old files: the server-side AI's web access and file reading.
+	Web       bool `json:"web,omitempty"`
+	ReadFiles bool `json:"read_files,omitempty"`
 }
 
 var (
-	KnownProviders = []string{"claude", "codex", "gemini", "local"}
+	KnownProviders = []string{"claude", "local"}
 	KnownMCPs      = []string{"myfitnesspal", "anki"}
-	// FullPolicy is everything but the local model, which an admin turns on (it reaches a server the user names).
-	FullPolicy = Policy{Providers: []string{"claude", "codex", "gemini"}, MCPs: KnownMCPs, Web: true, ReadFiles: true, EditFiles: true}
+	// FullPolicy is everything; it's the default for new users until an admin changes it.
+	FullPolicy = Policy{Providers: KnownProviders, MCPs: KnownMCPs, EditFiles: true}
 )
 
 func (p Policy) AllowsProvider(id string) bool { return slices.Contains(p.Providers, id) }
@@ -101,8 +106,15 @@ func (p Policy) Clean() Policy {
 		}
 		return kept
 	}
+	// The server-side AIs there used to be: whoever could use one gets a local model instead (it
+	// runs on their own computer and talks to their browser only).
+	for _, old := range []string{"codex", "gemini"} {
+		if slices.Contains(p.Providers, old) && !slices.Contains(p.Providers, "local") {
+			p.Providers = append(p.Providers, "local")
+		}
+	}
 	p.Providers, p.MCPs = keep(p.Providers, KnownProviders), keep(p.MCPs, KnownMCPs)
-	p.EditFiles = p.EditFiles && p.ReadFiles
+	p.Web, p.ReadFiles = false, false // nothing uses them since the AI moved into the browser
 	return p
 }
 
@@ -207,6 +219,9 @@ func (a *Auth) load(dataDir string) error {
 	} else if err := a.migrateSingleAccount(dataDir); err != nil {
 		return err
 	}
+	for _, u := range a.state.Users {
+		u.Policy = u.Policy.Clean()
+	}
 	if a.state.Tokens == nil {
 		a.state.Tokens = map[string]string{}
 	}
@@ -216,6 +231,7 @@ func (a *Auth) load(dataDir string) error {
 	if a.state.DefaultPolicy.Providers == nil {
 		a.state.DefaultPolicy = FullPolicy
 	}
+	a.state.DefaultPolicy = a.state.DefaultPolicy.Clean()
 	return nil
 }
 
@@ -1049,4 +1065,26 @@ func (a *Auth) DropNotesKey(userID string) error {
 		user.NotesKey = nil
 	}
 	return a.save()
+}
+
+// SetPlainStorage records whether the user keeps their data unencrypted on the server's disk.
+func (a *Auth) SetPlainStorage(userID string, plain bool) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	user := a.userByID(userID)
+	if user == nil {
+		return problem.NotFoundf("No such user")
+	}
+	user.PlainStorage = plain
+	return a.save()
+}
+
+// CheckPassword reports whether proof is the user's password (the sign-in page's proof of it).
+func (a *Auth) CheckPassword(userID, proof string) bool {
+	a.checking.Lock()
+	defer a.checking.Unlock()
+	a.mu.Lock()
+	user := a.userByID(userID)
+	a.mu.Unlock()
+	return user != nil && user.Password.matches(proof)
 }

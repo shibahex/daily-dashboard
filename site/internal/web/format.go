@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"dashboard/internal/assistant"
 	"dashboard/internal/tasks"
 	"dashboard/internal/text"
 
@@ -59,10 +58,6 @@ var templateFuncs = template.FuncMap{
 	"repeatTypes": func() []choice { return repeatTypes },
 	"reasonFor":   reasonFor,
 	"toggleDay":   toggleDay,
-	"chatMessage": func(m assistant.Message, chat chatView) chatReply { return chatReply{Message: m, Chat: &chat} },
-	"chatReply": func(m assistant.Message, chat chatView, live bool) chatReply {
-		return chatReply{Message: m, Chat: &chat, Live: live}
-	},
 }
 
 // navTab is a tab in the page's navigation.

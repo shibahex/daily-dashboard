@@ -434,8 +434,12 @@ func TestPolicy(t *testing.T) {
 	if !user.Policy.AllowsProvider("claude") || user.Policy.AllowsProvider("made-up") || user.Policy.AllowsMCP("myfitnesspal") {
 		t.Fatalf("policy not cleaned: %+v", user.Policy)
 	}
-	if user.Policy.EditFiles {
-		t.Fatal("editing files needs reading them")
+	if !user.Policy.EditFiles {
+		t.Fatal("saving notes should stay allowed")
+	}
+	a.SetPolicy(friend, Policy{Providers: []string{"codex"}})
+	if user, _ := a.User(friend); !user.Policy.AllowsProvider("local") || user.Policy.AllowsProvider("codex") {
+		t.Fatalf("an old server-side AI should become a local model: %+v", user.Policy)
 	}
 
 	a.SetDefaultPolicy(Policy{MCPs: []string{"myfitnesspal"}})

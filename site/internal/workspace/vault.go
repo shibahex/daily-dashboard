@@ -59,8 +59,8 @@ func (m *Manager) Encrypted(user auth.User) bool { return m.encrypted(user) }
 // copy for this session or token. kind and secret are auth.CredentialFrom's.
 func (m *Manager) Unlock(user auth.User, kind, secret string) error {
 	if !m.encrypted(user) {
-		if kind == auth.ByToken {
-			return nil // a plain folder; it's encrypted when they next sign in with their password
+		if kind == auth.ByToken || user.PlainStorage {
+			return nil // a plain folder: chosen, or encrypted when they next sign in with their password
 		}
 		return ErrSignInAgain
 	}
@@ -112,6 +112,9 @@ func (m *Manager) SignIn(user auth.User, password, recovery, session string) (cr
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	keys := m.keys(user.ID)
+	if user.PlainStorage && !keys.Exists() {
+		return false, nil // they chose to keep it unencrypted on disk
+	}
 	var key *vault.Key
 	if keys.Exists() {
 		if key, err = keys.Open(vault.Password, "", password); err != nil {
@@ -347,8 +350,7 @@ func (m *Manager) RunUntil(stop <-chan struct{}) {
 		var idle []string
 		var open []*unlocked
 		for id, u := range m.unlocked {
-			busy := m.open[id] != nil && m.open[id].Chat.Busy()
-			if time.Since(u.used) > m.LockAfter && !busy {
+			if time.Since(u.used) > m.LockAfter {
 				idle = append(idle, id)
 			} else {
 				open = append(open, u)
@@ -364,4 +366,92 @@ func (m *Manager) RunUntil(stop <-chan struct{}) {
 			m.Lock(id)
 		}
 	}
+}
+
+// ---------- choosing ----------
+
+// Decrypt moves the user's data out of the encrypted copy into a plain folder on disk, for a
+// user who chose not to keep it encrypted there (auth.User.PlainStorage). They must be signed in.
+func (m *Manager) Decrypt(user auth.User) error {
+	m.mu.Lock()
+	u, ws := m.unlocked[user.ID], m.open[user.ID]
+	if u == nil {
+		m.mu.Unlock()
+		return ErrSignInAgain
+	}
+	delete(m.unlocked, user.ID)
+	delete(m.open, user.ID)
+	m.mu.Unlock()
+	if m.OnLock != nil {
+		m.OnLock(user.ID)
+	}
+	if ws != nil {
+		ws.close()
+	}
+	if err := u.mirror.Close(); err != nil {
+		return err
+	}
+	plain := m.plainDir(user.ID)
+	os.RemoveAll(plain)
+	if err := copyTree(m.memoryDir(user.ID), plain); err != nil {
+		os.RemoveAll(plain) // the encrypted copy is still whole: nothing lost
+		return err
+	}
+	os.RemoveAll(m.vaultDir(user.ID))
+	os.Remove(m.unlockedMarker(user.ID))
+	return vault.Wipe(m.memoryDir(user.ID))
+}
+
+// EncryptNow encrypts the user's plain folder again (they chose to), with their password's
+// proof, a new recovery code's proof, and a key copy for their session, and opens it.
+func (m *Manager) EncryptNow(user auth.User, password, recovery, session string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	keys := m.keys(user.ID)
+	if keys.Exists() {
+		return nil
+	}
+	key, err := m.encrypt(user, keys, password, recovery)
+	if err != nil {
+		return err
+	}
+	if err := keys.Add(key, auth.BySession, slotName(auth.BySession, session), session); err != nil {
+		return err
+	}
+	return m.unlock(user, key)
+}
+
+// copyTree copies a folder (files, folders, symlinks), keeping modes and times.
+func copyTree(from, to string) error {
+	return filepath.WalkDir(from, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, _ := filepath.Rel(from, path)
+		target := filepath.Join(to, rel)
+		info, err := os.Lstat(path)
+		if err != nil {
+			return err
+		}
+		switch {
+		case d.IsDir():
+			return os.MkdirAll(target, info.Mode().Perm()|0o700)
+		case info.Mode()&os.ModeSymlink != 0:
+			link, err := os.Readlink(path)
+			if err != nil {
+				return err
+			}
+			return os.Symlink(link, target)
+		case info.Mode().IsRegular():
+			data, err := os.ReadFile(path)
+			if err != nil {
+				return err
+			}
+			if err := os.WriteFile(target, data, info.Mode().Perm()); err != nil {
+				return err
+			}
+			return os.Chtimes(target, info.ModTime(), info.ModTime())
+		}
+		return nil // sockets, pipes: not data
+	})
 }

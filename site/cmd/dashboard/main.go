@@ -20,7 +20,6 @@ import (
 
 	"dashboard/internal/anki"
 	"dashboard/internal/api"
-	"dashboard/internal/assistant"
 	"dashboard/internal/auth"
 	"dashboard/internal/config"
 	"dashboard/internal/egress"
@@ -64,13 +63,12 @@ func main() {
 	if err != nil {
 		log.Fatalf("loading the secrets key: %v", err)
 	}
-	providers := assistant.NewProviders(assistant.NewModelCatalog(filepath.Join(paths.ServerData, "assistant")))
 	mfp := myfitnesspal.NewClientFromEnv(filepath.Join(siteDir, "mfp_fetch.py"))
-	workspaces := workspace.NewManager(paths, mfp, anki.NewClientFromEnv(), gateway, providers, box)
+	workspaces := workspace.NewManager(paths, mfp, anki.NewClientFromEnv(), gateway, box)
 	workspaces.Credentials = account.Credentials
 	tools, sandboxErr := sandbox.Find()
 	if sandboxErr != nil {
-		log.Printf("The AI chat won't run: %v", sandboxErr)
+		log.Printf("The AI's MyFitnessPal and Anki tools won't run: %v", sandboxErr)
 	}
 	workspaces.OpenAll(account.Users())
 	stopSaving := make(chan struct{})
@@ -79,7 +77,7 @@ func main() {
 	mux := http.NewServeMux()
 	jsonAPI := &api.API{Workspaces: workspaces}
 	jsonAPI.Routes(mux)
-	pages := &web.UI{Auth: account, Paths: paths, Workspaces: workspaces, Providers: providers, BaseURL: network.BaseURL(),
+	pages := &web.UI{Auth: account, Paths: paths, Workspaces: workspaces, BaseURL: network.BaseURL(),
 		Sandbox: tools, SandboxErr: sandboxErr, Egress: egress.New(),
 		Programs: &sandbox.Programs{Dir: filepath.Join(paths.ServerData, "tools"), MFPPackage: "mfp-mcp==" + myfitnesspal.Version,
 			MFPCheckout: mfp.Checkout(), MFPLibPath: os.Getenv("MFP_LIBRARY_PATH"), AnkiPackage: anki.MCPPackage}}

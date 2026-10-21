@@ -6,10 +6,8 @@ import (
 	"strings"
 
 	"dashboard/internal/anki"
-	"dashboard/internal/assistant"
 	"dashboard/internal/auth"
 	"dashboard/internal/httpx"
-	"dashboard/internal/localmodel"
 	"dashboard/internal/problem"
 )
 
@@ -120,7 +118,7 @@ func (ui *UI) login(w http.ResponseWriter, r *http.Request) {
 // now theirs (so the browser shows it).
 func (ui *UI) useKeys(user auth.User, keys offered, session string) (bool, error) {
 	created, err := ui.Workspaces.SignIn(user, keys.proof, keys.recovery, session)
-	if err != nil || user.Host || user.NotesKey != nil {
+	if err != nil || user.NotesKey != nil {
 		return created, err
 	}
 	if err := ui.Auth.SetNotesKey(user.ID, keys.notesKey, true); err != nil {
@@ -227,7 +225,7 @@ func (ui *UI) acceptInvite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ui.signedInWith(w, r, session, func(user auth.User) (bool, error) {
-		if !isReset || user.Host {
+		if !isReset {
 			return ui.useKeys(user, keys, session)
 		}
 		startedOver, err := ui.Workspaces.Reset(user, keys.proof, session, oldRecovery, keys.recovery)
@@ -259,74 +257,43 @@ func (ui *UI) renderSignIn(w http.ResponseWriter, status int, view signInView) {
 // ---------- the Account page ----------
 
 type accountView struct {
-	Username    string
-	Admin       bool
-	Sessions    int
-	Devices     []auth.Device
-	HasToken    bool
-	NewToken    string // shown once, right after it's made
-	Encrypted   bool   // the data is encrypted on disk (everyone but the host)
-	Sealed      bool   // the notes are encrypted end to end, in the browser
-	NewRecovery bool   // the browser just made a new recovery code: it shows it
-	Error       string
-	Saved       string
-	Connections connectionsView
+	Username     string
+	Admin        bool
+	Sessions     int
+	Devices      []auth.Device
+	HasToken     bool
+	NewToken     string // shown once, right after it's made
+	Encrypted    bool   // the data is encrypted on the server's disk (unless they chose plain files)
+	Sealed       bool   // the notes are encrypted end to end, in the browser
+	PlainStorage bool   // the user chose not to encrypt their other data on disk
+	NewRecovery  bool   // the browser just made a new recovery code: it shows it
+	Error        string
+	Saved        string
+	Connections  connectionsView
 }
 
 // connectionsView is the user's own MyFitnessPal, Anki and AI keys.
 type connectionsView struct {
 	Host         bool // uses the server computer's own logins
-	Sealed       bool // the AI runs in the browser, which keeps the key (assistant.js)
 	MyFitnessPal bool // signed in
 	Anki         anki.Status
 	AnkiURL      string
-	Keys         []keyChoice
-	LocalURL     string // the user's local model server, host:port
-	LocalModel   string
-	LocalKey     bool
-	LocalModels  []string // what the server has (empty when it can't be reached)
-	LocalError   string   // why the list couldn't be had
 	Error        string
 	Saved        string
-}
-
-type keyChoice struct {
-	Provider, Label, Where, Hint string
-	Set                          bool
 }
 
 func (ui *UI) accountView(r *http.Request) accountView {
 	user := ui.user(r)
 	return accountView{Username: user.Username, Admin: user.IsAdmin(), Sessions: ui.Auth.SessionCount(user.ID),
 		Devices:  ui.Auth.Devices(user.ID, auth.SessionFrom(r)),
-		HasToken: ui.Auth.HasToken(user.ID), Connections: ui.connectionsView(r), Encrypted: ui.Workspaces.Encrypted(user), Sealed: sealedNotes(user)}
+		HasToken: ui.Auth.HasToken(user.ID), Connections: ui.connectionsView(r), Encrypted: ui.Workspaces.Encrypted(user), Sealed: sealedNotes(user), PlainStorage: user.PlainStorage}
 }
 
 func (ui *UI) connectionsView(r *http.Request) connectionsView {
 	ws := ui.ws(r)
 	ankiClient := ws.Anki()
-	view := connectionsView{Host: ws.Host, Sealed: sealedNotes(ui.user(r)), MyFitnessPal: ws.MyFitnessPal.Client().Setup().SignedIn,
+	return connectionsView{Host: ws.Host, MyFitnessPal: ws.MyFitnessPal.Client().Setup().SignedIn,
 		Anki: ankiClient.Status(), AnkiURL: ankiClient.URL}
-	for _, provider := range auth.KnownProviders {
-		if provider == "local" {
-			continue // has its own form
-		}
-		key := assistant.APIKeys[provider]
-		view.Keys = append(view.Keys, keyChoice{Provider: provider, Label: key.Label, Where: key.Where, Hint: key.Hint, Set: ws.Secrets.Has(key.Name)})
-	}
-	if !ws.Host {
-		return view // local models are the host's only
-	}
-	view.LocalURL, view.LocalModel = ws.Secrets.Get(localURLSecret), ws.Secrets.Get(localModelSecret)
-	view.LocalKey = ws.Secrets.Has(assistant.APIKeys["local"].Name)
-	if view.LocalURL != "" {
-		models, err := localServer(ws).CachedModels(false)
-		view.LocalModels = models
-		if err != nil {
-			view.LocalError = err.Error()
-		}
-	}
-	return view
 }
 
 // renderConnections answers a change to a connection: the card again, with what happened.
@@ -361,25 +328,6 @@ func (ui *UI) connectAnki(w http.ResponseWriter, r *http.Request) {
 
 func (ui *UI) disconnectAnki(w http.ResponseWriter, r *http.Request) {
 	ui.renderConnections(w, r, "Anki disconnected", ui.Workspaces.DisconnectAnki(ui.user(r)))
-}
-
-// saveAPIKey stores (or, with an empty key, removes) the user's key for one AI provider.
-func (ui *UI) saveAPIKey(w http.ResponseWriter, r *http.Request) {
-	key, known := assistant.APIKeys[r.FormValue("provider")]
-	value := strings.TrimSpace(r.FormValue("key"))
-	switch {
-	case sealedNotes(ui.user(r)):
-		// Their AI runs in their browser, which keeps the key sealed: it never comes here.
-		ui.renderConnections(w, r, "", problem.Forbiddenf("Your key is kept in your browser: save it in the form above"))
-	case !known:
-		ui.renderConnections(w, r, "", problem.Invalidf("Pick a provider"))
-	case len(value) > 500 || strings.ContainsAny(value, " \t\r\n"):
-		ui.renderConnections(w, r, "", problem.Invalidf("That doesn't look like an API key"))
-	case value == "":
-		ui.renderConnections(w, r, key.Label+" key removed", ui.ws(r).Secrets.Set(key.Name, ""))
-	default:
-		ui.renderConnections(w, r, key.Label+" key saved", ui.ws(r).Secrets.Set(key.Name, value))
-	}
 }
 
 func (ui *UI) accountPage(w http.ResponseWriter, r *http.Request) {
@@ -523,51 +471,49 @@ func (ui *UI) newRecoveryCode(w http.ResponseWriter, r *http.Request) {
 	ui.render(w, "account-card", view)
 }
 
-// The local model server's address and default model are saved beside the user's API keys.
-const (
-	localURLSecret   = "local_url"
-	localModelSecret = "local_model"
-)
-
-// saveLocal stores (or, with an empty address, removes) the local model server settings.
-func (ui *UI) saveLocal(w http.ResponseWriter, r *http.Request) {
-	if !ui.user(r).Host {
-		ui.renderConnections(w, r, "", problem.Forbiddenf("Local models are only for the host account"))
-		return
-	}
-	secrets := ui.ws(r).Secrets
-	key := assistant.APIKeys["local"]
-	model := strings.TrimSpace(r.FormValue("model"))
-	apiKey := strings.TrimSpace(r.FormValue("key"))
-	address := strings.TrimSpace(r.FormValue("url"))
-	if address != "" {
-		var err error
-		if address, err = localmodel.ParseBase(address); err != nil {
-			ui.renderConnections(w, r, "", problem.Invalidf(err.Error()))
-			return
-		}
-	}
-	switch {
-	case model != "" && !assistant.ModelNamePattern.MatchString(model):
-		ui.renderConnections(w, r, "", problem.Invalidf("That doesn't look like a model name"))
-		return
-	case len(apiKey) > 500 || strings.ContainsAny(apiKey, " \t\r\n"):
-		ui.renderConnections(w, r, "", problem.Invalidf("That doesn't look like an API key"))
-		return
-	}
-	err := secrets.Set(localURLSecret, address)
+// stopEncrypting keeps the user's data (not their notes) as plain files on the server's disk.
+func (ui *UI) stopEncrypting(w http.ResponseWriter, r *http.Request) {
+	user := ui.user(r)
+	err := ui.Workspaces.Decrypt(user)
 	if err == nil {
-		err = secrets.Set(localModelSecret, model)
+		err = ui.Auth.SetPlainStorage(user.ID, true)
 	}
-	if err == nil && (apiKey != "" || address == "") { // an empty key box keeps the saved key
-		err = secrets.Set(key.Name, apiKey)
+	if err != nil {
+		fail(w, err)
+		return
 	}
-	if err == nil && address != "" {
-		localServer(ui.ws(r)).CachedModels(true) // ask the (maybe new) server again now
+	announce(w, say("Your data is now kept as plain files on the server"))
+	view := ui.accountView(r)
+	view.Encrypted, view.PlainStorage = false, true
+	ui.render(w, "account-card", view)
+}
+
+// startEncrypting encrypts the user's data on the server's disk again: the browser sends the
+// password's proof, a new recovery code's proof and the notes key wrapped with that code.
+func (ui *UI) startEncrypting(w http.ResponseWriter, r *http.Request) {
+	user := ui.user(r)
+	proof, recovery, notesWrap := r.FormValue("proof"), r.FormValue("recovery"), r.FormValue("notes_recovery")
+	var err error
+	switch {
+	case proof == "" || recovery == "" || notesWrap == "":
+		err = problem.Invalidf("Encrypting needs JavaScript. Turn it on and reload.")
+	case !ui.Auth.CheckPassword(user.ID, proof):
+		err = problem.Invalidf("That password is wrong")
+	default:
+		err = ui.Workspaces.EncryptNow(user, proof, recovery, auth.SessionFrom(r))
 	}
-	saved := "Local model saved"
-	if address == "" {
-		saved = "Local model removed"
+	if err == nil {
+		err = ui.Auth.SetNotesKeyWrap(user.ID, "recovery", notesWrap)
 	}
-	ui.renderConnections(w, r, saved, err)
+	if err == nil {
+		err = ui.Auth.SetPlainStorage(user.ID, false)
+	}
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	announce(w, say("Your data is encrypted on the server's disk again"))
+	view := ui.accountView(r)
+	view.Encrypted, view.PlainStorage, view.NewRecovery = true, false, true
+	ui.render(w, "account-card", view)
 }

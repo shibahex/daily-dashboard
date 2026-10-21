@@ -52,7 +52,7 @@ func TestDayNav(t *testing.T) {
 	}
 }
 
-// The Today templates render for an earlier day, and the local model form with a model list.
+// The Today templates render for an earlier day.
 func TestEarlierDayTemplatesRender(t *testing.T) {
 	ui := &UI{templates: newTemplateSet("../../web")}
 	yesterday := startOfDay(time.Now()).AddDate(0, 0, -1)
@@ -65,7 +65,6 @@ func TestEarlierDayTemplatesRender(t *testing.T) {
 		"card-time":      timeCardView{Available: true, DayName: "yesterday", WeekName: "that week"},
 		"card-goals": goalsCardView{DayName: "yesterday", Syncing: true, Nutrition: &nutritionView{DayName: "yesterday",
 			Meals: []myfitnesspal.Meal{{Name: "Lunch", Entries: []myfitnesspal.Entry{{Name: "Eggs", EntryID: "12"}}}}}},
-		"connections-card": connectionsView{Host: true, LocalURL: "http://localhost:11434/v1", LocalModel: "gone:1b", LocalModels: []string{"qwen3:8b", "llama3.2"}},
 	}
 	for name, view := range views {
 		html, err := ui.renderToHTML(name, view)
@@ -82,11 +81,6 @@ func TestEarlierDayTemplatesRender(t *testing.T) {
 		case "card-goals":
 			if !strings.Contains(page, "Nutrition · yesterday") {
 				t.Errorf("card-goals: heading:\n%s", page)
-			}
-		case "connections-card":
-			// The saved model stays picked even when the server no longer lists it.
-			if !strings.Contains(page, "<option>qwen3:8b</option>") || !strings.Contains(page, "<option selected>gone:1b</option>") {
-				t.Errorf("connections-card: model list:\n%s", page)
 			}
 		}
 	}

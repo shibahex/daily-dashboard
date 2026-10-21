@@ -114,7 +114,7 @@
 
 {{/* ---------- the Today card ---------- */}}
 {{define "card-anki"}}
-<div class="card" hx-disinherit="*" id="card-anki" hx-get="/cards/anki" hx-trigger="anki-changed from:body, every 300s [!document.hidden]" hx-swap="outerHTML">
+<div class="card" hx-disinherit="*" id="card-anki" hx-get="/cards/anki" hx-trigger="anki-changed from:body, tick-300 from:body" hx-swap="outerHTML">
   <div class="card-head"><h2>Anki</h2><a class="edit-btn" href="/anki">Open tab →</a></div>
   {{if not .Status.Connected}}
   <p class="small muted flush-top">{{if .Status.NotSetUp}}Connect your Anki on the <a class="link" href="/account">Account page</a>.{{else if .Status.Remote}}Your Anki isn't answering. Is it open?{{else if .Status.Running}}Anki is open, but AnkiConnect isn't answering.{{else}}Anki isn't open.{{end}}</p>

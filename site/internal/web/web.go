@@ -7,7 +7,6 @@ import (
 	"errors"
 	"net/http"
 
-	"dashboard/internal/assistant"
 	"dashboard/internal/auth"
 	"dashboard/internal/config"
 	"dashboard/internal/egress"
@@ -22,11 +21,10 @@ type UI struct {
 	Auth       *auth.Auth
 	Paths      config.Paths // the server's: templates and static files
 	Workspaces *workspace.Manager
-	Providers  assistant.Providers
 	BaseURL    string // the address people use, for invite links
 
-	// The AI agents' sandbox (SandboxErr says why there's none: then the chat refuses to run),
-	// the MCP programs it runs, and its only way to the network.
+	// The sandbox the AI's MCP tools run in (SandboxErr says why there's none: then the tools
+	// refuse to start), the MCP programs, and their only way to the network.
 	Sandbox    sandbox.Tools
 	SandboxErr error
 	Programs   *sandbox.Programs
@@ -63,12 +61,12 @@ func (ui *UI) Routes(mux *http.ServeMux) {
 	change("/account/token", ui.makeToken)
 	change("/account/token/remove", ui.removeToken)
 	change("/account/recovery", ui.newRecoveryCode)
+	change("/account/storage/plain", ui.stopEncrypting)
+	change("/account/storage/encrypt", ui.startEncrypting)
 	change("/account/myfitnesspal", ui.connectMyFitnessPal)
 	change("/account/myfitnesspal/remove", ui.disconnectMyFitnessPal)
 	change("/account/anki", ui.connectAnki)
 	change("/account/anki/remove", ui.disconnectAnki)
-	change("/account/keys", ui.saveAPIKey)
-	change("/account/local", ui.saveLocal)
 
 	// Admin: accounts and what each person's AI may use. Admins only.
 	admin := func(pattern string, handler http.HandlerFunc) { change(pattern, auth.RequireAdmin(handler)) }
@@ -175,26 +173,11 @@ func (ui *UI) Routes(mux *http.ServeMux) {
 	change("/anki/notes/{id}/delete", ui.deleteAnkiNote)
 	change("/anki/notes/{id}/browse", ui.browseAnkiNote)
 
-	// MCPs (chat)
+	// MCPs: the AI runs in the browser (browserai.go)
 	page("/mcps", ui.chatPage)
-	// The server-side AI: not for sealed accounts, whose AI runs in their browser (browserai.go).
-	page("/mcps/card", ui.serverAIOnly(ui.chatCard))
-	page("/mcps/stream", ui.serverAIOnly(ui.chatStream))
-	change("/mcps/messages", ui.serverAIOnly(ui.sendMessage))
-	change("/mcps/stop", ui.serverAIOnly(ui.stopAnswer))
-	change("/mcps/new", ui.serverAIOnly(ui.newChat))
-	change("/mcps/provider", ui.serverAIOnly(ui.chooseProvider))
-	change("/mcps/model", ui.serverAIOnly(ui.chooseModel))
-	change("/mcps/toggle", ui.serverAIOnly(ui.toggleMCP))
-	change("/mcps/instructions", ui.serverAIOnly(ui.toggleInstructions))
 
 	// Docs
 	page("/docs", ui.docsPage)
-	page("/docs/card", ui.plainNotesOnly(ui.docsCard))
-	change("/docs/new", ui.plainNotesOnly(ui.newNote))
-	change("/docs/save", ui.plainNotesOnly(ui.saveNote))
-	change("/docs/delete", ui.plainNotesOnly(ui.deleteNote))
-	change("/docs/move", ui.plainNotesOnly(ui.moveNote))
 	// Sealed notes (sealed.go): the browser reads and writes them.
 	page("/notes/key", ui.notesKey)
 	page("/notes/data", ui.sealedData("notes"))
@@ -208,30 +191,6 @@ func (ui *UI) Routes(mux *http.ServeMux) {
 	change("/assistant/chat", ui.saveSealedData("chat"))
 	page("/assistant/keys", ui.sealedData("settings"))
 	change("/assistant/keys", ui.saveSealedData("settings"))
-}
-
-// serverAIOnly refuses the server-side AI to accounts whose notes are sealed: it would need their
-// notes on the server. Their AI runs in their browser.
-func (ui *UI) serverAIOnly(next http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if sealedNotes(ui.user(r)) {
-			fail(w, problem.Forbiddenf("Your AI runs in your browser: reload the MCPs tab"))
-			return
-		}
-		next(w, r)
-	}
-}
-
-// plainNotesOnly refuses the server-side note editing to accounts whose notes are sealed: it would
-// write them in plain text on the server.
-func (ui *UI) plainNotesOnly(next http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if sealedNotes(ui.user(r)) {
-			fail(w, problem.Forbiddenf("Your notes are encrypted: edit them on the Docs tab, in your browser"))
-			return
-		}
-		next(w, r)
-	}
 }
 
 // fromHTMX refuses changes that didn't come from the dashboard's own page.
@@ -258,8 +217,9 @@ func (ui *UI) UnlockData(next http.Handler) http.Handler {
 		}
 		kind, secret := auth.CredentialFrom(r)
 		err := ui.Workspaces.Unlock(user, kind, secret)
-		if kind == auth.BySession && !user.ProofLogin {
-			// From before proof sign-ins: signing in again moves the account over (auth.Upgrade).
+		if kind == auth.BySession && (!user.ProofLogin || user.NotesKey == nil) {
+			// From before proof sign-ins (signing in again moves the account over, auth.Upgrade),
+			// or before the account had a notes key (the next sign-in makes it).
 			err = workspace.ErrSignInAgain
 		}
 		switch {

@@ -41,8 +41,8 @@ type entry struct {
 
 // skipped are folders not worth keeping: Chromium's caches in the MyFitnessPal MCP's browser
 // profile, which it rebuilds. Also skipped: mfp/data/uv (a Python uv once downloaded there by
-// mistake) and agent-workspace (the AI's throwaway copy for one answer, which can hold notes the
-// browser decrypted for it: those must never be saved).
+// mistake), agent-tools (the AI tools' empty, throwaway workspace) and agent-workspace (the same
+// for the server-side AI there used to be).
 var skipped = []string{"Cache", "Code Cache", "GPUCache", "GrShaderCache", "ShaderCache", "DawnCache",
 	"DawnGraphiteCache", "DawnWebGPUCache", "component_crx_cache", "Crashpad"}
 

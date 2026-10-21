@@ -15,8 +15,7 @@ type Plan struct {
 	Schedule  map[string]string  `json:"schedule"` // weekday ("Monday") → session key
 	Sessions  map[string]Session `json:"sessions"`
 	Notes     []string           `json:"notes"`
-	Layout    [][]string         `json:"layout,omitempty"`    // Today's card ids per column, if moved
-	DocOrder  []string           `json:"doc_order,omitempty"` // the Docs tab's notes, if moved
+	Layout    [][]string         `json:"layout,omitempty"` // Today's card ids per column, if moved
 }
 
 type Goal struct {

@@ -66,6 +66,27 @@ function hasOpenPanel(card) {
   return !!card.querySelector(".panel, .reason, .task-editor, .why-box, .task-slot:not(:empty)");
 }
 
+// ---------- refreshing cards ----------
+// The pages may not evaluate code from attributes (the content policy has no 'unsafe-eval'), so
+// the conditions on cards' hx-triggers live here instead:
+// - "tick-N from:body" fires every N seconds, only while the page is visible;
+// - a card reloading on a "…-changed" event skips the one it came from (it just redrew itself);
+// - a timer never reloads a card with a form or panel open.
+
+for (const seconds of [5, 30, 120, 300]) {
+  setInterval(() => { if (!document.hidden) htmx.trigger(document.body, `tick-${seconds}`); }, seconds * 1000);
+}
+document.body.addEventListener("htmx:confirm", event => {
+  const trigger = event.detail.triggeringEvent;
+  const card = event.detail.elt;
+  if (!trigger) return;
+  if (trigger.type.endsWith("-changed") && trigger.target instanceof Node && card.contains(trigger.target)) {
+    event.preventDefault();
+  } else if (trigger.type.startsWith("tick-") && hasOpenPanel(card)) {
+    event.preventDefault();
+  }
+});
+
 // The heatmap starts at this week and the chat at the newest message.
 // A freshly swapped log jumps to the end at once (the CSS smooth scroll would visibly run up from
 // the top); new text in a log that is already there glides.

@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"dashboard/internal/anki"
-	"dashboard/internal/assistant"
 	"dashboard/internal/auth"
 	"dashboard/internal/config"
 	"dashboard/internal/myfitnesspal"
@@ -36,8 +35,7 @@ func newManager(t *testing.T) (*Manager, config.Paths) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m := NewManager(paths, myfitnesspal.Client{}, anki.NewClient("http://127.0.0.1:8765", ""), gateway,
-		assistant.NewProviders(assistant.NewModelCatalog(t.TempDir())), box)
+	m := NewManager(paths, myfitnesspal.Client{}, anki.NewClient("http://127.0.0.1:8765", ""), gateway, box)
 	t.Cleanup(func() {
 		for _, id := range []string{"aaaa", "bbbb", "cccc"} {
 			m.Remove(id)
@@ -190,71 +188,4 @@ func TestNoUserNoWorkspace(t *testing.T) {
 		}
 	}()
 	m.For(auth.User{})
-}
-
-func TestAgentEditsComeBackOnlyWhenSafe(t *testing.T) {
-	m, _ := newManager(t)
-	ws := m.For(user("aaaa"))
-	os.WriteFile(filepath.Join(ws.Paths.Docs, "plan-notes.md"), []byte("old"), 0o600)
-	os.WriteFile(filepath.Join(ws.Paths.Docs, "mine.md"), []byte("mine"), 0o600)
-	os.WriteFile(ws.Paths.Data+"/weights.json", []byte(`[]`), 0o600)
-	dir := filepath.Join(t.TempDir(), "agent")
-
-	if _, err := ws.StageFiles(dir, false); err != nil {
-		t.Fatal(err)
-	}
-	if entries, _ := os.ReadDir(dir); len(entries) != 0 {
-		t.Fatal("without read access the workspace stays empty")
-	}
-
-	staged, err := ws.StageFiles(dir, true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, f := range []string{"notes/plan-notes.md", "plan.json", "data/weights.json"} {
-		if _, err := os.Stat(filepath.Join(dir, f)); err != nil {
-			t.Fatalf("%s should be staged", f)
-		}
-	}
-	if _, err := os.Stat(filepath.Join(dir, "notes", "README.md")); err == nil {
-		t.Fatal("guides aren't the user's notes")
-	}
-
-	os.WriteFile(filepath.Join(dir, "notes", "plan-notes.md"), []byte("agent's edit"), 0o600)
-	os.WriteFile(filepath.Join(dir, "notes", "new idea.md"), []byte("new"), 0o600)
-	os.WriteFile(filepath.Join(dir, "notes", "mine.md"), []byte("agent overwrote"), 0o600)
-	os.WriteFile(filepath.Join(ws.Paths.Docs, "mine.md"), []byte("user edited meanwhile"), 0o600)
-	os.WriteFile(filepath.Join(dir, "notes", "README.md"), []byte("hijack the guide"), 0o600)
-	os.WriteFile(filepath.Join(dir, "notes", "..evil.md"), []byte("x"), 0o600)
-	os.WriteFile(filepath.Join(dir, "notes", "huge.md"), make([]byte, maxAgentFile+1), 0o600)
-	os.Symlink("/etc/passwd", filepath.Join(dir, "notes", "link.md"))
-	os.WriteFile(filepath.Join(dir, "plan.json"), []byte(`{"checklist": ["Walk"]}`), 0o600)
-	os.WriteFile(filepath.Join(dir, "data", "weights.json"), []byte(`[{"date": "2026-10-20", "lb": 1}]`), 0o600)
-
-	changed := ws.ApplyEdits(dir, staged)
-	slices.Sort(changed)
-	if want := []string{"notes/new idea.md", "notes/plan-notes.md", "plan.json"}; !slices.Equal(changed, want) {
-		t.Fatalf("changed %v, want %v", changed, want)
-	}
-	read := func(name string) string { b, _ := os.ReadFile(filepath.Join(ws.Paths.Docs, name)); return string(b) }
-	if read("plan-notes.md") != "agent's edit" || read("mine.md") != "user edited meanwhile" {
-		t.Fatal("edits: agent's applied, the user's kept")
-	}
-	for _, name := range []string{"README.md", "..evil.md", "huge.md", "link.md"} {
-		if _, err := os.Stat(filepath.Join(ws.Paths.Docs, name)); err == nil {
-			t.Errorf("%s shouldn't have come back", name)
-		}
-	}
-	if got := ws.Store.PlanChecklist(); !slices.Equal(got, []string{"Walk"}) {
-		t.Fatalf("the plan edit should apply: %v", got)
-	}
-	if len(ws.Store.Weights()) != 0 {
-		t.Fatal("data files are read-only for the agent")
-	}
-
-	staged, _ = ws.StageFiles(dir, true)
-	os.WriteFile(filepath.Join(dir, "plan.json"), []byte(`{not json`), 0o600)
-	if changed := ws.ApplyEdits(dir, staged); len(changed) != 0 {
-		t.Fatal("an invalid plan must not come back")
-	}
 }

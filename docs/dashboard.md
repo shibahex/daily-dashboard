@@ -5,9 +5,9 @@ The web dashboard in `site/`: a self-hosted page for daily habits: today's worko
 - **Today:** training for the day, checklist with streaks, weight log, nutrition from MyFitnessPal, due tasks, time tracked. The ‹ › arrows around the date at the top go to earlier days (say, after midnight) to see or fix them: that day's training, checklist, weigh-in, food and time. Due tasks and Anki always show now.
 - **Tasks:** add, edit, complete (asks how long it took, default 30 min, and logs it in Timewarrior; also on past days), skip with reasons, repeating schedules (every N days, specific weekdays every N weeks, monthly), undo
 - **History:** GitHub-style activity heatmap (tasks done, hours tracked, checklist), activity feed, time log editor, skip reasons
-- **Docs:** your own Markdown notes, plus these guides. **Edit** a note to change its text or name, add one with the box under the list, move the open one with ↑ ↓, or delete it from the editor (it goes to the notes' `.deleted` folder). The guides are read-only.
+- **Docs:** your own Markdown notes, encrypted in your browser (see **Encrypted data**), plus these guides. **Edit** a note, add one with the box under the list, move the open one with ↑ ↓, or delete it. Each note keeps its last 10 versions (**Earlier versions**, under it) and deleted notes stay in **Recently deleted** until 20 newer ones push them out.
 - **Anki:** your decks and due cards, add cards, search and edit notes (below)
-- **MCPs:** chat with an AI about your MyFitnessPal diary and Anki cards (below)
+- **MCPs:** chat with an AI about your notes, MyFitnessPal diary and Anki cards. It runs in your browser (below)
 
 ## Run
 
@@ -82,55 +82,60 @@ Works through the [AnkiConnect](https://ankiweb.net/shared/info/2055492159) add-
 
 ## MCPs tab
 
-A chat with an AI that can use your MyFitnessPal diary and your Anki cards: ask about your food and plan, say what you ate and it logs it, or have it make flashcards. It uses the [MyFitnessPal MCP](https://github.com/Mason-Levyy/myfitnesspal-mcp) and the [Anki MCP](https://github.com/ankimcp/anki-mcp-server), with your notes, plan, weigh-ins, checklist history and today's diary as context.
+A chat with an AI that knows your notes, plan and data and can use your MyFitnessPal diary and Anki cards: ask about your food and plan, say what you ate and it logs it, or have it make flashcards. It uses the [MyFitnessPal MCP](https://github.com/Mason-Levyy/myfitnesspal-mcp) and the [Anki MCP](https://github.com/ankimcp/anki-mcp-server).
 
-- **Add your key** on the Account page for the AI you use: an Anthropic, OpenAI or Google API key. For Claude you can also use your subscription: run `claude setup-token` and paste the token it prints. Everyone uses their own key, including the admin, so chats use your own credit.
-- **Pick the AI** at the top: Claude Code, Codex, Gemini CLI or a Local model (the ones your admin allows). Codex and Gemini are built with Nix on first use. **Local model** runs Claude Code against your own Ollama, llama.cpp, LM Studio or other OpenAI-compatible server, through a bridge in the dashboard that translates (set its address on the Account page and pick from the models it lists; host account only, turned on for yourself on the Admin page, since the dashboard connects to the address you give). The dashboard never runs the model itself. Switching starts a new chat.
-- **Pick the MCPs** with the toggles. A green dot means it's ready; one that needs setup links to the Account page. With both off, the AI can only talk about your notes and data.
-- The conversation is kept in your own `chat.json` until **New chat**.
+The AI runs **in your browser** (`web/js/assistant.js`): your browser talks to the AI directly, with your notes in its prompt, so they never pass through the dashboard's server.
 
-### What the AI can reach
+- **Pick the AI** at the top (the ones your admin allows):
+  - **Claude:** needs your Anthropic API key (`sk-ant-api…`; a Claude subscription token only works with Claude Code), added on the Account page.
+  - **Local model:** Ollama, LM Studio or llama.cpp (`llama-server`) running **on the same computer as your browser**, with the OpenAI-style API. Set its address on the Account page (`localhost:11434` for Ollama, `localhost:1234` for LM Studio, `localhost:8080` for llama.cpp), list its models and pick one. It must let the page reach it: start Ollama with `OLLAMA_ORIGINS=<the dashboard's address>`, turn on CORS in LM Studio; llama.cpp allows it already. The page can't reach a model elsewhere on your network. The model needs to handle tool calls.
+  - Your keys and the local model's address are encrypted in your browser like your notes: the server never has them. (Keys saved on the server before are moved into your browser the first time you open the tab, then deleted there.)
+- **Pick the MCPs** with the toggles. A green dot means it's ready; one that needs setup links to the Account page. **Attach prompt** adds the dashboard's instructions (how to answer, how to use the MCPs); your notes, plan and data go either way.
+- **Saving notes:** if your admin allows it, the AI can save a note when you ask. It asks you before replacing one, and the old text stays in the note's history.
+- The chat is encrypted in your browser like your notes, until **New chat**.
 
-Each answer runs in a sandbox ([bubblewrap](https://github.com/containers/bubblewrap)) made for that one run:
+### What the tools can reach
 
-- It sees an empty home folder and a `/workspace` holding a **copy** of your notes, plan and data, only if your admin lets your AI read files. Nothing else from the server is visible: not the dashboard's files, not other people's folders, not the server account's logins.
-- It has **no network of its own**. Its only way out is the dashboard's proxy, which reaches public internet addresses on the web ports (80/443) and never the server itself, the local network or cloud metadata. Web search and fetch are only on if your admin allows them.
-- **Edits** come back only if your admin lets your AI edit files, and only for your notes (`*.md`) and a valid `plan.json`. A note you changed in the page while the AI was working is never overwritten. Its other changes are thrown away with the sandbox.
-- Its MCP servers use **your** MyFitnessPal login and reach **your** Anki through the dashboard's Anki gateway, which refuses media from URLs or files and links, scripts or remote content in cards. So planted text in a shared deck or food entry can't use Anki to fetch or leak anything. Foods it creates in MyFitnessPal are private.
-- The MCP programs are installed once by the server (`site/data/tools/`, pinned versions) and mounted read-only: nothing is downloaded inside a sandbox.
-- Your own CLI settings, extensions and other MCP servers are left out. The chat refuses to run at all if the sandbox can't (it needs `nix run`, which provides bubblewrap and socat).
+The AI itself runs in your browser and has no web search. The MCP tools it calls run on the server, each in a sandbox ([bubblewrap](https://github.com/containers/bubblewrap)):
+
+- It sees an empty home folder and an empty workspace: none of your files, not the dashboard's, not other people's, not the server account's logins.
+- It has **no network of its own**. Its only way out is the dashboard's proxy, which reaches public internet addresses on the web ports (80/443) and never the server itself, the local network or cloud metadata.
+- The MyFitnessPal MCP uses **your** MyFitnessPal login; the Anki MCP reaches **your** Anki through the dashboard's Anki gateway, which refuses media from URLs or files and links, scripts or remote content in cards. So planted text in a shared deck or food entry can't use Anki to fetch or leak anything. Foods it creates in MyFitnessPal are private.
+- The MCP programs are installed once by the server (`site/data/tools/`, pinned versions) and mounted read-only: nothing is downloaded inside a sandbox. The tools stop after 10 idle minutes, and when your data locks.
+- The server sees what goes to and from these tools (food searches and entries, cards), not your notes or the rest of the chat.
 
 ## Accounts and admins
 
 - **First account:** the terminal prints `Create the first (admin) account: …/setup?code=…`. The setup code is also saved in `data/setup-code` (readable only by the server's owner) and deleted once the account exists, so nobody else can claim the server first. This account is the **host**: it keeps the server computer's own Taskwarrior, Timewarrior, MyFitnessPal login and Anki, and gets a one-time copy of the notes and data from before the dashboard had accounts.
 - **Inviting people:** **Admin** (top right, admins only) → **Invite someone**: pick a username and role, and send the one-time link (it works once, for 7 days). They choose their own password. Each person gets their own plan, notes, checklist, weigh-ins, tasks, time log, MyFitnessPal, Anki connection, chats and keys, in `site/data/users/<id>/`.
 - **Admins** manage accounts: password-reset links, turning an account off (logged out at once), making someone an admin, and deleting an account with everything in it (type the username to confirm). There's always at least one active admin, and an admin can't do these to their own account. Admins can't see anyone's data, and neither can whoever runs the server while it's locked (see **Encrypted data**).
-- **What each person's AI may use:** on the Admin page, per person: which AIs, which MCPs, web search and fetch, reading their own files, editing their notes and plan. **New people start with** sets the default.
+- **What each person's AI may use:** on the Admin page, per person: which AIs (Claude, a local model on their own computer), which MCPs, and whether their AI may save notes. **New people start with** sets the default.
 - **Anki for other people:** their Anki runs on their own computer. They install AnkiConnect, set `"webBindAddress": "0.0.0.0"` and an `"apiKey"` in its config, and enter the address and key on their Account page. The dashboard refuses an AnkiConnect without a key (anyone on the network could use it) and, for anyone but the host, addresses on the server itself.
 
 ## Security
 
-- **Passwords:** stored only as a salted PBKDF2-SHA256 hash (600,000 rounds) in `data/accounts.json`.
-- **Sessions:** logging in gives the browser a random cookie that lasts 30 days. It's `HttpOnly`, `SameSite=Strict` and, over HTTPS, `Secure`; the server keeps only a hash of it in `data/sessions.json`. The Account page logs you out, logs out your other browsers, or changes your password (which also logs out your other browsers).
-- **Wrong passwords:** after 5 wrong tries in a row for a username, or from one address, each try waits twice as long as the last (1 s, 2 s, 4 s… up to 15 minutes). A wrong username and a wrong password look the same.
+- **Passwords:** at least 12 characters, and they never reach the server: the sign-in page sends a proof made from them (PBKDF2-SHA256, 600,000 rounds), which the server hashes again before keeping it in `data/accounts.json`.
+- **Sessions:** logging in gives the browser a random cookie. It's `HttpOnly`, `SameSite=Strict` and, over HTTPS, `Secure`; the server keeps only a hash of it in `data/sessions.json`. It lasts 30 days, or until it goes unused for 7. The Account page lists your signed-in browsers and logs out any one of them, or all but this one; changing your password logs out the others.
+- **Wrong passwords:** after 5 wrong tries in a row for a username, or from one address, each try waits twice as long as the last (1 s, 2 s, 4 s… up to 15 minutes), and a restart doesn't reset it. A wrong username and a wrong password look the same.
 - **Bar plugin:** each person makes their own token on the Account page; it only works for the plugin's API (`/api/…`), only shows that person's data, and only its hash is stored.
-- **Keys:** the host's AI keys are encrypted with the server's key (`data/secret.key`) inside its encrypted folder. Everyone else's Anthropic key is kept in their browser, sealed like their notes: the server never has it.
+- **Keys:** AI keys and the local model's address are encrypted in each person's browser, like their notes: the server never has them.
 - **Other websites:** changes that another origin starts are refused, including other servers on `localhost`. Requests for any host name but `localhost` and the public address are refused (DNS rebinding). The pages send a strict Content-Security-Policy, can't be framed, and run only scripts the dashboard serves itself (pinned copies of htmx, marked and DOMPurify): no other site's script can run on them.
 - **Files:** `site/data/`, every user's folder, `plan.json`, `.env` and notes are readable only by the server's account (folders `0700`, files `0600`).
 - **Forgot your password?** Ask an admin for a reset link. If your data is encrypted, the reset page asks for your **recovery code**: with it you keep your data, without it the account starts over empty. If the only admin is locked out, whoever runs the server stops it and runs `nix run . -- reset-password <username>` in `site/`.
 
 ## Encrypted data
 
-Everyone's data is encrypted, the host's too (except the computer's own Taskwarrior, Timewarrior, MyFitnessPal login and Anki, which the host shares with its terminal tools), so whoever runs the server can't read it. Notes go further: the server never has them readable at all.
+Everyone's notes, AI chat and AI keys are encrypted **end to end**: only their browser can read them. Their other data is encrypted on the server's disk, unless they choose otherwise.
 
 - **Your password never leaves your browser.** The sign-in page turns it into two things: a proof that signs you in (all the server gets) and a key that only your browser has.
-- **Notes are encrypted end to end.** Your browser encrypts and decrypts them with that key (`web/js/keys.js`, `web/js/notes.js`); the server stores one scrambled blob. Even with someone's login, or watching the network, the notes can't be read without their password. Notes from before are sealed the first time you open the Docs tab, and their plain copies deleted.
-- **The AI runs in your browser.** On the MCPs tab, your browser talks to Anthropic directly with your own API key (an `sk-ant-api…` key; a Claude subscription token only works with Claude Code), with your notes in its prompt, so they never pass through the server (`web/js/assistant.js`). The server gives it the dashboard's instructions, your plan and data, and runs the MyFitnessPal and Anki tools it calls, in your sandbox. It can save notes when you ask (if your admin lets your AI edit files). The chat is sealed like the notes. This AI is Claude only, without web search; the host keeps the server-side AIs (Claude Code, Codex, Gemini CLI, local models).
-- **Everything else** (plan, food, tasks, logins) is encrypted on the server's disk (AES-256-GCM, file by file, names hidden) in `site/data/vaults/<id>/`, with a random key locked by your password's proof, your recovery code and each signed-in browser. Signed in, it's decrypted into memory (a tmpfs: `$XDG_RUNTIME_DIR/dashboard-vaults` or `/dev/shm`) for the server to use, and saved back every few seconds. It's locked again (saved, wiped from memory) when you log out of your last browser, after 30 minutes without a request, and when the server stops. After a restart, your next page load unlocks it without a new sign-in.
+- **Notes, chat and keys:** your browser encrypts and decrypts them with that key (`web/js/keys.js`, `notes.js`, `assistant.js`); the server stores scrambled blobs, each labelled with whose it is and what it is, and numbered, so it can't swap them or hand back an older copy unnoticed. Even with someone's login, or watching the network, they can't be read without the password. Notes from before are sealed the first time you open the Docs tab, and their plain copies deleted.
+- **The AI runs in your browser** (MCPs tab), so your notes go straight to the AI (Anthropic, or a model on your computer) and never through the server.
+- **Everything else** (plan, checklist, weight, tasks, time, food, logins) is encrypted on the server's disk (AES-256-GCM, file by file, names hidden) in `site/data/vaults/<id>/`, with a random key locked by your password's proof, your recovery code and each signed-in browser. Signed in, it's decrypted into memory (a tmpfs: `$XDG_RUNTIME_DIR/dashboard-vaults` or `/dev/shm`) for the server to use, since it builds your pages from it, and saved back every few seconds. It's locked again (saved, wiped from memory) when you log out of your last browser, after 30 minutes without a request, and when the server stops. After a restart, your next page load unlocks it without a new sign-in. The bar plugin's token keeps it unlocked while the plugin runs.
+- **Your choice:** on the Account page you can keep that other data as plain files instead (**Stop encrypting it**): on a server whose disk is already encrypted and that only you use, the encryption adds little and losing both your password and recovery code would lose that data. **Encrypt it** turns it back on, with a new recovery code. Notes, chat and keys stay end to end either way.
 - **Recovery code:** made by your browser and shown once (your first sign-in, or joining). It's the only way back in if you forget your password: an admin's reset link keeps your data only if you enter it. Make a new one on the Account page.
-- **Older accounts** sign in once more with their password (to move to proofs); their data is encrypted then. The Admin page shows who isn't encrypted yet.
+- **Older accounts** sign in once more with their password (to move to proofs and get their notes key); their data is encrypted then. The Admin page shows who isn't encrypted, and who chose plain files.
 - **Needs HTTPS** (or `localhost`): browsers only do this encryption on secure pages.
-- **What it doesn't stop:** whoever runs the server could change the page's code to catch passwords as they're typed (true of any website), or read the non-note data in memory while you're signed in. A weak password can be guessed, so pick a strong one.
+- **What it doesn't stop:** whoever runs the server could change the page's code to catch passwords as they're typed (true of any website: see **Checking the page's code**), or read the non-note data in memory while you're signed in. The MyFitnessPal tools and sync go through the server, so it sees your food diary.
 
 ## Checking the page's code
 
@@ -138,10 +143,10 @@ Your notes are only as private as the scripts that handle them, and those come f
 
 | Script | Hash |
 |---|---|
-| `app.js` | `sha384-x4P57jWFp4HhDk5IjeNYX2Ha+F/gKpEl4ChhZR832MRt20cQFrXeFIuRkX0Rh5uP` |
-| `keys.js` | `sha384-YWhyKFAFw9SpVngTxBKocy3mpEEPjfNTUfi2Qvx925xiFG9JwMQG4AJWBUE7kQ3u` |
+| `app.js` | `sha384-Gg1ffnqWJoxRV2v807lyn4nf54HEVaTsKi9WZolWdENUdRZpeBH5dU0GCm74jARd` |
+| `keys.js` | `sha384-x7klcKfrC1CwDgEGr/LFl9sbE57XelWNP0gAGhEAM6o5/W996bZ6cF1zOd544sAS` |
 | `notes.js` | `sha384-iW4AiXCfNgQnKveb3A39gXIDQGefd5rlBvVGT5CeA8cMmPOz2/eGusX9YGt9ctl+` |
-| `assistant.js` | `sha384-w6MFlsIwwSS5mfrkyUmKaSphhUJJPcNe67dFvnsPMJVzvqYpY31knMcZRCkOpEex` |
+| `assistant.js` | `sha384-iqwgf6Po+R10AwXPCrKlgI7YcxrcXD9Xk2gBEKJ3s0jm5VIi4LfJll/NLl6sM2VH` |
 | `htmx.js` | `sha384-HGfztofotfshcF7+8n44JQL2oJmowVChPTg48S+jvZoztPfvwD79OC/LTtG6dMp+` |
 | `htmx-sse.js` | `sha384-fw+eTlCc7suMV/1w/7fr2/PmwElUIt5i82bi+qTiLXvjRXZ2/FkiTNA/w0MhXnGI` |
 | `marked.js` | `sha384-IvVdUXkhyoD0shbjhiiOnuiTbervTaB0VJcnEcg3shUAMVOOF6lKj4ozJrCwvz6s` |
@@ -159,6 +164,6 @@ None of this is tracked by git:
 
 ## Code
 
-- `site/cmd/dashboard`: the Go server's entry point; `site/internal/` holds one package per area: `auth` (accounts, sessions, invites, policy), `workspace` (each user's folder and services), `taskwarrior`, `timewarrior`, `myfitnesspal`, `anki` (and its gateway), `assistant` (the AI CLIs), `sandbox` and `egress` (the agents' sandbox and its proxy), `vault` (encrypting each person's data), `localmodel` (the bridge to a local model server), `web` and `api` (the HTTP handlers). One dependency (goldmark, for Markdown). `nix run` builds it.
+- `site/cmd/dashboard`: the Go server's entry point; `site/internal/` holds one package per area: `auth` (accounts, sessions, invites, policy), `workspace` (each user's folder and services), `taskwarrior`, `timewarrior`, `myfitnesspal`, `anki` (and its gateway), `assistant` (what the server gives the AI in the browser), `mcp` (starting MCP tools and talking to them), `sandbox` and `egress` (the tools' sandbox and its proxy), `vault` (encrypting each person's data), `web` and `api` (the HTTP handlers). One dependency (goldmark, for Markdown). `nix run` builds it.
 - `site/mfp_fetch.py`: MyFitnessPal reads and writes, run through the MyFitnessPal MCP's Python package.
-- `site/web/`: the pages. `templates/` has the HTML (one file per tab), rendered on the server and updated in place with [HTMX](https://htmx.org); styles are in `css/` (one file per area) and `js/app.js` does the few things HTMX can't (toasts, shortcuts, dragging cards). No build step: edit a file and reload the page.
+- `site/web/`: the pages. `templates/` has the HTML (one file per tab), rendered on the server and updated in place with [HTMX](https://htmx.org); styles are in `css/` (one file per area) and `js/app.js` does the few things HTMX can't (toasts, shortcuts, dragging cards, timed refreshes); `js/keys.js`, `notes.js` and `assistant.js` handle what the server must never see (passwords, notes, the AI chat). No build step: edit a file and reload the page.

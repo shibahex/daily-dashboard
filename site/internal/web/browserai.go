@@ -3,9 +3,7 @@ package web
 import (
 	"context"
 	"encoding/json"
-	"net"
 	"net/http"
-	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -16,7 +14,6 @@ import (
 	"dashboard/internal/auth"
 	"dashboard/internal/mcp"
 	"dashboard/internal/problem"
-	"dashboard/internal/sandbox"
 	"dashboard/internal/workspace"
 )
 
@@ -45,29 +42,52 @@ type browserMCP struct {
 	Ready   bool   `json:"ready"`
 }
 
-// assistantSetup tells the browser how to run the AI: the key, the model, the system prompt
-// (everything but the notes, which the browser adds), the MCPs, and whether it may edit notes.
+// oldKeys are where the server kept AI keys and the local model before they moved into the
+// browser, and the browser's names for them (assistant.js settings).
+var oldKeys = map[string]string{"anthropic": "anthropicKey", "local_key": "localKey", "local_url": "localURL", "local_model": "localModel"}
+
+// assistantSetup tells the browser how to run the AI: which AIs it may use (Claude, a local
+// model on the user's own computer), the chosen one and its model, the system prompt (everything
+// but the notes, which the browser adds), the MCPs, and whether it may save notes.
 func (ui *UI) assistantSetup(w http.ResponseWriter, r *http.Request) {
 	user, ws := ui.user(r), ui.ws(r)
-	if !user.Policy.AllowsProvider("claude") {
-		writeNoStoreJSON(w, map[string]any{"problem": "Your admin hasn't turned on Claude for you"})
+	var providers []string
+	for _, id := range []string{"claude", "local"} {
+		if user.Policy.AllowsProvider(id) {
+			providers = append(providers, id)
+		}
+	}
+	if len(providers) == 0 {
+		writeNoStoreJSON(w, map[string]any{"problem": "Your admin hasn't turned on an AI for you"})
 		return
 	}
 	conversation := ws.Conversations.Load()
-	answer := map[string]any{
-		"models":       browserModels,
-		"model":        conversation.Models["browser"],
-		"instructions": !conversation.NoInstructions,
-		"edit":         user.Policy.EditFiles && user.Policy.ReadFiles,
+	provider := conversation.Provider
+	if !slices.Contains(providers, provider) {
+		provider = providers[0]
 	}
-	// A key saved on the server before keys moved into the browser: handed over once, for the
-	// browser to seal; it's deleted when the browser saves its settings (sealed=1).
-	if old := ws.Secrets.Get(assistant.APIKeys["claude"].Name); old != "" {
-		answer["oldKey"] = old
+	answer := map[string]any{
+		"providers":    providers,
+		"provider":     provider,
+		"models":       browserModels, // Claude's; a local server's come from it, in the browser
+		"model":        conversation.Models[provider],
+		"instructions": !conversation.NoInstructions,
+		"edit":         user.Policy.EditFiles,
+	}
+	// Keys the server kept from before keys moved into the browser: handed over once, for the
+	// browser to seal; they're deleted when it saves its settings (sealed=1).
+	old := map[string]string{}
+	for name, id := range oldKeys {
+		if value := ws.Secrets.Get(name); value != "" {
+			old[id] = value
+		}
+	}
+	if len(old) > 0 {
+		answer["oldKeys"] = old
 	}
 	enabled := allowedMCPs(user.Policy, conversation)
 	var mcps []browserMCP
-	var servers []assistant.NamedServer
+	var ready []string
 	for _, m := range []browserMCP{
 		{ID: "myfitnesspal", Label: "MyFitnessPal", Ready: ws.MyFitnessPal.Client().Setup().SignedIn},
 		{ID: "anki", Label: "Anki", Ready: ws.Anki().Status().Connected},
@@ -76,23 +96,22 @@ func (ui *UI) assistantSetup(w http.ResponseWriter, r *http.Request) {
 			m.Enabled = slices.Contains(enabled, m.ID)
 			mcps = append(mcps, m)
 			if m.Enabled && m.Ready {
-				servers = append(servers, assistant.NamedServer{Name: m.ID})
+				ready = append(ready, m.ID)
 			}
 		}
 	}
 	answer["mcps"] = mcps
-	// No files and no web for this AI: the notes come in the prompt, from the browser.
-	answer["system"] = assistant.Instructions(time.Now(), assistant.ContextWith(nil, ws.Paths.Plan(), ws.Paths.Data),
-		servers, assistant.Capabilities{}, !conversation.NoInstructions)
+	answer["system"] = assistant.Instructions(time.Now(), assistant.Context(ws.Paths.Plan(), ws.Paths.Data),
+		ready, !conversation.NoInstructions)
 	writeNoStoreJSON(w, answer)
 }
 
-// assistantSettings changes the browser AI's settings: an MCP on or off (mcp), "Attach prompt"
-// (instructions=toggle) or the model (model).
+// assistantSettings changes the browser AI's settings (none of them secret): an MCP on or off
+// (mcp), "Attach prompt" (instructions=toggle), the AI (provider) or its model (model).
 func (ui *UI) assistantSettings(w http.ResponseWriter, r *http.Request) {
 	user, ws := ui.user(r), ui.ws(r)
 	conversation := ws.Conversations.Load()
-	r.ParseForm()
+	r.ParseMultipartForm(1 << 20) // the page posts FormData; plain ParseForm would skip it
 	switch {
 	case r.FormValue("mcp") != "":
 		name := r.FormValue("mcp")
@@ -112,6 +131,13 @@ func (ui *UI) assistantSettings(w http.ResponseWriter, r *http.Request) {
 		conversation.MCPs = &enabled
 	case r.FormValue("instructions") != "":
 		conversation.NoInstructions = !conversation.NoInstructions
+	case r.FormValue("provider") != "":
+		provider := r.FormValue("provider")
+		if !user.Policy.AllowsProvider(provider) || (provider != "claude" && provider != "local") {
+			fail(w, problem.Forbiddenf("Your admin hasn't turned on that AI for you"))
+			return
+		}
+		conversation.Provider = provider
 	case r.Form.Has("model"):
 		model := formText(r, "model")
 		if model != "" && !assistant.ModelNamePattern.MatchString(model) {
@@ -121,7 +147,7 @@ func (ui *UI) assistantSettings(w http.ResponseWriter, r *http.Request) {
 		if conversation.Models == nil {
 			conversation.Models = map[string]string{}
 		}
-		conversation.Models["browser"] = model
+		conversation.Models[conversation.Provider] = model
 	}
 	if err := ws.Conversations.Save(conversation); err != nil {
 		fail(w, err)
@@ -189,7 +215,7 @@ type toolSession struct {
 	order   []string
 	clients map[string]*mcp.Client
 	lists   map[string][]mcp.Tool
-	run     *agentRun // the sandbox's sockets and folders
+	box     *toolSandbox
 	used    time.Time
 }
 
@@ -272,14 +298,14 @@ func (ts *toolSessions) closeIdle(after time.Duration) {
 // startTools starts each MCP server in its own sandbox, as the server-side AI's would be.
 func startTools(ui *UI, ws *workspace.Workspace, names []string) (*toolSession, error) {
 	s := &toolSession{clients: map[string]*mcp.Client{}, lists: map[string][]mcp.Tool{}, used: time.Now(),
-		run: &agentRun{ui: ui, ws: ws}}
+		box: &toolSandbox{ui: ui, ws: ws}}
 	if len(names) == 0 {
 		return s, nil
 	}
 	if ui.SandboxErr != nil {
 		return nil, ui.SandboxErr
 	}
-	spec, err := s.run.openSandbox()
+	spec, err := s.box.open()
 	if err != nil {
 		s.stop()
 		return nil, err
@@ -287,7 +313,7 @@ func startTools(ui *UI, ws *workspace.Workspace, names []string) (*toolSession, 
 	for _, name := range names {
 		inner := spec
 		inner.Mounts = slices.Clone(spec.Mounts)
-		server, err := s.run.mcpServer(name, &inner)
+		server, err := s.box.mcpServer(name, &inner)
 		if err != nil {
 			s.stop()
 			return nil, err
@@ -301,7 +327,7 @@ func startTools(ui *UI, ws *workspace.Workspace, names []string) (*toolSession, 
 			s.stop()
 			return nil, err
 		}
-		client, err := mcp.Start(args, nil, s.run.sockets)
+		client, err := mcp.Start(args, nil, s.box.sockets)
 		if err != nil {
 			s.stop()
 			return nil, err
@@ -328,31 +354,5 @@ func (s *toolSession) stop() {
 	for _, client := range s.clients {
 		client.Close()
 	}
-	s.run.cleanUp()
+	s.box.cleanUp()
 }
-
-// openSandbox opens the sockets for a sandbox (the egress proxy) and an empty workspace: the
-// tools see no files of the user's.
-func (run *agentRun) openSandbox() (sandbox.Spec, error) {
-	for _, dir := range []string{run.homeDir(), run.toolsWorkspace()} {
-		if err := os.MkdirAll(dir, 0o700); err != nil {
-			return sandbox.Spec{}, err
-		}
-	}
-	sockets, err := os.MkdirTemp(shortTempDir(), "dashboard-tools-")
-	if err != nil {
-		return sandbox.Spec{}, err
-	}
-	run.sockets = sockets
-	egressSocket := filepath.Join(sockets, "egress.sock")
-	egress, err := net.Listen("unix", egressSocket)
-	if err != nil {
-		return sandbox.Spec{}, err
-	}
-	run.listeners = append(run.listeners, egress)
-	go run.ui.Egress.Serve(egress)
-	return sandbox.Spec{RunDir: sockets, Home: run.homeDir(), Workspace: run.toolsWorkspace(), Egress: egressSocket}, nil
-}
-
-// toolsWorkspace is the tools' empty workspace (not the server-side AI's agent-workspace).
-func (run *agentRun) toolsWorkspace() string { return run.ws.Paths.DataFile("agent-tools") }

@@ -151,9 +151,10 @@ const Keys = (() => {
   async function notesKey() {
     const pending = await kept("pending");
     if (pending) {
-      await forget("pending");
+      // Forgotten only once it's been used: a page left halfway leaves it for the next one.
       const wrapped = await wrappedKey();
       if (wrapped) await unlockWith(pending, wrapped.password).catch(() => {});
+      await forget("pending");
     }
     return kept("notes");
   }
@@ -229,6 +230,7 @@ const Keys = (() => {
       const { proof, kek } = await fromPassword(name, password.value);
       set(form, "proof", proof);
       await offerNewKeys(form, name, kek);
+      await keep("pending", kek);
       hide(password); hide(confirm);
     },
     // Joining from an invite, or a reset: with the old recovery code typed, the notes' key is
@@ -274,6 +276,22 @@ const Keys = (() => {
         set(form, "notes_password", await wrapKey(next.kek, raw, name, "password"));
       }
       hide(current); hide(password); hide(confirm);
+    },
+    // Encrypting the data on the server's disk again: the password's proof, and a new recovery
+    // code (for that data and the notes) with the notes' key wrapped with it.
+    async encrypt(form) {
+      const name = username();
+      const password = form.querySelector("[data-password]");
+      const { proof, kek } = await fromPassword(name, password.value);
+      const code = newRecoveryCode();
+      const recovery = await fromRecovery(name, code);
+      const raw = await openWrap(kek, (await wrappedKey()).password, name, "password")
+        .catch(() => { throw new Error("That password is wrong"); });
+      set(form, "proof", proof);
+      set(form, "recovery", recovery.proof);
+      set(form, "notes_recovery", await wrapKey(recovery.kek, raw, name, "recovery"));
+      sessionStorage.setItem("newRecoveryCode", code);
+      hide(password);
     },
     // A new recovery code: made here, shown once; the notes' key is wrapped with it.
     async recovery(form) {

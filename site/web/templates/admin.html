@@ -35,7 +35,7 @@
         <b>{{.Username}}</b>
         <span class="badge">{{if .IsAdmin}}admin{{else}}user{{end}}</span>
         {{if .Host}}<span class="badge" title="Uses the server computer's own Taskwarrior, MyFitnessPal login and Anki">host</span>{{end}}
-        {{if index $view.Encrypted .ID}}<span class="badge" title="Encrypted on the server's disk; opens only with their password while they're signed in">encrypted</span>{{else}}<span class="badge off" title="Still in plain files: it's encrypted the next time they sign in">not encrypted yet</span>{{end}}
+        {{if index $view.Encrypted .ID}}<span class="badge" title="Encrypted on the server's disk; opens only with their password while they're signed in">encrypted</span>{{else if .PlainStorage}}<span class="badge off" title="They chose to keep their plan, tasks and food as plain files on the server's disk; their notes stay encrypted">plain files (their choice)</span>{{else}}<span class="badge off" title="Still in plain files: it's encrypted the next time they sign in">not encrypted yet</span>{{end}}
         {{if .Disabled}}<span class="badge off">turned off</span>{{end}}
         {{if eq .ID $view.Me}}<span class="small muted">(you)</span>{{end}}
         <span class="small muted">{{if .LastLogin.IsZero}}never logged in{{else}}last login {{isoDay .LastLogin}}{{end}}</span>
@@ -89,9 +89,7 @@
 <fieldset><legend>MCPs</legend>
   {{range .View.MCPs}}<label class="check"><input type="checkbox" name="mcps" value="{{.ID}}"{{if $policy.AllowsMCP .ID}} checked{{end}}> {{.Label}}</label>{{end}}
 </fieldset>
-<fieldset><legend>Tools</legend>
-  <label class="check"><input type="checkbox" name="web"{{if $policy.Web}} checked{{end}}> Search and read the web</label>
-  <label class="check"><input type="checkbox" name="read_files"{{if $policy.ReadFiles}} checked{{end}}> Read their own notes and data</label>
-  <label class="check"><input type="checkbox" name="edit_files"{{if $policy.EditFiles}} checked{{end}}> Edit their own notes and plan</label>
+<fieldset><legend>Notes</legend>
+  <label class="check"><input type="checkbox" name="edit_files"{{if $policy.EditFiles}} checked{{end}}> Their AI may save notes (it asks them first; it always reads them)</label>
 </fieldset>
 {{end}}

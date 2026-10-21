@@ -42,7 +42,7 @@ func TestAccountTemplatesRender(t *testing.T) {
 	ui := &UI{templates: newTemplateSet("../../web")}
 	views := map[string]any{
 		"sign-in":          signInView{Invite: true, Code: "abc", Username: "friend"},
-		"account":          accountView{Username: "me", Sessions: 2, HasToken: true, Connections: connectionsView{AnkiURL: "http://192.168.1.20:8765", Keys: []keyChoice{{Provider: "claude", Label: "Anthropic", Set: true}}}},
+		"account":          accountView{Username: "me", Sessions: 2, HasToken: true, Connections: connectionsView{AnkiURL: "http://192.168.1.20:8765"}},
 		"connections-card": connectionsView{Host: true, MyFitnessPal: true, Error: "nope"},
 		"anki-setup":       anki.Status{Remote: true, NotSetUp: true},
 		"admin": adminView{Me: "aaaa", Link: "https://x/invite?code=c", LinkFor: "friend",
@@ -77,9 +77,10 @@ func TestEncryptionTemplatesRender(t *testing.T) {
 		{"sign-in", signInView{Invite: true, Reset: true, Keeping: true, Username: "friend", Code: "c"}, `name="start_over"`},
 		{"sign-in", signInView{Locked: true}, "unlock your data"},
 		{"account", accountView{Username: "me", Encrypted: true, Sealed: true, NewRecovery: true}, "data-new-recovery-code"},
+		{"connections-card", connectionsView{}, "data-browser-key"},
 		{"account", accountView{Username: "me", Sealed: true}, `data-keys="password" data-sealed`},
 		{"browser-chat", nil, "data-browser-chat"},
-		{"docs", docsView{Sealed: true, HasGuides: true, Docs: []docLink{{Name: "README.md", Title: "Getting started"}}}, "data-sealed-notes"},
+		{"docs", docsView{HasGuides: true, Docs: []docLink{{Name: "README.md", Title: "Getting started"}}}, "data-sealed-notes"},
 		{"admin", adminView{Me: "aaaa", Users: []auth.User{{ID: "bbbb", Username: "friend"}}, Encrypted: map[string]bool{"bbbb": true}}, "recovery code. Without it"},
 	}
 	for _, c := range cases {
