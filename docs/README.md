@@ -1,6 +1,5 @@
 # Health Dashboard
-
-A private, self-hosted dashboard for getting healthier: your daily checklist and training, weight, what you've eaten (from MyFitnessPal), tasks and time tracking, and an AI you can ask about your food or tell what you ate. It runs on your own computer or server, for you alone or for several people: everyone has their own account and nobody sees anyone else's data.
+A private, self-hosted dashboard for getting healthier and smarter. It brings your daily checklist and training, weight, food (from MyFitnessPal), tasks and time tracking, and Anki flashcards into one place, with an AI that can see all of it and act on it: log a meal, make flashcards from your notes, or tell you what to eat tonight. It runs on your own computer or server, for you alone or for several people. Everyone has their own account, and nobody sees anyone else's data.
 
 - **Today:** today's workout, a checklist with streaks, weight trend, calories and macros from MyFitnessPal (log and edit foods right there), tasks due, time tracked. Drag the cards to arrange them.
 - **Tasks:** [Taskwarrior](https://taskwarrior.org) tasks with repeating schedules, skips with reasons, and time tracking in [Timewarrior](https://timewarrior.net).
