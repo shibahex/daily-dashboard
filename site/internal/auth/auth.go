@@ -69,6 +69,9 @@ type User struct {
 	// PlainStorage: the user chose not to keep their data (plan, tasks, food…) encrypted on the
 	// server's disk. Their notes, chat and keys stay end to end either way.
 	PlainStorage bool `json:"plain_storage,omitempty"`
+	// ServerAI: the user chose to let the server run an AI for them (Claude Code, Codex, Gemini
+	// CLI), which means the server sees their messages and notes while it answers.
+	ServerAI bool `json:"server_ai,omitempty"`
 }
 
 func (u User) IsAdmin() bool { return u.Role == Admin }
@@ -76,7 +79,7 @@ func (u User) IsAdmin() bool { return u.Role == Admin }
 // Policy is what a user's AI agent may use. Admins set it, and the server checks it again for
 // every message, whatever the page sent.
 type Policy struct {
-	Providers []string `json:"providers"`  // the AIs their browser may run: "claude", "local"
+	Providers []string `json:"providers"`  // the AIs they may use: in the browser ("claude", "local"), or on the server (ServerProviders)
 	MCPs      []string `json:"mcps"`       // "myfitnesspal", "anki"
 	EditFiles bool     `json:"edit_files"` // the AI may save the user's notes (it always reads them)
 
@@ -86,8 +89,10 @@ type Policy struct {
 }
 
 var (
-	KnownProviders = []string{"claude", "local"}
-	KnownMCPs      = []string{"myfitnesspal", "anki"}
+	KnownProviders = []string{"claude", "local", "claude-code", "codex", "gemini"}
+	// ServerProviders are the AIs that run on the server, only for people who turn that on.
+	ServerProviders = []string{"claude-code", "codex", "gemini"}
+	KnownMCPs       = []string{"myfitnesspal", "anki"}
 	// FullPolicy is everything; it's the default for new users until an admin changes it.
 	FullPolicy = Policy{Providers: KnownProviders, MCPs: KnownMCPs, EditFiles: true}
 )
@@ -105,13 +110,6 @@ func (p Policy) Clean() Policy {
 			}
 		}
 		return kept
-	}
-	// The server-side AIs there used to be: whoever could use one gets a local model instead (it
-	// runs on their own computer and talks to their browser only).
-	for _, old := range []string{"codex", "gemini"} {
-		if slices.Contains(p.Providers, old) && !slices.Contains(p.Providers, "local") {
-			p.Providers = append(p.Providers, "local")
-		}
 	}
 	p.Providers, p.MCPs = keep(p.Providers, KnownProviders), keep(p.MCPs, KnownMCPs)
 	p.Web, p.ReadFiles = false, false // nothing uses them since the AI moved into the browser
@@ -1064,6 +1062,18 @@ func (a *Auth) DropNotesKey(userID string) error {
 	if user := a.userByID(userID); user != nil {
 		user.NotesKey = nil
 	}
+	return a.save()
+}
+
+// SetServerAI records whether the user lets the server run an AI for them.
+func (a *Auth) SetServerAI(userID string, on bool) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	user := a.userByID(userID)
+	if user == nil {
+		return problem.NotFoundf("No such user")
+	}
+	user.ServerAI = on
 	return a.save()
 }
 

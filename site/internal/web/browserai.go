@@ -47,16 +47,12 @@ type browserMCP struct {
 var oldKeys = map[string]string{"anthropic": "anthropicKey", "local_key": "localKey", "local_url": "localURL", "local_model": "localModel"}
 
 // assistantSetup tells the browser how to run the AI: which AIs it may use (Claude, a local
-// model on the user's own computer), the chosen one and its model, the system prompt (everything
-// but the notes, which the browser adds), the MCPs, and whether it may save notes.
+// model on the user's own computer, and for people who turned it on, the AIs on the server), the
+// chosen one and its model, the system prompt (everything but the notes, which the browser adds),
+// the MCPs, and whether it may save notes.
 func (ui *UI) assistantSetup(w http.ResponseWriter, r *http.Request) {
 	user, ws := ui.user(r), ui.ws(r)
-	var providers []string
-	for _, id := range []string{"claude", "local"} {
-		if user.Policy.AllowsProvider(id) {
-			providers = append(providers, id)
-		}
-	}
+	providers := allowedAIs(user)
 	if len(providers) == 0 {
 		writeNoStoreJSON(w, map[string]any{"problem": "Your admin hasn't turned on an AI for you"})
 		return
@@ -69,8 +65,9 @@ func (ui *UI) assistantSetup(w http.ResponseWriter, r *http.Request) {
 	answer := map[string]any{
 		"providers":    providers,
 		"provider":     provider,
-		"models":       browserModels, // Claude's; a local server's come from it, in the browser
+		"models":       modelsFor(provider), // a local server's come from it, in the browser
 		"model":        conversation.Models[provider],
+		"server":       serverAIs(user), // the providers that run on the server
 		"instructions": !conversation.NoInstructions,
 		"edit":         user.Policy.EditFiles,
 	}
@@ -133,7 +130,7 @@ func (ui *UI) assistantSettings(w http.ResponseWriter, r *http.Request) {
 		conversation.NoInstructions = !conversation.NoInstructions
 	case r.FormValue("provider") != "":
 		provider := r.FormValue("provider")
-		if !user.Policy.AllowsProvider(provider) || (provider != "claude" && provider != "local") {
+		if !slices.Contains(allowedAIs(user), provider) {
 			fail(w, problem.Forbiddenf("Your admin hasn't turned on that AI for you"))
 			return
 		}
@@ -155,6 +152,28 @@ func (ui *UI) assistantSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	ui.tools().close(user.ID) // the next tool list follows the new MCPs
 	writeNoStoreJSON(w, map[string]bool{"ok": true})
+}
+
+// allowedAIs are the AIs the user may pick, in menu order.
+func allowedAIs(user auth.User) []string {
+	var ids []string
+	for _, id := range []string{"claude", "local"} {
+		if user.Policy.AllowsProvider(id) {
+			ids = append(ids, id)
+		}
+	}
+	return append(ids, serverAIs(user)...)
+}
+
+// modelsFor is the model menu of an AI ("local" lists its own, in the browser).
+func modelsFor(provider string) []assistant.Model {
+	if p, ok := serverProviders.Get(provider); ok {
+		return p.Models()
+	}
+	if provider == "claude" {
+		return browserModels
+	}
+	return []assistant.Model{}
 }
 
 // ---------- tools ----------

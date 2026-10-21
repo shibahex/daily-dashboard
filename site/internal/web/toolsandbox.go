@@ -1,6 +1,7 @@
 package web
 
 import (
+	"cmp"
 	"net"
 	"os"
 	"path/filepath"
@@ -21,10 +22,15 @@ type toolSandbox struct {
 	ws        *workspace.Workspace
 	listeners []net.Listener
 	sockets   string // a private folder for the sandbox's sockets
+	workspace string // the workspace folder's name in the user's folder ("" = agent-tools)
 }
 
-func (sb *toolSandbox) homeDir() string      { return sb.ws.Paths.DataFile("agent-home") }
-func (sb *toolSandbox) workspaceDir() string { return sb.ws.Paths.DataFile("agent-tools") }
+func (sb *toolSandbox) homeDir() string { return sb.ws.Paths.DataFile("agent-home") }
+
+// workspaceDir is emptied after each use, and never saved with the user's data (vault.Mirror).
+func (sb *toolSandbox) workspaceDir() string {
+	return sb.ws.Paths.DataFile(cmp.Or(sb.workspace, "agent-tools"))
+}
 
 // allowedMCPs are the turned-on MCPs the user's policy allows.
 func allowedMCPs(policy auth.Policy, conversation *assistant.Conversation) []string {

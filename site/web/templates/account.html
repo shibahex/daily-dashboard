@@ -111,11 +111,17 @@
 
   <div class="card">
     <h2>AI</h2>
-    <p class="muted">The MCPs tab's AI runs in this browser. It talks to Anthropic, or to a model on this computer, directly: your notes and chats never pass through the server. These keys and addresses are encrypted here, like your notes: the server never has them.</p>
+    <p class="muted">The MCPs tab's AI runs in this browser. It talks to Anthropic, or to a model on this computer, directly: your notes and chats never pass through the server. These keys and addresses are encrypted here, like your notes: the server never has them, except while an AI on the server answers you (if you turn that on, below).</p>
     <form class="ai-settings" data-browser-key hx-boost="false">
-      <label>Anthropic API key <span class="ok small" data-browser-key-saved hidden>· saved</span>
-        <small class="muted">An API key (sk-ant-api…): a Claude subscription token only works with Claude Code. <a class="link" href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener noreferrer">Get a key</a></small>
+      <label>Anthropic key <span class="ok small" data-browser-key-saved="anthropicKey" hidden>· saved</span>
+        <small class="muted">An API key (sk-ant-api…) works everywhere. A Claude subscription token (run <code>claude setup-token</code>, sk-ant-oat…) works only with Claude Code on the server. <a class="link" href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener noreferrer">Get a key</a></small>
         <input class="txt" type="password" name="key" autocomplete="off" spellcheck="false" placeholder="Paste a key; leave empty to keep it, or type - to remove it"></label>
+      <label>OpenAI API key <span class="ok small" data-browser-key-saved="openaiKey" hidden>· saved</span>
+        <small class="muted">For Codex on the server. <a class="link" href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer">Get a key</a></small>
+        <input class="txt" type="password" name="openai_key" autocomplete="off" spellcheck="false" placeholder="Leave empty to keep it, or type - to remove it"></label>
+      <label>Gemini API key <span class="ok small" data-browser-key-saved="geminiKey" hidden>· saved</span>
+        <small class="muted">For Gemini CLI on the server. <a class="link" href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer">Get a key</a></small>
+        <input class="txt" type="password" name="gemini_key" autocomplete="off" spellcheck="false" placeholder="Leave empty to keep it, or type - to remove it"></label>
       <h3>Local model</h3>
       <p class="small muted">Ollama, LM Studio or llama.cpp (<code>llama-server</code>) on <b>this computer</b>, with the OpenAI-style API. Let this page reach it: for Ollama, start it with <code>OLLAMA_ORIGINS=<span data-origin></span></code>; in LM Studio, turn on CORS; llama.cpp allows it already. The model needs to handle tool calls.</p>
       <label>Address <input class="txt" name="local_url" autocomplete="off" spellcheck="false" placeholder="localhost:11434 (Ollama), localhost:1234 (LM Studio), localhost:8080 (llama.cpp)"></label>
@@ -169,6 +175,17 @@
     <label>Your password <input class="txt" type="password" name="recovery_password" data-password required autocomplete="current-password"></label>
     <div class="row"><button class="sm">New recovery code</button> <span class="small muted">The old one stops working.</span></div>
   </form>
+
+  <div class="card">
+    <h2>AI on the server</h2>
+    {{if .ServerAI}}
+    <p class="muted"><span class="ok">On.</span> You can pick {{if .ServerAIs}}{{range $i, $name := .ServerAIs}}{{if $i}}, {{end}}{{$name}}{{end}}{{else}}an AI on the server (none is allowed for you or installed yet){{end}} on the MCPs tab. While one answers, the server sees your message, your notes and the key it uses; it keeps none of them, but whoever runs the server could read them then.</p>
+    <button class="sm" hx-post="/account/server-ai" hx-vals="{{vals "on" "0"}}" hx-target="#account-card" hx-swap="outerHTML">Turn it off</button>
+    {{else}}
+    <p class="muted">Claude Code, Codex and Gemini CLI can't run in a browser, so they run on the server. That works with a Claude subscription. The catch: while one answers, the server sees your message, your notes and your key. It keeps none of them, but whoever runs the server could read them then. The AIs in your browser never show the server anything.</p>
+    <button class="sm" hx-post="/account/server-ai" hx-vals="{{vals "on" "1"}}" hx-target="#account-card" hx-swap="outerHTML" hx-confirm="Let the server see your messages, notes and key while an AI on the server answers you?">Turn it on</button>
+    {{end}}
+  </div>
 
   <div class="card">
     <h2>Your other data on the server's disk</h2>

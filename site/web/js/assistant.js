@@ -5,6 +5,10 @@
 // (MyFitnessPal, Anki: /assistant/tool). Notes are read and saved here (notes.js). The chat is
 // kept sealed like the notes (/assistant/chat), and so are the keys and the local model's address
 // (/assistant/keys): the server has none of them.
+//
+// The exception, for people who turn it on (Account page): Claude Code, Codex and Gemini CLI,
+// which can't run in a browser, run on the server (/assistant/run). For those, each message goes
+// to the server with the notes and the key, and the server sees them while the AI answers.
 
 (() => {
   const ANTHROPIC = "https://api.anthropic.com/v1/messages";
@@ -12,7 +16,7 @@
   const MAX_NOTES = 192 * 1024;
 
   let root, setup, tools = [], chat = { messages: [], api: [] }, version = 0, key = null, busy = null;
-  // The sealed settings: { anthropicKey, localURL (".../v1"), localModel, localKey }.
+  // The sealed settings: { anthropicKey, openaiKey, geminiKey, localURL (".../v1"), localModel, localKey }.
   let settings = {}, settingsVersion = 0;
   let localModels = null; // what the local server lists, once asked
 
@@ -114,15 +118,125 @@
     return ((await response.json()).data || []).map(m => m.id).filter(Boolean);
   }
 
+  // ---------- the AIs on the server ----------
+
+  const onServer = () => (setup.server || []).includes(setup.provider);
+  const serverKeys = {
+    "claude-code": ["anthropicKey", "Add a Claude subscription token or an Anthropic API key"],
+    codex: ["openaiKey", "Add your OpenAI API key"],
+    gemini: ["geminiKey", "Add your Gemini API key"],
+  };
+
+  // historyText is the chat so far, for a server AI joining it.
+  function historyText() {
+    return chat.messages.slice(-30).filter(m => m.text)
+      .map(m => (m.role === "user" ? "User: " : "Assistant: ") + m.text).join("\n\n");
+  }
+
+  // answerOnServer sends the message, the notes and the key to the server, which runs the AI and
+  // streams its answer back as JSON lines.
+  async function answerOnServer(question) {
+    const reply = { role: "assistant", text: "", tools: [] };
+    const same = chat.server?.provider === setup.provider;
+    const history = same ? "" : historyText();
+    chat.messages.push({ role: "user", text: question }, reply);
+    busy = new AbortController();
+    renderAll();
+    let changedNotes = [], newParagraph = false, drawing = false;
+    const byID = {};
+    const draw = () => {
+      if (!drawing) { drawing = true; requestAnimationFrame(() => { drawing = false; renderReply(reply); }); }
+    };
+    try {
+      const notes = (await SealedNotes.all() || []).map(n => ({ title: n.title, text: n.text || "" }));
+      const body = new FormData();
+      const fields = {
+        provider: setup.provider, model: setup.model || "", message: question, history,
+        session: same ? chat.server.session || "" : "", key: settings[serverKeys[setup.provider][0]] || "",
+        notes: JSON.stringify(notes),
+      };
+      for (const [k, v] of Object.entries(fields)) body.set(k, v);
+      const response = await fetch("/assistant/run", { method: "POST", body, signal: busy.signal, headers: { "HX-Request": "true" } });
+      if (!response.ok) {
+        const text = await response.text();
+        let message = text;
+        try { message = JSON.parse(text).error || text; } catch {}
+        throw new Error(message || response.statusText);
+      }
+      if (!same) chat.server = { provider: setup.provider, session: "" };
+      await readLines(response, e => {
+        if (e.type === "session" && e.id) chat.server = { provider: setup.provider, session: e.id };
+        else if (e.type === "text") {
+          if (newParagraph && reply.text) reply.text += "\n\n";
+          newParagraph = false;
+          reply.text += e.text;
+          draw();
+        } else if (e.type === "break") newParagraph = true;
+        else if (e.type === "tool") {
+          const shown = { label: e.label, detail: e.detail };
+          if (e.id) byID[e.id] = shown;
+          reply.tools.push(shown);
+          draw();
+        } else if (e.type === "tool_error" && byID[e.id]) { byID[e.id].error = true; draw(); }
+        else if (e.type === "error") reply.error = e.text;
+        else if (e.type === "notes") changedNotes = e.notes || [];
+      });
+      const saved = [];
+      for (const note of changedNotes) {
+        // Replacing a note is the user's call: what the AI read may have asked it to. The old
+        // text stays in the note's history either way.
+        if (await SealedNotes.exists(note.title) &&
+            !confirm(`The AI changed your note “${note.title}”. Keep the change?`)) continue;
+        await SealedNotes.saveNote(note.title, note.text);
+        saved.push(note.title);
+      }
+      if (saved.length) reply.tools.push({ label: "Saved", detail: saved.join(", ") });
+    } catch (e) {
+      reply.error = e.name === "AbortError" ? "Stopped" : e.message;
+    } finally {
+      chat.api.push({ role: "user", content: question });
+      if (reply.text) chat.api.push({ role: "assistant", content: reply.text });
+      chat.api = validHistory(chat.api);
+      busy = null;
+      renderAll();
+      await saveChat();
+    }
+  }
+
+  // readLines calls onLine with each JSON line of the answer, as it comes.
+  async function readLines(response, onLine) {
+    const reader = response.body.getReader(), decoder = new TextDecoder();
+    let buffer = "";
+    for (;;) {
+      const { value, done } = await reader.read();
+      buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+      let cut;
+      while ((cut = buffer.indexOf("\n")) >= 0) {
+        const line = buffer.slice(0, cut).trim();
+        buffer = buffer.slice(cut + 1);
+        if (line) onLine(JSON.parse(line));
+      }
+      if (done) break;
+    }
+  }
+
   // problem is why the chosen AI can't run, or "".
   function problem() {
+    if (onServer()) {
+      const [field, ask] = serverKeys[setup.provider];
+      return settings[field] ? "" : ask + " on the Account page first";
+    }
     if (setup.provider === "local") {
       if (!settings.localURL) return "Add your local model's address on the Account page first";
       if (!(setup.model || settings.localModel)) return "Pick a local model on the Account page first";
       return "";
     }
     if (!settings.anthropicKey) return "Add your Anthropic API key on the Account page first";
-    if (settings.anthropicKey.startsWith("sk-ant-oat")) return "The saved key is a Claude subscription token, which only works with Claude Code: add an Anthropic API key (sk-ant-api…) on the Account page first";
+    if (settings.anthropicKey.startsWith("sk-ant-oat")) {
+      return (setup.server || []).includes("claude-code")
+        ? "The saved key is a Claude subscription token: pick Claude Code (on the server) to use it, or add an Anthropic API key (sk-ant-api…) on the Account page first"
+        : "The saved key is a Claude subscription token, which only works with Claude Code on the server: turn that on, or add an Anthropic API key (sk-ant-api…), on the Account page first";
+    }
     return "";
   }
 
@@ -330,6 +444,7 @@
   }
 
   async function answer(question) {
+    if (onServer()) return answerOnServer(question);
     const reply = { role: "assistant", text: "", tools: [] };
     chat.messages.push({ role: "user", text: question }, reply);
     chat.api.push({ role: "user", content: question });
@@ -404,7 +519,9 @@
     log.replaceChildren(...chat.messages.map(bubble));
     if (!chat.messages.length) {
       log.append(el("div", { className: "chat-empty" }, el("h3", {}, "Ask about your food, notes or cards"),
-        el("p", {}, "It reads your notes here in your browser and sends them straight to the AI: this server never sees them.")));
+        el("p", {}, onServer()
+          ? "This AI runs on the server: it gets your message and notes while it answers, as you agreed on the Account page."
+          : "It reads your notes here in your browser and sends them straight to the AI: this server never sees them.")));
     }
     log.scrollTo({ top: log.scrollHeight, behavior: "instant" });
     const field = $("form").elements.message;
@@ -413,12 +530,12 @@
     $("stop").hidden = !busy;
   }
 
-  const providerNames = { claude: "Claude", local: "Local model" };
+  const providerNames = { claude: "Claude", local: "Local model", "claude-code": "Claude Code (server)", codex: "Codex (server)", gemini: "Gemini CLI (server)" };
 
   function renderTop() {
     const status = $("status");
     status.classList.toggle("off", !!setup.problem);
-    status.lastChild.textContent = `${providerNames[setup.provider] || "AI"} · ${setup.problem ? "needs setup" : "in your browser"}`;
+    status.lastChild.textContent = `${providerNames[setup.provider] || "AI"} · ${setup.problem ? "needs setup" : onServer() ? "on the server" : "in your browser"}`;
     // What's wrong gets its own line under the bar, with where to fix it.
     const notice = $("problem");
     notice.hidden = !setup.problem;
@@ -449,7 +566,7 @@
     }
     const names = setup.provider === "local"
       ? [...new Set([...(localModels || []), setup.model || settings.localModel].filter(Boolean))].map(id => ({ id, label: id }))
-      : setup.models;
+      : onServer() ? [{ id: "", label: "Default model" }, ...setup.models] : setup.models;
     const chosen = setup.model || (setup.provider === "local" ? settings.localModel : "");
     const model = el("select", { className: "pill", title: "Which model it uses" },
       ...names.map(m => el("option", { value: m.id, selected: m.id === chosen, textContent: m.label })));
@@ -491,7 +608,7 @@
     renderTop();
     renderAll();
     tools = [];
-    if (setup.problem) return;
+    if (setup.problem || onServer()) return; // a server AI starts its own tools
     try {
       tools = await getJSON("/assistant/tools");
     } catch (e) {
@@ -551,7 +668,7 @@
   htmx.onLoad(async node => {
     const form = node.querySelector?.("form[data-browser-key]");
     if (!form) return;
-    const saved = form.querySelector("[data-browser-key-saved]");
+    const showSaved = () => form.querySelectorAll("[data-browser-key-saved]").forEach(n => { n.hidden = !settings[n.dataset.browserKeySaved]; });
     const picker = form.querySelector("[data-local-models]");
     const error = form.parentElement.querySelector("[data-browser-key-error]");
     const fail = message => { error.textContent = message; error.hidden = false; };
@@ -571,7 +688,7 @@
     };
     try {
       await loadSettings();
-      saved.hidden = !settings.anthropicKey;
+      showSaved();
       form.elements.local_url.value = settings.localURL || "";
       showModels([]);
       if (settings.localURL) refreshModels();
@@ -597,6 +714,8 @@
       try {
         take("key", "anthropicKey");
         take("local_key", "localKey");
+        take("openai_key", "openaiKey");
+        take("gemini_key", "geminiKey");
         const address = form.elements.local_url.value.trim();
         if (!address || address === "-") {
           delete settings.localURL;
@@ -606,9 +725,9 @@
           settings.localModel = picker.value || settings.localModel;
         }
         await saveSettings(true);
-        form.elements.key.value = form.elements.local_key.value = "";
+        for (const name of ["key", "local_key", "openai_key", "gemini_key"]) form.elements[name].value = "";
         form.elements.local_url.value = settings.localURL || "";
-        saved.hidden = !settings.anthropicKey;
+        showSaved();
         toast("Saved in your browser's encrypted settings");
         await refreshModels();
       } catch (e) { fail(e.message); }

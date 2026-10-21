@@ -85,6 +85,7 @@
 {{$policy := .Policy}}
 <fieldset><legend>AIs</legend>
   {{range .View.Providers}}<label class="check"><input type="checkbox" name="providers" value="{{.ID}}"{{if $policy.AllowsProvider .ID}} checked{{end}}> {{.Label}}</label>{{end}}
+  <p class="small muted flush">The ones on the server run only for people who turn them on in their Account page; while one answers, the server sees their messages and notes.</p>
 </fieldset>
 <fieldset><legend>MCPs</legend>
   {{range .View.MCPs}}<label class="check"><input type="checkbox" name="mcps" value="{{.ID}}"{{if $policy.AllowsMCP .ID}} checked{{end}}> {{.Label}}</label>{{end}}

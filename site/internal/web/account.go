@@ -266,7 +266,9 @@ type accountView struct {
 	Encrypted    bool   // the data is encrypted on the server's disk (unless they chose plain files)
 	Sealed       bool   // the notes are encrypted end to end, in the browser
 	PlainStorage bool   // the user chose not to encrypt their other data on disk
-	NewRecovery  bool   // the browser just made a new recovery code: it shows it
+	ServerAI     bool   // the user lets the server run an AI for them
+	ServerAIs    []string
+	NewRecovery  bool // the browser just made a new recovery code: it shows it
 	Error        string
 	Saved        string
 	Connections  connectionsView
@@ -284,9 +286,16 @@ type connectionsView struct {
 
 func (ui *UI) accountView(r *http.Request) accountView {
 	user := ui.user(r)
-	return accountView{Username: user.Username, Admin: user.IsAdmin(), Sessions: ui.Auth.SessionCount(user.ID),
+	view := accountView{Username: user.Username, Admin: user.IsAdmin(), Sessions: ui.Auth.SessionCount(user.ID),
 		Devices:  ui.Auth.Devices(user.ID, auth.SessionFrom(r)),
-		HasToken: ui.Auth.HasToken(user.ID), Connections: ui.connectionsView(r), Encrypted: ui.Workspaces.Encrypted(user), Sealed: sealedNotes(user), PlainStorage: user.PlainStorage}
+		HasToken: ui.Auth.HasToken(user.ID), Connections: ui.connectionsView(r), Encrypted: ui.Workspaces.Encrypted(user), Sealed: sealedNotes(user), PlainStorage: user.PlainStorage,
+		ServerAI: user.ServerAI}
+	for _, p := range serverProviders {
+		if user.Policy.AllowsProvider(p.ID()) && p.Available() {
+			view.ServerAIs = append(view.ServerAIs, providerLabels[p.ID()])
+		}
+	}
+	return view
 }
 
 func (ui *UI) connectionsView(r *http.Request) connectionsView {
