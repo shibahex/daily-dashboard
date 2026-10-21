@@ -11,6 +11,24 @@ import (
 
 type userKey struct{}
 
+// credential is what let a request in: its session cookie or plugin token. The workspace
+// unlocks the user's encrypted data with it (see workspace.Manager.Unlock).
+type credential struct{ kind, secret string }
+
+type credentialKey struct{}
+
+// Kinds of credential.
+const (
+	BySession = "session"
+	ByToken   = "token"
+)
+
+// CredentialFrom is how the request's user signed in ("session" or "token") and the secret.
+func CredentialFrom(r *http.Request) (kind, secret string) {
+	c, _ := r.Context().Value(credentialKey{}).(credential)
+	return c.kind, c.secret
+}
+
 // UserFrom is the signed-in user of a request that went through Guard. Handlers behind Guard
 // always have one; ok is false only on the public pages.
 func UserFrom(r *http.Request) (User, bool) {
@@ -18,8 +36,9 @@ func UserFrom(r *http.Request) (User, bool) {
 	return user, ok
 }
 
-func withUser(r *http.Request, user User) *http.Request {
-	return r.WithContext(context.WithValue(r.Context(), userKey{}, user))
+func withUser(r *http.Request, user User, kind, secret string) *http.Request {
+	ctx := context.WithValue(r.Context(), userKey{}, user)
+	return r.WithContext(context.WithValue(ctx, credentialKey{}, credential{kind, secret}))
 }
 
 // RequireAdmin refuses the request unless the signed-in user is an admin.
@@ -89,7 +108,7 @@ func (a *Auth) Guard(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
 		if user, ok := a.Session(SessionFrom(r)); ok {
-			next.ServeHTTP(w, withUser(r, user))
+			next.ServeHTTP(w, withUser(r, user, BySession, SessionFrom(r)))
 			return
 		}
 		switch {
@@ -98,7 +117,7 @@ func (a *Auth) Guard(next http.Handler) http.Handler {
 			return
 		case strings.HasPrefix(path, "/api/"):
 			if user, ok := a.TokenUser(tokenFrom(r)); ok {
-				next.ServeHTTP(w, withUser(r, user))
+				next.ServeHTTP(w, withUser(r, user, ByToken, tokenFrom(r)))
 				return
 			}
 			httpx.WriteError(w, http.StatusUnauthorized, "log in to the dashboard, or set the plugin's token")

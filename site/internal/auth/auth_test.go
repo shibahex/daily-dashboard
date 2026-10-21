@@ -471,8 +471,21 @@ func TestMigrateTheSingleAccount(t *testing.T) {
 	if tokenUser, ok := a.TokenUser(oldToken); !ok || tokenUser.ID != user.ID {
 		t.Fatal("the old plugin token should keep working")
 	}
-	if _, err := a.Login("me", goodPassword, ""); err != nil {
-		t.Fatal("the old password should keep working")
+	// The old password works once more, to move the account to proof sign-ins.
+	if _, err := a.Login("me", "the-proof", ""); err != ErrUpgrade {
+		t.Fatalf("an old account should be asked to upgrade, got %v", err)
+	}
+	if _, err := a.Upgrade("me", "wrong", "the-proof", ""); err == nil {
+		t.Fatal("upgrading needs the right old password")
+	}
+	if _, err := a.Upgrade("me", goodPassword, "the-proof", ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.Login("me", "the-proof", ""); err != nil {
+		t.Fatal("after upgrading, the proof should sign in")
+	}
+	if _, err := a.Login("me", goodPassword, ""); err == nil {
+		t.Fatal("after upgrading, the real password shouldn't")
 	}
 	if _, err := os.Stat(filepath.Join(dir, "account.json")); !os.IsNotExist(err) {
 		t.Fatal("the old file should be set aside")

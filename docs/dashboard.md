@@ -5,7 +5,7 @@ The web dashboard in `site/`: a self-hosted page for daily habits: today's worko
 - **Today:** training for the day, checklist with streaks, weight log, nutrition from MyFitnessPal, due tasks, time tracked. The ‹ › arrows around the date at the top go to earlier days (say, after midnight) to see or fix them: that day's training, checklist, weigh-in, food and time. Due tasks and Anki always show now.
 - **Tasks:** add, edit, complete (asks how long it took, default 30 min, and logs it in Timewarrior; also on past days), skip with reasons, repeating schedules (every N days, specific weekdays every N weeks, monthly), undo
 - **History:** GitHub-style activity heatmap (tasks done, hours tracked, checklist), activity feed, time log editor, skip reasons
-- **Docs:** your own Markdown notes, plus these guides
+- **Docs:** your own Markdown notes, plus these guides. **Edit** a note to change its text or name, add one with the box under the list, move the open one with ↑ ↓, or delete it from the editor (it goes to the notes' `.deleted` folder). The guides are read-only.
 - **Anki:** your decks and due cards, add cards, search and edit notes (below)
 - **MCPs:** chat with an AI about your MyFitnessPal diary and Anki cards (below)
 
@@ -104,7 +104,7 @@ Each answer runs in a sandbox ([bubblewrap](https://github.com/containers/bubble
 
 - **First account:** the terminal prints `Create the first (admin) account: …/setup?code=…`. The setup code is also saved in `data/setup-code` (readable only by the server's owner) and deleted once the account exists, so nobody else can claim the server first. This account is the **host**: it keeps the server computer's own Taskwarrior, Timewarrior, MyFitnessPal login and Anki, and gets a one-time copy of the notes and data from before the dashboard had accounts.
 - **Inviting people:** **Admin** (top right, admins only) → **Invite someone**: pick a username and role, and send the one-time link (it works once, for 7 days). They choose their own password. Each person gets their own plan, notes, checklist, weigh-ins, tasks, time log, MyFitnessPal, Anki connection, chats and keys, in `site/data/users/<id>/`.
-- **Admins** manage accounts: password-reset links, turning an account off (logged out at once), making someone an admin, and deleting an account with everything in it (type the username to confirm). There's always at least one active admin, and an admin can't do these to their own account. Admins can't see anyone's data.
+- **Admins** manage accounts: password-reset links, turning an account off (logged out at once), making someone an admin, and deleting an account with everything in it (type the username to confirm). There's always at least one active admin, and an admin can't do these to their own account. Admins can't see anyone's data, and neither can whoever runs the server while it's locked (see **Encrypted data**).
 - **What each person's AI may use:** on the Admin page, per person: which AIs, which MCPs, web search and fetch, reading their own files, editing their notes and plan. **New people start with** sets the default.
 - **Anki for other people:** their Anki runs on their own computer. They install AnkiConnect, set `"webBindAddress": "0.0.0.0"` and an `"apiKey"` in its config, and enter the address and key on their Account page. The dashboard refuses an AnkiConnect without a key (anyone on the network could use it) and, for anyone but the host, addresses on the server itself.
 
@@ -117,19 +117,33 @@ Each answer runs in a sandbox ([bubblewrap](https://github.com/containers/bubble
 - **Keys:** AI keys are encrypted with the server's key (`data/secret.key`) and tied to their owner, so a copied user folder doesn't give them away.
 - **Other websites:** changes that another origin starts are refused, including other servers on `localhost`. Requests for any host name but `localhost` and the public address are refused (DNS rebinding). The pages send a strict Content-Security-Policy, can't be framed, and load HTMX from jsDelivr pinned with integrity hashes.
 - **Files:** `site/data/`, every user's folder, `plan.json`, `.env` and notes are readable only by the server's account (folders `0700`, files `0600`).
-- **Forgot your password?** Ask an admin for a reset link. If the only admin is locked out, whoever runs the server stops it and runs `nix run . -- reset-password <username>` in `site/`.
+- **Forgot your password?** Ask an admin for a reset link. If your data is encrypted, the reset page asks for your **recovery code**: with it you keep your data, without it the account starts over empty. If the only admin is locked out, whoever runs the server stops it and runs `nix run . -- reset-password <username>` in `site/`.
+
+## Encrypted data
+
+Everyone's data but the host's is encrypted, so whoever runs the server can't read it. Notes go further: the server never has them readable at all.
+
+- **Your password never leaves your browser.** The sign-in page turns it into two things: a proof that signs you in (all the server gets) and a key that only your browser has.
+- **Notes are encrypted end to end.** Your browser encrypts and decrypts them with that key (`web/js/keys.js`, `web/js/notes.js`); the server stores one scrambled blob. Even with someone's login, or watching the network, the notes can't be read without their password. Notes from before are sealed the first time you open the Docs tab, and their plain copies deleted.
+- **The AI still reads your notes.** Each chat message carries them, decrypted by your browser, for that one answer. They're never saved on the server, but the server could see them while the answer runs (moving the AI into the browser is planned).
+- **Everything else** (plan, food, tasks, chats, logins) is encrypted on the server's disk (AES-256-GCM, file by file, names hidden) in `site/data/vaults/<id>/`, with a random key locked by your password's proof, your recovery code and each signed-in browser. Signed in, it's decrypted into memory (a tmpfs: `$XDG_RUNTIME_DIR/dashboard-vaults` or `/dev/shm`) for the server to use, and saved back every few seconds. It's locked again (saved, wiped from memory) when you log out of your last browser, after 30 minutes without a request, and when the server stops. After a restart, your next page load unlocks it without a new sign-in.
+- **Recovery code:** made by your browser and shown once (your first sign-in, or joining). It's the only way back in if you forget your password: an admin's reset link keeps your data only if you enter it. Make a new one on the Account page.
+- **Older accounts** sign in once more with their password (to move to proofs); their data is encrypted then. The Admin page shows who isn't encrypted yet.
+- **Needs HTTPS** (or `localhost`): browsers only do this encryption on secure pages.
+- **What it doesn't stop:** whoever runs the server could change the page's code to catch passwords as they're typed (true of any website), or read the non-note data in memory while you're signed in. A weak password can be guessed, so pick a strong one.
 
 ## Your data
 
 None of this is tracked by git:
 
 - `site/data/users/<id>/`: one folder per person: `plan.json`, `docs/` (their notes, from `docs/templates/` on first use), checklist history, weigh-ins, the MyFitnessPal cache and login, Anki connection, chat, sealed keys, and their Taskwarrior and Timewarrior (except the host's, which use the computer's own)
+- `site/data/vaults/<id>/`: everyone else's folder, encrypted (see above); `site/data/users/<id>/` holds only the host's, and older accounts' until they're encrypted
 - `site/data/`: accounts and sessions (hashes only), invites, the server's key, the installed MCP programs
 - `site/.env`: local settings (see `site/.env.example`)
 - `docs/*.md` and `site/plan.json` from before accounts stay as a backup after being copied to the host's folder
 
 ## Code
 
-- `site/cmd/dashboard`: the Go server's entry point; `site/internal/` holds one package per area: `auth` (accounts, sessions, invites, policy), `workspace` (each user's folder and services), `taskwarrior`, `timewarrior`, `myfitnesspal`, `anki` (and its gateway), `assistant` (the AI CLIs), `sandbox` and `egress` (the agents' sandbox and its proxy), `web` and `api` (the HTTP handlers). One dependency (goldmark, for Markdown). `nix run` builds it.
+- `site/cmd/dashboard`: the Go server's entry point; `site/internal/` holds one package per area: `auth` (accounts, sessions, invites, policy), `workspace` (each user's folder and services), `taskwarrior`, `timewarrior`, `myfitnesspal`, `anki` (and its gateway), `assistant` (the AI CLIs), `sandbox` and `egress` (the agents' sandbox and its proxy), `vault` (encrypting each person's data), `localmodel` (the bridge to a local model server), `web` and `api` (the HTTP handlers). One dependency (goldmark, for Markdown). `nix run` builds it.
 - `site/mfp_fetch.py`: MyFitnessPal reads and writes, run through the MyFitnessPal MCP's Python package.
 - `site/web/`: the pages. `templates/` has the HTML (one file per tab), rendered on the server and updated in place with [HTMX](https://htmx.org); styles are in `css/` (one file per area) and `js/app.js` does the few things HTMX can't (toasts, shortcuts, dragging cards). No build step: edit a file and reload the page.

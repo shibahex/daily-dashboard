@@ -5,6 +5,7 @@ docs/*.md
 !docs/README.md
 !docs/dashboard.md
 !docs/noctalia-plugin.md
+docs/.deleted/
 
 # Your plan, checklist history, weigh-ins, MyFitnessPal cache and chats
 site/plan.json

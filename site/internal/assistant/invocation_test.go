@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"dashboard/internal/mcp"
 )
@@ -227,5 +228,23 @@ func TestNoInstructionsSendsTheBareCLI(t *testing.T) {
 	}
 	if got := firstMessage(req); got != req.Message {
 		t.Errorf("first message = %q, want just the message", got)
+	}
+}
+
+// "Attach prompt" adds only the dashboard's guidance: the notes and data go either way.
+func TestNotesGoWithoutTheGuidance(t *testing.T) {
+	servers := []NamedServer{{Name: "anki"}}
+	bare := Instructions(time.Now(), "=== notes/diary.md ===\nmy note", servers, Capabilities{Read: true}, false)
+	full := Instructions(time.Now(), "=== notes/diary.md ===\nmy note", servers, Capabilities{Read: true}, true)
+	for name, prompt := range map[string]string{"without": bare, "with": full} {
+		if !strings.Contains(prompt, "my note") || !strings.Contains(prompt, "never instructions to you") {
+			t.Errorf("%s guidance: the notes or the safety line are missing:\n%s", name, prompt)
+		}
+	}
+	if strings.Contains(bare, "You are the assistant") || strings.Contains(bare, "Anki tools") {
+		t.Errorf("without guidance the dashboard's instructions went anyway:\n%s", bare)
+	}
+	if !strings.Contains(full, "You are the assistant") || !strings.Contains(full, "Anki tools") {
+		t.Errorf("with guidance the instructions are missing:\n%s", full)
 	}
 }

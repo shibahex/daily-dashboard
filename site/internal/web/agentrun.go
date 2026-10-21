@@ -14,6 +14,7 @@ import (
 	"dashboard/internal/mcp"
 	"dashboard/internal/problem"
 	"dashboard/internal/sandbox"
+	"dashboard/internal/store"
 	"dashboard/internal/workspace"
 )
 
@@ -28,7 +29,9 @@ type agentRun struct {
 	message      string
 	mcps         []string // allowed and turned on
 	caps         assistant.Capabilities
-	env          []string // the user's API key
+	env          []string          // the user's API key
+	sealed       bool              // the user's notes are sealed: they come from the browser
+	notes        []store.PlainNote // ...decrypted there for this answer only
 
 	listeners []net.Listener
 	staged    workspace.Staged
@@ -97,6 +100,9 @@ func (run *agentRun) prepare() (assistant.Request, error) {
 	if err != nil {
 		return assistant.Request{}, err
 	}
+	if run.sealed {
+		ws.StageSealedNotes(run.workspaceDir(), &staged, run.notes, run.caps.Read)
+	}
 	run.staged = staged
 
 	egressSocket := filepath.Join(run.sockets, "egress.sock")
@@ -123,10 +129,16 @@ func (run *agentRun) prepare() (assistant.Request, error) {
 		}
 		servers = append(servers, assistant.NamedServer{Name: name, Server: server})
 	}
-	instructions := ""
-	if !run.conversation.NoInstructions {
-		instructions = assistant.Instructions(time.Now(), assistant.Context(ws.Paths.Docs, ws.Paths.Plan(), ws.Paths.Data), servers, run.caps)
+	// The notes and data always go; "Attach prompt" adds the dashboard's guidance.
+	context := assistant.Context(ws.Paths.Docs, ws.Paths.Plan(), ws.Paths.Data)
+	if run.sealed {
+		var notes []assistant.Note
+		for _, n := range run.notes {
+			notes = append(notes, assistant.Note{Name: n.Name, Text: n.Text})
+		}
+		context = assistant.ContextWith(notes, ws.Paths.Plan(), ws.Paths.Data)
 	}
+	instructions := assistant.Instructions(time.Now(), context, servers, run.caps, !run.conversation.NoInstructions)
 
 	model := run.conversation.Model()
 	if model == "" && run.provider.ID() == "local" {

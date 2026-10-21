@@ -252,7 +252,7 @@ func (ui *UI) sendMessage(w http.ResponseWriter, r *http.Request) {
 		caps.Web = false // web search is Anthropic's own service, which a local server doesn't have
 	}
 	run := &agentRun{ui: ui, ws: ws, provider: provider, conversation: conversation, message: message,
-		mcps: allowedMCPs(user.Policy, conversation), caps: caps, env: env}
+		mcps: allowedMCPs(user.Policy, conversation), caps: caps, env: env, sealed: sealedNotes(user), notes: browserNotes(r)}
 	go run.answer()
 	ui.render(w, "chat-card", ui.chatView(r, false))
 }

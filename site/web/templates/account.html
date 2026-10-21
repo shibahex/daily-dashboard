@@ -1,21 +1,36 @@
-{{/* Setup and login: their own small page, without the tabs (you aren't signed in yet). */}}
+{{/* Setup and login: their own small page, without the tabs (you aren't signed in yet). The
+     forms send proofs made in the browser, never the password itself (web/js/keys.js). */}}
 {{define "sign-in"}}<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{{if .Setup}}Create your account{{else if .Reset}}Set a new password{{else if .Invite}}Join the dashboard{{else}}Log in{{end}} · Daily Dashboard</title>
+<title>{{if .ShowRecovery}}Save your recovery code{{else if .Setup}}Create your account{{else if .Reset}}Set a new password{{else if .Invite}}Join the dashboard{{else}}Log in{{end}} · Daily Dashboard</title>
 <link rel="stylesheet" href="/static/css/base.css">
 <link rel="stylesheet" href="/static/css/account.css">
 <link rel="stylesheet" href="/static/css/components.css">
+<script src="/static/js/keys.js" defer></script>
 </head>
 <body>
 <main class="sign-in">
-  <form class="card" method="post" action="{{if .Setup}}/setup{{else if .Invite}}/invite{{else}}/login{{end}}">
+  {{if .ShowRecovery}}
+  <div class="card recovery">
+    <h1>Save your recovery code</h1>
+    <p>Your notes are encrypted in your browser and your other data on the server: your password opens them, and nobody running the server can read your notes. If you forget your password, this code is the only way to get your data back. An admin can't.</p>
+    <p class="recovery-code" hidden><input class="txt token" readonly data-recovery-code aria-label="Your recovery code"></p>
+    <p class="sign-in-error" data-recovery-lost hidden>This browser didn't keep the code it made. Make a new one on the Account page now.</p>
+    <p class="muted small">Write it down or keep it in a password manager. It's shown only now; you can make a new one on the Account page.</p>
+    <a class="primary sm sign-in-btn" href="/">I saved it, continue</a>
+  </div>
+  {{else}}
+  <form class="card" method="post" action="{{if .Setup}}/setup{{else if .Invite}}/invite{{else}}/login{{end}}"
+    data-keys="{{if .Setup}}setup{{else if .Invite}}invite{{else}}login{{end}}"{{if .Upgrade}} data-upgrade{{end}}{{with .NotesRecovery}} data-notes-recovery="{{.}}"{{end}}>
     <h1>{{if .Setup}}Create your account{{else if .Reset}}Set a new password{{else if .Invite}}Join the dashboard{{else}}Log in{{end}}</h1>
     {{if .Setup}}<p class="muted">You're the first account, so you're an admin: you'll invite everyone else. Each person only ever sees their own food, notes and tasks.</p>{{end}}
     {{if and .Invite (not .Reset) .Username}}<p class="muted">You were invited as <b>{{.Username}}</b>. Pick a password to finish. Your food, notes and tasks are only yours.</p>{{end}}
     {{with .Error}}<p class="sign-in-error" role="alert">{{.}}</p>{{end}}
+    <p class="sign-in-error" role="alert" data-keys-error hidden></p>
+    {{if .Locked}}<p class="muted">Sign in again to unlock your data. It's encrypted, and your password opens it.</p>{{end}}
     {{if .Setup}}
     <label>Setup code
       <input class="txt" name="code" value="{{.Code}}" required autocomplete="off" spellcheck="false">
@@ -30,16 +45,23 @@
     {{end}}
     {{if or (not .Invite) .Username}}
     <label>{{if .Reset}}New password{{else}}Password{{end}}
-      <input class="txt" type="password" name="password" required{{if or .Setup .Invite}} maxlength="256" autocomplete="new-password"{{else}} autocomplete="current-password"{{end}}{{if or .Username .Invite}} autofocus{{end}}>
-      {{if or .Setup .Invite}}<small class="muted">A few random words is easy to remember and hard to guess.</small>{{end}}</label>
+      <input class="txt" type="password" name="password" data-password required{{if or .Setup .Invite}} maxlength="256" autocomplete="new-password"{{else}} autocomplete="current-password"{{end}}{{if or .Username .Invite}} autofocus{{end}}>
+      {{if or .Setup .Invite}}<small class="muted">A few random words is easy to remember and hard to guess. It never leaves this browser.</small>{{end}}</label>
     {{if or .Setup .Invite}}
     <label>Password again
-      <input class="txt" type="password" name="confirm" required maxlength="256" autocomplete="new-password"></label>
+      <input class="txt" type="password" name="confirm" data-confirm required maxlength="256" autocomplete="new-password"></label>
+    {{end}}
+    {{if .Keeping}}
+    <label>Recovery code
+      <input class="txt" name="recovery_code" data-recovery autocomplete="off" spellcheck="false" placeholder="XXXX-XXXX-…">
+      <small class="muted">Your data is encrypted with your old password. This code, from when you first signed in, keeps it.</small></label>
+    <label class="check-line"><input type="checkbox" name="start_over" value="1"> I don't have it: start over with no data</label>
     {{end}}
     <button class="primary sm sign-in-btn">{{if .Setup}}Create account{{else if .Reset}}Set password{{else if .Invite}}Join{{else}}Log in{{end}}</button>
     {{end}}
     {{if not (or .Setup .Invite)}}<p class="muted small">Forgot it? Ask an admin for a reset link.</p>{{end}}
   </form>
+  {{end}}
 </main>
 </body>
 </html>
@@ -134,16 +156,31 @@
     </div>
   </div>
 
-  <form class="card" hx-post="/account/password" hx-target="#account-card" hx-swap="outerHTML">
+  <form class="card" hx-post="/account/password" hx-target="#account-card" hx-swap="outerHTML" data-keys="password"{{if .Sealed}} data-sealed{{end}}>
     <h2>Change password</h2>
     {{with .Error}}<p class="sign-in-error" role="alert">{{.}}</p>{{end}}
     {{with .Saved}}<p class="ok">{{.}}</p>{{end}}
+    <p class="sign-in-error" role="alert" data-keys-error hidden></p>
     <input type="text" name="username" value="{{.Username}}" autocomplete="username" hidden>
-    <label>Current password <input class="txt" type="password" name="current" required autocomplete="current-password"></label>
-    <label>New password <input class="txt" type="password" name="password" required maxlength="256" autocomplete="new-password"></label>
-    <label>New password again <input class="txt" type="password" name="confirm" required maxlength="256" autocomplete="new-password"></label>
+    <label>Current password <input class="txt" type="password" name="current_password" data-current required autocomplete="current-password"></label>
+    <label>New password <input class="txt" type="password" name="new_password" data-password required maxlength="256" autocomplete="new-password"></label>
+    <label>New password again <input class="txt" type="password" name="new_confirm" data-confirm required maxlength="256" autocomplete="new-password"></label>
     <div><button class="sm primary">Change password</button></div>
   </form>
+
+  {{if or .Encrypted .Sealed}}
+  <form class="card" hx-post="/account/recovery" hx-target="#account-card" hx-swap="outerHTML" data-keys="recovery"{{if .Sealed}} data-sealed{{end}}>
+    <h2>Your data is encrypted</h2>
+    <p class="muted">Your notes are encrypted here in your browser: the server only ever has them scrambled. Your other data (plan, food, tasks, chats, logins) is encrypted on the server's disk and opens while you're signed in. If you forget your password, your recovery code is the only way back in.</p>
+    {{if .NewRecovery}}
+    <div hidden><p>Your new recovery code. Save it now: it's only shown once, and the old one no longer works.</p>
+    <input class="txt token" readonly data-new-recovery-code data-select-all aria-label="Your new recovery code"></div>
+    {{end}}
+    <p class="sign-in-error" role="alert" data-keys-error hidden></p>
+    {{if .Sealed}}<label>Your password <input class="txt" type="password" name="recovery_password" data-password required autocomplete="current-password"></label>{{end}}
+    <div class="row"><button class="sm">New recovery code</button> <span class="small muted">The old one stops working.</span></div>
+  </form>
+  {{end}}
 
   <div class="card">
     <h2>Bar plugin token</h2>

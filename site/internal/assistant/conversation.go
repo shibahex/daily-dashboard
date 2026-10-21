@@ -19,7 +19,8 @@ type Conversation struct {
 	MCPs      *[]string         `json:"mcps,omitempty"`   // turned-on MCP servers; nil = all
 	Models    map[string]string `json:"models,omitempty"` // chosen model per provider ("" = default)
 
-	// NoInstructions runs the CLI as it is: no dashboard prompt, notes or data, just the MCPs.
+	// NoInstructions leaves out the dashboard's guidance ("Attach prompt" off). The agent still
+	// gets the user's notes and data.
 	NoInstructions bool `json:"no_instructions,omitempty"`
 }
 

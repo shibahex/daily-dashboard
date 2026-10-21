@@ -35,13 +35,14 @@
         <b>{{.Username}}</b>
         <span class="badge">{{if .IsAdmin}}admin{{else}}user{{end}}</span>
         {{if .Host}}<span class="badge" title="Uses the server computer's own Taskwarrior, MyFitnessPal login and Anki">host</span>{{end}}
+        {{if not .Host}}{{if index $view.Encrypted .ID}}<span class="badge" title="Encrypted on the server's disk; opens only with their password while they're signed in">encrypted</span>{{else}}<span class="badge off" title="Still in plain files: it's encrypted the next time they sign in">not encrypted yet</span>{{end}}{{end}}
         {{if .Disabled}}<span class="badge off">turned off</span>{{end}}
         {{if eq .ID $view.Me}}<span class="small muted">(you)</span>{{end}}
         <span class="small muted">{{if .LastLogin.IsZero}}never logged in{{else}}last login {{isoDay .LastLogin}}{{end}}</span>
       </div>
       {{if ne .ID $view.Me}}
       <div class="row">
-        <button class="sm" hx-post="/admin/users/{{.ID}}/reset" hx-target="#admin-card" hx-swap="outerHTML">Password reset link</button>
+        <button class="sm" hx-post="/admin/users/{{.ID}}/reset" hx-target="#admin-card" hx-swap="outerHTML"{{if index $view.Encrypted .ID}} hx-confirm="Make a reset link for {{.Username}}? Their data is encrypted with their password: they keep it only if they still have their recovery code. Without it, the reset starts them over with nothing."{{end}}>Password reset link</button>
         {{if .IsAdmin}}<button class="sm" hx-post="/admin/users/{{.ID}}/role" hx-vals='{"role": "user"}' hx-target="#admin-card" hx-swap="outerHTML">Make regular user</button>
         {{else}}<button class="sm" hx-post="/admin/users/{{.ID}}/role" hx-vals='{"role": "admin"}' hx-target="#admin-card" hx-swap="outerHTML" hx-confirm="Make {{.Username}} an admin? Admins can manage every account.">Make admin</button>{{end}}
         {{if .Disabled}}<button class="sm" hx-post="/admin/users/{{.ID}}/enable" hx-target="#admin-card" hx-swap="outerHTML">Turn on</button>

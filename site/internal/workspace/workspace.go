@@ -2,7 +2,7 @@
 // services that read and change it. Pages get the signed-in user's workspace and nothing else,
 // so one user's requests can never touch another user's plan, notes, tasks, food or chat.
 //
-// A user's folder is site/data/users/<id>/:
+// A user's folder holds:
 //
 //	plan.json, checklist.json, weights.json, mfp.json, chat.json, anki_history.json
 //	docs/          their notes
@@ -10,8 +10,10 @@
 //	mfp/           their MyFitnessPal login (the MCP's config and browser profile)
 //	assistant/     config files for the AI agent's runs
 //
-// The host account (the server's owner) keeps this computer's own Taskwarrior, Timewarrior,
-// MyFitnessPal login and Anki, so the terminal tools keep showing the same tasks.
+// It's encrypted on disk (site/data/vaults/<id>/, see vault.go): while the user is signed in it's
+// decrypted into memory and used from there. The host account (the server's owner) keeps this
+// computer's own Taskwarrior, Timewarrior, MyFitnessPal login and Anki, so the terminal tools
+// keep showing the same tasks, and its folder (site/data/users/<id>/) isn't encrypted.
 package workspace
 
 import (
@@ -32,6 +34,7 @@ import (
 	"dashboard/internal/tasks"
 	"dashboard/internal/taskwarrior"
 	"dashboard/internal/timewarrior"
+	"dashboard/internal/vault"
 )
 
 // Workspace is one user's services, all working on that user's own files.
@@ -67,6 +70,16 @@ func (w *Workspace) setAnki(client anki.Client) {
 	w.anki = client
 }
 
+// close ends the workspace's background work: its sync, and any answer being written.
+func (w *Workspace) close() {
+	close(w.stop)
+	w.Chat.Stop()
+	<-w.done // a sync still writing would leave files behind
+	for i := 0; w.Chat.Busy() && i < 50; i++ {
+		time.Sleep(100 * time.Millisecond) // ...and so would an answer being saved
+	}
+}
+
 // Manager opens each user's workspace once and keeps it.
 type Manager struct {
 	paths     config.Paths        // the server's
@@ -76,20 +89,32 @@ type Manager struct {
 	providers assistant.Providers
 	box       *secrets.Box
 
-	mu   sync.Mutex
-	open map[string]*Workspace
+	mu       sync.Mutex
+	open     map[string]*Workspace
+	unlocked map[string]*unlocked // encrypted users whose data is open, by id
+	memory   string               // where unlocked folders live (in RAM); "" when there's nowhere safe
+	memErr   error
+
+	// Credentials names a user's live sessions and token (auth.Auth.Credentials), so key copies
+	// for ended ones are dropped and a user with none left is locked.
+	Credentials func(userID string) []string
+	// LockAfter locks an encrypted user's data after this long without a request.
+	LockAfter time.Duration
 }
 
 func NewManager(paths config.Paths, mfp myfitnesspal.Client, hostAnki anki.Client, gateway *anki.Gateway,
 	providers assistant.Providers, box *secrets.Box) *Manager {
 	os.MkdirAll(paths.UsersDir(), 0o700)
+	memory, memErr := vault.MemoryDir()
 	return &Manager{paths: paths, mfp: mfp, hostAnki: hostAnki, gateway: gateway, providers: providers, box: box,
-		open: map[string]*Workspace{}}
+		open: map[string]*Workspace{}, unlocked: map[string]*unlocked{}, memory: memory, memErr: memErr,
+		Credentials: func(string) []string { return nil }, LockAfter: 30 * time.Minute}
 }
 
 // For is the user's workspace, opened (and its MyFitnessPal sync started) on first use.
 // It panics without a user: only pages behind auth.Guard ask, and handing out some shared
-// workspace instead would mix people's data.
+// workspace instead would mix people's data. An encrypted user's data must have been unlocked
+// first (Unlock, which every request goes through); asking for a locked one panics too.
 func (m *Manager) For(user auth.User) *Workspace {
 	if !validID(user.ID) {
 		panic("workspace: no signed-in user")
@@ -97,9 +122,20 @@ func (m *Manager) For(user auth.User) *Workspace {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if ws, ok := m.open[user.ID]; ok {
+		if u := m.unlocked[user.ID]; u != nil {
+			u.used = time.Now()
+		}
 		return ws
 	}
-	ws := m.openWorkspace(user)
+	if m.encrypted(user) {
+		panic("workspace: " + user.ID + "'s data is locked")
+	}
+	return m.start(user, filepath.Join(m.paths.UsersDir(), user.ID))
+}
+
+// start opens the user's workspace on their folder dir and starts its sync. It needs m.mu held.
+func (m *Manager) start(user auth.User, dir string) *Workspace {
+	ws := m.openWorkspace(user, dir)
 	m.open[user.ID] = ws
 	go func() {
 		defer close(ws.done)
@@ -111,32 +147,37 @@ func (m *Manager) For(user auth.User) *Workspace {
 // Gateway is the Anki gateway every user's agent reaches their Anki through.
 func (m *Manager) Gateway() *anki.Gateway { return m.gateway }
 
-// OpenAll opens every user's workspace, so each one's MyFitnessPal keeps syncing.
+// OpenAll opens the workspaces that aren't encrypted, so each one's MyFitnessPal keeps syncing.
+// Encrypted ones open when their user signs in or comes back.
 func (m *Manager) OpenAll(users []auth.User) {
 	for _, user := range users {
-		if !user.Disabled {
+		if !user.Disabled && !m.encrypted(user) {
 			m.For(user)
 		}
 	}
 }
 
-// Remove stops the user's background work and deletes their folder: everything they had.
+// Remove stops the user's background work and deletes their data: their folder, their
+// encrypted copy and its keys, and the unlocked copy in memory. Everything they had.
 func (m *Manager) Remove(userID string) error {
+	if !validID(userID) {
+		return nil
+	}
 	m.mu.Lock()
 	ws, ok := m.open[userID]
 	delete(m.open, userID)
+	delete(m.unlocked, userID)
 	m.mu.Unlock()
 	if ok {
-		close(ws.stop)
-		ws.Chat.Stop()
-		<-ws.done // a sync still writing would leave files behind
-		for i := 0; ws.Chat.Busy() && i < 50; i++ {
-			time.Sleep(100 * time.Millisecond) // ...and so would an answer being saved
-		}
+		ws.close()
 	}
 	m.gateway.Unregister(userID)
-	if !validID(userID) {
-		return nil
+	if m.memory != "" {
+		os.Remove(m.unlockedMarker(userID))
+		vault.Wipe(m.memoryDir(userID))
+	}
+	if err := os.RemoveAll(m.vaultDir(userID)); err != nil {
+		return err
 	}
 	return os.RemoveAll(filepath.Join(m.paths.UsersDir(), userID))
 }
@@ -190,8 +231,8 @@ func validID(id string) bool {
 	return true
 }
 
-func (m *Manager) openWorkspace(user auth.User) *Workspace {
-	dir := filepath.Join(m.paths.UsersDir(), user.ID)
+// openWorkspace makes the user's services, working on their folder dir.
+func (m *Manager) openWorkspace(user auth.User, dir string) *Workspace {
 	os.MkdirAll(dir, 0o700)
 	paths := m.paths.ForUser(dir)
 	if user.Host {
@@ -233,10 +274,9 @@ func prepareTaskwarrior(dir, hook string) []string {
 	for _, d := range []string{taskData, hooks, filepath.Join(timewDB, "data")} {
 		os.MkdirAll(d, 0o700)
 	}
-	if _, err := os.Stat(taskrc); os.IsNotExist(err) {
-		os.WriteFile(taskrc, []byte("# Made by the dashboard for this account.\n"+
-			"data.location="+taskData+"\nhooks.location="+hooks+"\nhooks=on\n"), 0o600)
-	}
+	// Written every time: its paths follow the folder, which is in memory while unlocked.
+	os.WriteFile(taskrc, []byte("# Made by the dashboard for this account.\n"+
+		"data.location="+taskData+"\nhooks.location="+hooks+"\nhooks=on\n"), 0o600)
 	if cfg := filepath.Join(timewDB, "timewarrior.cfg"); !exists(cfg) {
 		os.WriteFile(cfg, nil, 0o600)
 	}

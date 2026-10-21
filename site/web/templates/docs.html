@@ -1,6 +1,64 @@
-{{define "docs"}}
-<div class="docs">
-  <div class="doclist">{{range .Docs}}<a href="/docs?doc={{query .Name}}"{{if .Open}} class="on"{{end}}>{{.Title}}</a>{{end}}</div>
-  <div class="card md">{{.Content}}</div>
+{{/* The Docs tab: the list of notes and guides, and the open one, shown or in its editor.
+     Every change answers with this whole block (#docs). */}}
+{{define "docs"}}{{if .Sealed}}{{template "sealed-docs" .}}{{else}}
+<div class="docs" id="docs">
+  <div class="doclist">
+    {{if .HasNotes}}<div class="doclist-head">Notes</div>{{end}}
+    {{range .Docs}}
+    {{if .FirstGuide}}{{template "new-note"}}
+    <div class="doclist-head">Guides</div>
+    {{end}}
+    <div class="doclink{{if .Open}} on{{end}}">
+      <a href="/docs?doc={{query .Name}}">{{.Title}}</a>
+      {{if and .Open .Note}}<span class="move">
+        <button class="icon" hx-post="/docs/move" hx-vals="{{vals "name" .Name "dir" "up"}}" hx-target="#docs" hx-swap="outerHTML" title="Move up" aria-label="Move up"{{if .First}} disabled{{end}}>↑</button>
+        <button class="icon" hx-post="/docs/move" hx-vals="{{vals "name" .Name "dir" "down"}}" hx-target="#docs" hx-swap="outerHTML" title="Move down" aria-label="Move down"{{if .Last}} disabled{{end}}>↓</button>
+      </span>{{end}}
+    </div>
+    {{end}}
+    {{if not .HasGuides}}{{template "new-note"}}{{end}}
+  </div>
+  {{if .Editing}}
+  <form class="card doc-editor" data-ctrl-enter hx-post="/docs/save" hx-target="#docs" hx-swap="outerHTML">
+    <input type="hidden" name="name" value="{{.Open}}">
+    <label class="lbl">Name <input class="txt" name="title" value="{{.Title}}" maxlength="60" required></label>
+    <textarea class="txt" name="content" spellcheck="true" aria-label="The note, in Markdown" autofocus>{{.Source}}</textarea>
+    <div class="foot">
+      <button type="button" class="sm ghost" hx-post="/docs/delete" hx-vals="{{vals "name" .Open}}" hx-target="#docs" hx-swap="outerHTML"
+        hx-confirm="Delete “{{.Title}}”? It's moved to the notes' .deleted folder, not erased.">Delete note</button>
+      <span><span class="small muted">Markdown · Ctrl+Enter saves</span>
+        <button type="button" class="sm" hx-get="/docs/card?doc={{query .Open}}" hx-target="#docs" hx-swap="outerHTML">Cancel</button>
+        <button class="sm primary">Save</button></span>
+    </div>
+  </form>
+  {{else}}
+  <div class="card md">
+    {{if .Note}}<div class="doc-tools"><button class="edit-btn" hx-get="/docs/card?doc={{query .Open}}&amp;edit=1" hx-target="#docs" hx-swap="outerHTML">Edit</button></div>{{end}}
+    {{.Content}}
+  </div>
+  {{end}}
+</div>
+{{end}}{{end}}
+
+{{define "new-note"}}
+<form class="new-note" hx-post="/docs/new" hx-target="#docs" hx-swap="outerHTML">
+  <input class="txt" name="title" maxlength="60" placeholder="New note…" required aria-label="New note's name">
+  <button class="sm" title="Add the note">Add</button>
+</form>
+{{end}}
+
+{{/* Sealed notes: the server lists the guides (and shows one when asked); notes.js fills in the
+     notes, which only the browser can read, into [data-sealed-notes] and [data-sealed-view]. */}}
+{{define "sealed-docs"}}
+<div class="docs" id="docs">
+  <div class="doclist">
+    <div data-sealed-notes></div>
+    {{if .HasGuides}}<div class="doclist-head">Guides</div>{{end}}
+    {{range .Docs}}<div class="doclink{{if .Open}} on{{end}}"><a href="/docs?doc={{query .Name}}">{{.Title}}</a></div>{{end}}
+  </div>
+  <div class="docs-main"{{if .Open}} data-guide{{end}}>
+    {{if .Open}}<div class="card md">{{.Content}}</div>{{end}}
+    <div data-sealed-view></div>
+  </div>
 </div>
 {{end}}

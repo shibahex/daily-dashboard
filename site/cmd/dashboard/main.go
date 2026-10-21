@@ -5,14 +5,17 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"dashboard/internal/anki"
@@ -64,11 +67,14 @@ func main() {
 	providers := assistant.NewProviders(assistant.NewModelCatalog(filepath.Join(paths.ServerData, "assistant")))
 	mfp := myfitnesspal.NewClientFromEnv(filepath.Join(siteDir, "mfp_fetch.py"))
 	workspaces := workspace.NewManager(paths, mfp, anki.NewClientFromEnv(), gateway, providers, box)
+	workspaces.Credentials = account.Credentials
 	tools, sandboxErr := sandbox.Find()
 	if sandboxErr != nil {
 		log.Printf("The AI chat won't run: %v", sandboxErr)
 	}
 	workspaces.OpenAll(account.Users())
+	stopSaving := make(chan struct{})
+	go workspaces.RunUntil(stopSaving)
 
 	mux := http.NewServeMux()
 	jsonAPI := &api.API{Workspaces: workspaces}
@@ -85,10 +91,23 @@ func main() {
 		fmt.Printf("Create the first (admin) account: %s/setup?code=%s\n", network.BaseURL(), code)
 	}
 	server := &http.Server{
-		Handler:           httpx.RealIP(network.TrustedProxies, httpx.OnlyHosts(network.AllowedHosts(), httpx.Secure(account.Guard(mux)))),
+		Handler:           httpx.RealIP(network.TrustedProxies, httpx.OnlyHosts(network.AllowedHosts(), httpx.Secure(account.Guard(pages.UnlockData(mux))))),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
-	log.Fatal(server.Serve(listener))
+	// Stopping (Ctrl+C, systemd) saves everyone's open data and wipes it from memory.
+	stopped := make(chan os.Signal, 1)
+	signal.Notify(stopped, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-stopped
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		server.Shutdown(ctx)
+	}()
+	if err := server.Serve(listener); err != http.ErrServerClosed {
+		log.Print(err)
+	}
+	close(stopSaving)
+	workspaces.LockAll()
 }
 
 // resetPassword prints a one-time link to set a new password for username: for whoever runs

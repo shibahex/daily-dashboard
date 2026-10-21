@@ -15,7 +15,7 @@
         title="{{if .Enabled}}Turn off{{else}}Turn on{{end}} the {{.Label}} MCP{{if not .Ready}}{{if eq .ID "anki"}} (not connected: see the Anki tab){{else}} (needs setup){{end}}{{end}}"><i></i>{{.Label}}</button>
     {{end}}
       <button class="pill mcp-toggle ready{{if .Instructions}} on{{end}}" role="switch" aria-checked="{{.Instructions}}" hx-post="/mcps/instructions" hx-target="#chat-card" hx-swap="outerHTML"{{if $.Busy}} disabled{{end}}
-        title="{{if .Instructions}}On: the AI gets the dashboard's instructions plus your notes, plan and data. Turn off to use it as it is, with just the MCPs{{else}}Off: the AI gets no instructions or notes, just the MCPs. Turn on to give it the dashboard's prompt and your data{{end}}"><i></i>Instructions</button>
+        title="{{if .Instructions}}On: the AI also gets the dashboard's instructions (how to answer, how to use the MCPs). Your notes and data go either way{{else}}Off: just your notes, data and the MCPs, without the dashboard's instructions{{end}}"><i></i>Attach prompt</button>
     </div>
     <span class="chat-tools">
       <select class="pill" name="provider" title="Which AI answers" hx-post="/mcps/provider" hx-target="#chat-card" hx-swap="outerHTML"{{if .Messages}} hx-confirm="Start a new chat with the AI you picked?"{{end}}{{if .Busy}} disabled{{end}}>

@@ -2,6 +2,7 @@ package web
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -58,6 +59,36 @@ func TestAccountTemplatesRender(t *testing.T) {
 	for _, view := range []signInView{{Setup: true}, {}, {Invite: true, Reset: true, Username: "me"}, {Invite: true, Error: "expired"}} {
 		if _, err := ui.renderToHTML("sign-in", view); err != nil {
 			t.Errorf("sign-in %+v: %v", view, err)
+		}
+	}
+}
+
+func TestEncryptionTemplatesRender(t *testing.T) {
+	ui := &UI{templates: newTemplateSet("../../web")}
+	cases := []struct {
+		name string
+		view any
+		want string
+	}{
+		{"sign-in", signInView{Username: "friend", ShowRecovery: true}, "data-recovery-code"},
+		{"sign-in", signInView{Username: "friend", Upgrade: true}, "data-upgrade"},
+		{"sign-in", signInView{}, `data-keys="login"`},
+		{"sign-in", signInView{Invite: true, Reset: true, Keeping: true, Username: "f", NotesRecovery: "d3JhcA=="}, `data-notes-recovery="d3JhcA=="`},
+		{"sign-in", signInView{Invite: true, Reset: true, Keeping: true, Username: "friend", Code: "c"}, `name="start_over"`},
+		{"sign-in", signInView{Locked: true}, "unlock your data"},
+		{"account", accountView{Username: "me", Encrypted: true, Sealed: true, NewRecovery: true}, "data-new-recovery-code"},
+		{"account", accountView{Username: "me", Sealed: true}, `data-keys="password" data-sealed`},
+		{"docs", docsView{Sealed: true, HasGuides: true, Docs: []docLink{{Name: "README.md", Title: "Getting started"}}}, "data-sealed-notes"},
+		{"admin", adminView{Me: "aaaa", Users: []auth.User{{ID: "bbbb", Username: "friend"}}, Encrypted: map[string]bool{"bbbb": true}}, "recovery code. Without it"},
+	}
+	for _, c := range cases {
+		html, err := ui.renderToHTML(c.name, c.view)
+		if err != nil {
+			t.Errorf("%s: %v", c.name, err)
+			continue
+		}
+		if !strings.Contains(string(html), c.want) {
+			t.Errorf("%s: no %q in\n%s", c.name, c.want, html)
 		}
 	}
 }

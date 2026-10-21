@@ -30,3 +30,8 @@ header .account-link:hover, header .account-link.on { color: var(--ink); }
 .admin details summary { cursor: pointer; font-size: 14px; color: var(--muted); }
 .admin .invite-link { font-family: ui-monospace, monospace; font-size: 13px; }
 .admin button.danger { background: var(--warn); border-color: var(--warn); color: #fff; }
+/* After signing in with a new recovery code, and resetting with one. */
+.recovery .recovery-code .txt { width: 100%; font: 600 16px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .04em; text-align: center; }
+a.sign-in-btn { display: block; text-align: center; text-decoration: none; border-radius: 6px; background: var(--accent); color: var(--on-accent); }
+.check-line { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+.check-line input { accent-color: var(--accent); }

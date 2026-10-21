@@ -17,6 +17,7 @@ import (
 type adminView struct {
 	Me        string // the signed-in admin's id
 	Users     []auth.User
+	Encrypted map[string]bool // users whose data is encrypted on disk
 	Invites   []auth.PendingInvite
 	Default   auth.Policy
 	Providers []choice
@@ -29,6 +30,10 @@ type adminView struct {
 
 func (ui *UI) adminView(r *http.Request) adminView {
 	view := adminView{Me: ui.user(r).ID, Users: ui.Auth.Users(), Invites: ui.Auth.Invites(), Default: ui.Auth.DefaultPolicy()}
+	view.Encrypted = map[string]bool{}
+	for _, user := range view.Users {
+		view.Encrypted[user.ID] = ui.Workspaces.Encrypted(user)
+	}
 	for _, id := range auth.KnownProviders {
 		provider, _ := ui.Providers.Get(id)
 		view.Providers = append(view.Providers, choice{ID: id, Label: provider.Label()})
@@ -102,6 +107,10 @@ func (ui *UI) setUserDisabled(disabled bool) http.HandlerFunc {
 		target, err := ui.adminTarget(r)
 		if err == nil {
 			err = ui.Auth.SetDisabled(ui.user(r).ID, target.ID, disabled)
+		}
+		if err == nil && disabled {
+			ui.Workspaces.Prune(target.ID)
+			ui.Workspaces.Lock(target.ID)
 		}
 		saved := target.Username + " turned back on"
 		if disabled {

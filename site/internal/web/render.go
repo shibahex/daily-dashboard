@@ -88,6 +88,7 @@ type pageView struct {
 	User    string
 	Admin   bool    // show the Admin link
 	Nav     *dayNav // the Today tab's arrows around the date
+	Sealed  bool    // the user's notes are encrypted in the browser (notes.js)
 }
 
 // renderPage renders a tab: its content template inside the page frame.
@@ -99,7 +100,7 @@ func (ui *UI) renderPage(r *http.Request, w http.ResponseWriter, tab, title, con
 		return
 	}
 	view := pageView{Tab: tab, Title: title, Today: time.Now(), Content: content, Fill: tab == "mcps",
-		User: ui.user(r).Username, Admin: ui.user(r).IsAdmin()}
+		User: ui.user(r).Username, Admin: ui.user(r).IsAdmin(), Sealed: sealedNotes(ui.user(r))}
 	if tab == "today" {
 		nav := newDayNav(pageDay(r))
 		view.Nav = &nav

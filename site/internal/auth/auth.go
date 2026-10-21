@@ -13,6 +13,7 @@ package auth
 import (
 	"crypto/rand"
 	"crypto/subtle"
+	"encoding/base64"
 	"encoding/hex"
 	"fmt"
 	"os"
@@ -54,6 +55,13 @@ type User struct {
 	Policy    Policy       `json:"policy"`
 	Created   time.Time    `json:"created"`
 	LastLogin time.Time    `json:"last_login,omitzero"`
+
+	// ProofLogin: Password is a hash of the sign-in page's proof, not of the real password
+	// (accounts from before are upgraded at their next sign-in, see Upgrade).
+	ProofLogin bool `json:"proof_login,omitempty"`
+	// NotesKey is the key to the user's end-to-end encrypted notes, wrapped in their browser
+	// with their password and with their recovery code. The server can't open either.
+	NotesKey *NotesKey `json:"notes_key,omitempty"`
 }
 
 func (u User) IsAdmin() bool { return u.Role == Admin }
@@ -270,7 +278,7 @@ func (a *Auth) Setup(code, username, password, confirm string) (string, error) {
 	if subtle.ConstantTimeCompare([]byte(code), []byte(a.setupCode)) != 1 {
 		return "", problem.Invalidf("That setup code is wrong. Use the link printed in the terminal, or the code in site/data/setup-code")
 	}
-	admin := &User{ID: newUserID(), Username: username, Password: hash, Role: Admin, Host: true,
+	admin := &User{ID: newUserID(), Username: username, Password: hash, ProofLogin: true, Role: Admin, Host: true,
 		Policy: FullPolicy, Created: a.now(), LastLogin: a.now()}
 	a.state.Users = []*User{admin}
 	if err := a.save(); err != nil {
@@ -295,7 +303,45 @@ var errWrongLogin = problem.Invalidf("Wrong username or password")
 
 // Login checks the username and password and returns a new session. Wrong guesses slow down
 // both that username and the address they come from (ip, "" when unknown).
+//
+// The "password" is the proof the sign-in page makes from the real password (see
+// web/js/keys.js): the real one never reaches the server, since it also makes the key to the
+// user's notes. An account from before that (ProofLogin false) gets ErrUpgrade: its page sends
+// the real password once, to Upgrade.
 func (a *Auth) Login(username, password, ip string) (string, error) {
+	return a.login(username, ip, func(user *User) (bool, error) {
+		if !user.ProofLogin {
+			return false, ErrUpgrade
+		}
+		return user.Password.matches(password), nil
+	})
+}
+
+// ErrUpgrade asks the sign-in page to send the real password once more, to move the account to
+// proof sign-ins.
+var ErrUpgrade = problem.Invalidf("One more step: we're upgrading how you sign in. Enter your password again.")
+
+// Upgrade signs in an account from before proof sign-ins with its real password, and from then
+// on keeps only the proof (made from that password by the sign-in page).
+func (a *Auth) Upgrade(username, password, proof, ip string) (string, error) {
+	return a.login(username, ip, func(user *User) (bool, error) {
+		if user.ProofLogin || !user.Password.matches(password) {
+			return false, nil
+		}
+		hash, err := hashPassword(proof)
+		if err != nil {
+			return false, err
+		}
+		a.mu.Lock()
+		user.Password, user.ProofLogin = hash, true
+		a.mu.Unlock()
+		return true, nil
+	})
+}
+
+// login checks a sign-in with check and starts a session. Wrong guesses slow down both that
+// username and the address they come from (ip, "" when unknown).
+func (a *Auth) login(username, ip string, check func(*User) (bool, error)) (string, error) {
 	a.checking.Lock()
 	defer a.checking.Unlock()
 	keys := []string{"user:" + strings.ToLower(username)}
@@ -312,12 +358,16 @@ func (a *Auth) Login(username, password, ip string) (string, error) {
 
 	a.mu.Lock()
 	user := a.userByName(username)
-	hash, usable := dummyHash, false
-	if user != nil {
-		hash, usable = user.Password, !user.Disabled
-	}
 	a.mu.Unlock()
-	ok := hash.matches(password) && usable
+	ok := false
+	if user == nil || user.Disabled {
+		dummyHash.matches(username) // a wrong name takes as long as a wrong password
+	} else {
+		var err error
+		if ok, err = check(user); err != nil {
+			return "", err
+		}
+	}
 	if !ok {
 		for _, key := range keys {
 			f := a.failed[key]
@@ -399,7 +449,7 @@ func (a *Auth) ChangePassword(userID, keep, current, password, confirm string) e
 
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	user.Password = hash
+	user.Password, user.ProofLogin = hash, true
 	if err := a.save(); err != nil {
 		return err
 	}
@@ -642,7 +692,7 @@ func (a *Auth) AcceptInvite(code, password, confirm string) (string, error) {
 		if user = a.userByID(inv.ResetFor); user == nil {
 			return "", problem.NotFoundf("That account was deleted")
 		}
-		user.Password = hash
+		user.Password, user.ProofLogin = hash, true
 		if err := a.endSessions(user.ID, ""); err != nil {
 			return "", err
 		}
@@ -650,7 +700,7 @@ func (a *Auth) AcceptInvite(code, password, confirm string) (string, error) {
 		if a.userByName(inv.Username) != nil {
 			return "", problem.Conflictf("That username was taken meanwhile. Ask your admin for a new invite.")
 		}
-		user = &User{ID: newUserID(), Username: inv.Username, Password: hash, Role: inv.Role,
+		user = &User{ID: newUserID(), Username: inv.Username, Password: hash, ProofLogin: true, Role: inv.Role,
 			Policy: a.state.DefaultPolicy, Created: a.now()}
 		a.state.Users = append(a.state.Users, user)
 	}
@@ -830,4 +880,101 @@ func mapValues(m map[string]string) []string {
 		values = append(values, v)
 	}
 	return values
+}
+
+// ---------- for the encrypted data ----------
+
+// Fingerprint is what's stored for a session or token: a key copy kept for one (see
+// workspace.Manager) is filed under it, never under the secret.
+func Fingerprint(secret string) string { return fingerprint(secret) }
+
+// Credentials names the user's live sessions and token ("session:<fingerprint>",
+// "token:<fingerprint>"), so key copies for ended ones can be dropped.
+func (a *Auth) Credentials(userID string) []string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.dropExpired()
+	var names []string
+	for fp, s := range a.sessions {
+		if s.User == userID {
+			names = append(names, BySession+":"+fp)
+		}
+	}
+	for fp, owner := range a.state.Tokens {
+		if owner == userID {
+			names = append(names, ByToken+":"+fp)
+		}
+	}
+	return names
+}
+
+// ---------- the notes' key ----------
+
+// NotesKey is the user's notes key wrapped twice, as their browser made it: with a key from their
+// password, and with one from their recovery code (base64 of AES-GCM nonce + sealed key).
+type NotesKey struct {
+	Password string `json:"password"`
+	Recovery string `json:"recovery"`
+}
+
+// valid: both wraps are base64 of a nonce, a 32-byte key and a tag, so nothing else is stored.
+func (k NotesKey) valid() bool {
+	for _, wrap := range []string{k.Password, k.Recovery} {
+		if data, err := base64.StdEncoding.DecodeString(wrap); err != nil || len(data) != 12+32+16 {
+			return false
+		}
+	}
+	return true
+}
+
+// SetNotesKey stores the user's wrapped notes key. With onlyNew it keeps one already there (a
+// sign-in offers one in case it's the first).
+func (a *Auth) SetNotesKey(userID string, key NotesKey, onlyNew bool) error {
+	if !key.valid() {
+		return problem.Invalidf("that notes key doesn't look right")
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	user := a.userByID(userID)
+	if user == nil {
+		return problem.NotFoundf("No such user")
+	}
+	if onlyNew && user.NotesKey != nil {
+		return nil
+	}
+	user.NotesKey = &key
+	return a.save()
+}
+
+// SetNotesKeyWrap replaces one wrap ("password" or "recovery"), for a new password or code.
+func (a *Auth) SetNotesKeyWrap(userID, which, wrap string) error {
+	a.mu.Lock()
+	user := a.userByID(userID)
+	var key NotesKey
+	if user != nil && user.NotesKey != nil {
+		key = *user.NotesKey
+	}
+	a.mu.Unlock()
+	if user == nil || user.NotesKey == nil {
+		return problem.Invalidf("this account has no notes key yet")
+	}
+	switch which {
+	case "password":
+		key.Password = wrap
+	case "recovery":
+		key.Recovery = wrap
+	default:
+		return problem.Invalidf("unknown wrap")
+	}
+	return a.SetNotesKey(userID, key, false)
+}
+
+// DropNotesKey forgets the notes key, when a reset starts the account over.
+func (a *Auth) DropNotesKey(userID string) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if user := a.userByID(userID); user != nil {
+		user.NotesKey = nil
+	}
+	return a.save()
 }

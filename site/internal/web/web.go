@@ -4,12 +4,15 @@
 package web
 
 import (
+	"errors"
 	"net/http"
 
 	"dashboard/internal/assistant"
 	"dashboard/internal/auth"
 	"dashboard/internal/config"
 	"dashboard/internal/egress"
+	"dashboard/internal/httpx"
+	"dashboard/internal/problem"
 	"dashboard/internal/sandbox"
 	"dashboard/internal/workspace"
 )
@@ -58,6 +61,7 @@ func (ui *UI) Routes(mux *http.ServeMux) {
 	change("/account/password", ui.changePassword)
 	change("/account/token", ui.makeToken)
 	change("/account/token/remove", ui.removeToken)
+	change("/account/recovery", ui.newRecoveryCode)
 	change("/account/myfitnesspal", ui.connectMyFitnessPal)
 	change("/account/myfitnesspal/remove", ui.disconnectMyFitnessPal)
 	change("/account/anki", ui.connectAnki)
@@ -184,6 +188,27 @@ func (ui *UI) Routes(mux *http.ServeMux) {
 
 	// Docs
 	page("/docs", ui.docsPage)
+	page("/docs/card", ui.plainNotesOnly(ui.docsCard))
+	change("/docs/new", ui.plainNotesOnly(ui.newNote))
+	change("/docs/save", ui.plainNotesOnly(ui.saveNote))
+	change("/docs/delete", ui.plainNotesOnly(ui.deleteNote))
+	change("/docs/move", ui.plainNotesOnly(ui.moveNote))
+	// Sealed notes (sealed.go): the browser reads and writes them.
+	page("/notes/key", ui.notesKey)
+	page("/notes/data", ui.notesData)
+	change("/notes/data", ui.saveNotesData)
+}
+
+// plainNotesOnly refuses the server-side note editing to accounts whose notes are sealed: it would
+// write them in plain text on the server.
+func (ui *UI) plainNotesOnly(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if sealedNotes(ui.user(r)) {
+			fail(w, problem.Forbiddenf("Your notes are encrypted: edit them on the Docs tab, in your browser"))
+			return
+		}
+		next(w, r)
+	}
 }
 
 // fromHTMX refuses changes that didn't come from the dashboard's own page.
@@ -195,4 +220,41 @@ func fromHTMX(next http.HandlerFunc) http.HandlerFunc {
 		}
 		next(w, r)
 	}
+}
+
+// UnlockData makes sure a signed-in request's data is open before any page uses it (see
+// workspace.Manager.Unlock). When the session can't open it (one from before the data was
+// encrypted, or after the user's data was reset), the browser is sent to sign in again, which
+// unlocks it with the password; a plugin token that can't is refused.
+func (ui *UI) UnlockData(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		user, signedIn := auth.UserFrom(r)
+		if !signedIn {
+			next.ServeHTTP(w, r)
+			return
+		}
+		kind, secret := auth.CredentialFrom(r)
+		err := ui.Workspaces.Unlock(user, kind, secret)
+		if kind == auth.BySession && !user.ProofLogin {
+			// From before proof sign-ins: signing in again moves the account over (auth.Upgrade).
+			err = workspace.ErrSignInAgain
+		}
+		switch {
+		case err == nil:
+			next.ServeHTTP(w, r)
+		case kind == auth.ByToken:
+			httpx.WriteError(w, http.StatusUnauthorized, "this token can't open your data: make a new one on the Account page")
+		case errors.Is(err, workspace.ErrSignInAgain):
+			ui.Auth.Logout(secret)
+			auth.ClearSessionCookie(w)
+			if r.Header.Get("HX-Request") == "true" {
+				w.Header().Set("HX-Redirect", "/login?locked=1")
+				http.Error(w, err.Error(), http.StatusUnauthorized)
+				return
+			}
+			http.Redirect(w, r, "/login?locked=1", http.StatusSeeOther)
+		default:
+			http.Error(w, "Your data couldn't be opened: "+err.Error(), problem.Status(err))
+		}
+	})
 }
