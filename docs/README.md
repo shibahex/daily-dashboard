@@ -31,7 +31,7 @@ Tracking tools only help if you keep them up to date, and that upkeep can kill t
 
 - **Turn conversations into actions.** "Log 2 eggs and toast for breakfast" goes into MyFitnessPal without you opening the app or hunting through its food database, or talk about starting a new plan with target macros and the MCP will make a new plan for you.
 - **Cards without the chore.** Point it at your notes and it drafts flashcards into Anki. Ask it to find, fix or tidy up existing cards, and it edits them for you. Or ask about existing decks and manage them for you.
-- **Questions answered from your data.** "What can I eat tonight?" uses your remaining macros and today's workout. "How many cards are due?" and "what did I skip this week?" are one message each.
+- **Better answers when you give it context.** Your tasks, your plan and the notes you write about your goals and routine are also there for the AI to draw on, so you get advice that fits your week instead of generic tips.
 - **Less time in the tools.** Spend less time setting up tasks, setting up myfitness plans, and setting up productivity tools. Talk with the AI and let it do all the manual labor based on your goals and input.
 
 Think of it as an assistant that keeps your tools tidy while you get on with the day. The dashboard works fine without it, and the AI is switched on by adding a key on the Account page (step 5 in [Make it yours](#make-it-yours)).
