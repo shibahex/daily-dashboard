@@ -542,7 +542,14 @@
     notice.replaceChildren();
     if (setup.problem) {
       notice.append(setup.problem.replace(/ on the Account page first$/, "") + ". ");
-      if (/Account page/.test(setup.problem)) notice.append(el("a", { className: "link", href: "/account" }, "Open the Account page"));
+      if (/Account page/.test(setup.problem)) {
+        // Straight to the part that fixes it, which the Account page highlights.
+        const turnOn = /subscription token/.test(setup.problem) && !(setup.server || []).includes("claude-code");
+        const link = el("a", { className: "link", href: turnOn ? "/account#server-ai" : "/account#ai-settings" },
+          turnOn ? "Turn on AI on the server" : "Open the AI settings");
+        link.setAttribute("hx-boost", "false"); // a full load, so the page jumps to it
+        notice.append(link);
+      }
     }
     const toggles = $("toggles");
     toggles.replaceChildren();

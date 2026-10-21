@@ -349,7 +349,19 @@ func (ui *UI) setServerAI(w http.ResponseWriter, r *http.Request) {
 	} else {
 		announce(w, say("The AI on the server is off"))
 	}
-	view := ui.accountView(r)
-	view.ServerAI = on
-	ui.render(w, "account-card", view)
+	view := ui.connectionsView(r)
+	user.ServerAI = on
+	view.ServerAI, view.ServerAIs = on, serverAILabels(user)
+	ui.render(w, "server-ai", view)
+}
+
+// serverAILabels name the AIs on the server the user's admin allows and the server can run.
+func serverAILabels(user auth.User) []string {
+	var labels []string
+	for _, p := range serverProviders {
+		if user.Policy.AllowsProvider(p.ID()) && p.Available() {
+			labels = append(labels, p.Label())
+		}
+	}
+	return labels
 }
