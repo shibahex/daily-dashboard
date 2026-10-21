@@ -49,6 +49,10 @@ func (c Client) env() map[string]string {
 	env := map[string]string{}
 	if c.ConfigHome != "" {
 		env["XDG_CONFIG_HOME"], env["XDG_DATA_HOME"] = c.ConfigHome, c.DataHome
+		// uv reads XDG_DATA_HOME too, for its Pythons. Left to follow it, uv installs another
+		// Python per user, and since every run shares the checkout's one .venv, each run with a
+		// different Python rebuilds it under the others ("No such file or directory").
+		env["UV_PYTHON_INSTALL_DIR"] = uvPythonDir()
 	}
 	if c.BrowserPath != "" {
 		env["MFP_BROWSER_PATH"] = c.BrowserPath
@@ -232,6 +236,20 @@ func (c Client) Disconnect() error {
 		}
 	}
 	return nil
+}
+
+// uvPythonDir is where uv keeps its Pythons for the server's own account: UV_PYTHON_INSTALL_DIR,
+// or $XDG_DATA_HOME/uv/python, or ~/.local/share/uv/python.
+func uvPythonDir() string {
+	if dir := os.Getenv("UV_PYTHON_INSTALL_DIR"); dir != "" {
+		return dir
+	}
+	data := os.Getenv("XDG_DATA_HOME")
+	if data == "" {
+		home, _ := os.UserHomeDir()
+		data = filepath.Join(home, ".local", "share")
+	}
+	return filepath.Join(data, "uv", "python")
 }
 
 // uvCommand is uv from the PATH, or from Nix when it isn't installed.
