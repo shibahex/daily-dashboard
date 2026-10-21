@@ -89,3 +89,26 @@
 {{with .Message.Error}}<div class="err">{{.}}</div>{{end}}
 {{if and .Message.Model (not .Live)}}<div class="by">{{.Chat.ModelLabel .Message.Model}}</div>{{end}}
 {{end}}
+
+{{/* The AI in the browser, for accounts whose notes are sealed: assistant.js runs it and fills
+     this in. The server never sees the notes or the chat. */}}
+{{define "browser-chat"}}
+<div class="card chat-card" id="chat-card" data-browser-chat>
+  <template data-icon-leaf>{{template "icon-leaf"}}</template>
+  <div class="chat-top">
+    <div class="chat-badge">{{template "icon-leaf"}}</div>
+    <div class="chat-title"><b>MCPs</b><span class="chat-status" data-status><i></i><span>Starting…</span></span></div>
+    <div class="mcp-toggles" data-toggles></div>
+    <span class="chat-tools" data-tools></span>
+  </div>
+  <div class="chat-log" data-log></div>
+  <form class="chat-form" data-form>
+    <div class="composer">
+      <textarea name="message" rows="1" maxlength="4000" placeholder="Ask about your food, notes or cards…" data-enter-sends></textarea>
+      <button class="send-btn" title="Send (Enter)" data-send>{{template "icon-send"}}</button>
+      <button type="button" class="send-btn stop" title="Stop" data-stop hidden>{{template "icon-stop"}}</button>
+    </div>
+  </form>
+  <p class="muted chat-note">Runs in your browser: your notes and this chat go straight to Anthropic, never through this server · Shift+Enter for a new line</p>
+</div>
+{{end}}

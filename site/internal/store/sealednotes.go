@@ -10,55 +10,58 @@ import (
 	"dashboard/internal/problem"
 )
 
-// Sealed notes are notes encrypted end to end: the user's browser encrypts them with a key only
-// it has (see web/js/keys.js), and the server keeps one opaque blob it can't read. The version
-// goes up with every save, so a tab working on an old copy can't overwrite a newer one.
+// Sealed blobs are encrypted end to end: the user's browser encrypts them with a key only it
+// has (see web/js/keys.js), and the server keeps blobs it can't read: the notes ("notes") and
+// the AI chat ("chat"). The version goes up with every save, so a tab working on an old copy
+// can't overwrite a newer one.
 
-// SealedNotesMax is the most the blob may hold (base64).
-const SealedNotesMax = 8 << 20
+// SealedMax is the most a blob may hold (base64).
+const SealedMax = 8 << 20
 
-type sealedNotes struct {
+// SealedKinds are the blobs there are.
+var SealedKinds = []string{"notes", "chat"}
+
+type sealedBlob struct {
 	Version int    `json:"version"`
 	Blob    string `json:"blob"`
 }
 
-func (s *Store) sealedFile() string { return filepath.Join(s.paths.Data, "notes.sealed.json") }
+func (s *Store) sealedFile(kind string) string {
+	return filepath.Join(s.paths.Data, kind+".sealed.json")
+}
 
-// SealedNotes is the blob and its version (0 and "" before the first save).
-func (s *Store) SealedNotes() (version int, blob string) {
+// Sealed is a blob and its version (0 and "" before the first save).
+func (s *Store) Sealed(kind string) (version int, blob string) {
+	if !slices.Contains(SealedKinds, kind) {
+		return 0, ""
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	var saved sealedNotes
-	jsonfile.Read(s.sealedFile(), &saved)
+	var saved sealedBlob
+	jsonfile.Read(s.sealedFile(kind), &saved)
 	return saved.Version, saved.Blob
 }
 
-// SaveSealedNotes replaces the blob if it's still at version, and returns the new version.
-func (s *Store) SaveSealedNotes(version int, blob string) (int, error) {
-	if len(blob) > SealedNotesMax {
-		return 0, problem.Invalidf("your notes are too big to save")
+// SaveSealed replaces a blob if it's still at version, and returns the new version.
+func (s *Store) SaveSealed(kind string, version int, blob string) (int, error) {
+	if !slices.Contains(SealedKinds, kind) {
+		return 0, problem.Invalidf("unknown kind of data")
+	}
+	if len(blob) > SealedMax {
+		return 0, problem.Invalidf("that's too big to save")
 	}
 	if _, err := base64.StdEncoding.DecodeString(blob); err != nil || blob == "" {
-		return 0, problem.Invalidf("that isn't encrypted notes")
+		return 0, problem.Invalidf("that isn't encrypted data")
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	var saved sealedNotes
-	jsonfile.Read(s.sealedFile(), &saved)
+	var saved sealedBlob
+	jsonfile.Read(s.sealedFile(kind), &saved)
 	if saved.Version != version {
-		return saved.Version, problem.Conflictf("your notes changed in another tab: reload to see them")
+		return saved.Version, problem.Conflictf("this changed in another tab: reload to see it")
 	}
-	saved = sealedNotes{Version: version + 1, Blob: blob}
-	return saved.Version, jsonfile.Write(s.sealedFile(), saved)
-}
-
-// ClearSealedNotes forgets the blob, when a reset starts the account over.
-func (s *Store) ClearSealedNotes() error {
-	err := os.Remove(s.sealedFile())
-	if os.IsNotExist(err) {
-		return nil
-	}
-	return err
+	saved = sealedBlob{Version: version + 1, Blob: blob}
+	return saved.Version, jsonfile.Write(s.sealedFile(kind), saved)
 }
 
 // PlainNote is a note from before notes were sealed, for the browser to seal.

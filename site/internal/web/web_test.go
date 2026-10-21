@@ -78,6 +78,7 @@ func TestEncryptionTemplatesRender(t *testing.T) {
 		{"sign-in", signInView{Locked: true}, "unlock your data"},
 		{"account", accountView{Username: "me", Encrypted: true, Sealed: true, NewRecovery: true}, "data-new-recovery-code"},
 		{"account", accountView{Username: "me", Sealed: true}, `data-keys="password" data-sealed`},
+		{"browser-chat", nil, "data-browser-chat"},
 		{"docs", docsView{Sealed: true, HasGuides: true, Docs: []docLink{{Name: "README.md", Title: "Getting started"}}}, "data-sealed-notes"},
 		{"admin", adminView{Me: "aaaa", Users: []auth.User{{ID: "bbbb", Username: "friend"}}, Encrypted: map[string]bool{"bbbb": true}}, "recovery code. Without it"},
 	}

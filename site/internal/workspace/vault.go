@@ -312,6 +312,9 @@ func (m *Manager) Lock(userID string) error {
 	delete(m.unlocked, userID)
 	delete(m.open, userID)
 	m.mu.Unlock()
+	if m.OnLock != nil {
+		m.OnLock(userID)
+	}
 	if ws != nil {
 		ws.close()
 	}

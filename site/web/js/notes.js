@@ -2,7 +2,8 @@
 // this page does everything with them. It decrypts them with the key kept in this browser (see
 // keys.js), shows and edits them on the Docs tab, and encrypts them again to save. Notes still
 // in plain files from before are sealed the first time they're opened here, and then deleted
-// from the server. The AI chat gets the notes decrypted here, with each message.
+// from the server. The AI, which runs in this browser too (assistant.js), reads and saves them
+// through all() and saveNote().
 
 const SealedNotes = (() => {
   let state = null; // { key, version, notes: [{ id, title, text }] }
@@ -200,17 +201,29 @@ const SealedNotes = (() => {
     start();
   });
 
-  // ---------- the AI chat ----------
-  // Each message carries the notes decrypted here, for that one answer.
+  // ---------- for the AI in the browser (assistant.js) ----------
 
-  let forChat = null;
-  htmx.onLoad(async root => {
-    if (!root.querySelector?.("#chat-card") || !document.querySelector("meta[name=dashboard-sealed]")) return;
+  // all is every note, loaded (and unlocked) if needed; null while they're locked.
+  async function all() {
+    if (!state && !(await load())) return null;
+    return state.notes;
+  }
+
+  // saveNote replaces the note with this title (any case), or adds it, and saves.
+  async function saveNote(title, text) {
+    if (!(await all())) throw new Error("the notes are locked");
+    const cleanTitle = String(title || "").trim() || "Untitled";
+    const note = state.notes.find(n => (n.title || "").toLowerCase() === cleanTitle.toLowerCase());
+    if (note) note.text = String(text ?? "");
+    else state.notes.push({ id: newId(), title: cleanTitle, text: String(text ?? "") });
     try {
-      if (await load()) forChat = JSON.stringify(state.notes.map(n => ({ title: n.title, text: n.text })));
-    } catch { forChat = null; }
-  });
-  document.body.addEventListener("htmx:configRequest", event => {
-    if (forChat && event.detail.path === "/mcps/messages") event.detail.parameters.notes = forChat;
-  });
+      await save();
+    } catch (e) {
+      await load(); // another tab saved first: try once more on top of it
+      return saveNote(title, text);
+    }
+    return note ? "updated" : "added";
+  }
+
+  return { all, saveNote, unlock: Keys.unlockWithPassword };
 })();

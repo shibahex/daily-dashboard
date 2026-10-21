@@ -176,15 +176,16 @@ func (ui *UI) Routes(mux *http.ServeMux) {
 
 	// MCPs (chat)
 	page("/mcps", ui.chatPage)
-	page("/mcps/card", ui.chatCard)
-	page("/mcps/stream", ui.chatStream)
-	change("/mcps/messages", ui.sendMessage)
-	change("/mcps/stop", ui.stopAnswer)
-	change("/mcps/new", ui.newChat)
-	change("/mcps/provider", ui.chooseProvider)
-	change("/mcps/model", ui.chooseModel)
-	change("/mcps/toggle", ui.toggleMCP)
-	change("/mcps/instructions", ui.toggleInstructions)
+	// The server-side AI: not for sealed accounts, whose AI runs in their browser (browserai.go).
+	page("/mcps/card", ui.serverAIOnly(ui.chatCard))
+	page("/mcps/stream", ui.serverAIOnly(ui.chatStream))
+	change("/mcps/messages", ui.serverAIOnly(ui.sendMessage))
+	change("/mcps/stop", ui.serverAIOnly(ui.stopAnswer))
+	change("/mcps/new", ui.serverAIOnly(ui.newChat))
+	change("/mcps/provider", ui.serverAIOnly(ui.chooseProvider))
+	change("/mcps/model", ui.serverAIOnly(ui.chooseModel))
+	change("/mcps/toggle", ui.serverAIOnly(ui.toggleMCP))
+	change("/mcps/instructions", ui.serverAIOnly(ui.toggleInstructions))
 
 	// Docs
 	page("/docs", ui.docsPage)
@@ -195,8 +196,27 @@ func (ui *UI) Routes(mux *http.ServeMux) {
 	change("/docs/move", ui.plainNotesOnly(ui.moveNote))
 	// Sealed notes (sealed.go): the browser reads and writes them.
 	page("/notes/key", ui.notesKey)
-	page("/notes/data", ui.notesData)
-	change("/notes/data", ui.saveNotesData)
+	page("/notes/data", ui.sealedData("notes"))
+	change("/notes/data", ui.saveSealedData("notes"))
+	// The AI in the browser (browserai.go) and its sealed chat.
+	page("/assistant/setup", ui.assistantSetup)
+	page("/assistant/tools", ui.assistantTools)
+	change("/assistant/tool", ui.assistantTool)
+	change("/assistant/settings", ui.assistantSettings)
+	page("/assistant/chat", ui.sealedData("chat"))
+	change("/assistant/chat", ui.saveSealedData("chat"))
+}
+
+// serverAIOnly refuses the server-side AI to accounts whose notes are sealed: it would need their
+// notes on the server. Their AI runs in their browser.
+func (ui *UI) serverAIOnly(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if sealedNotes(ui.user(r)) {
+			fail(w, problem.Forbiddenf("Your AI runs in your browser: reload the MCPs tab"))
+			return
+		}
+		next(w, r)
+	}
 }
 
 // plainNotesOnly refuses the server-side note editing to accounts whose notes are sealed: it would

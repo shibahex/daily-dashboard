@@ -3,10 +3,11 @@ package httpx
 import "net/http"
 
 // contentPolicy lets the page run only its own script and HTMX from jsDelivr (pinned by
-// integrity hashes in page.html), connect only back to the dashboard, and never be framed.
+// integrity hashes in page.html), connect only back to the dashboard and to Anthropic's API (the
+// AI that runs in the browser, web/js/assistant.js), and never be framed.
 // Inline styles stay allowed: templates set widths and colours with style="".
 const contentPolicy = "default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; " +
-	"style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; " +
+	"style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://api.anthropic.com; " +
 	"object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
 
 // Secure adds security headers to every answer, and refuses changes (POST…) that another

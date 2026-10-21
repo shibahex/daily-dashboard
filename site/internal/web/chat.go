@@ -208,6 +208,10 @@ func (ui *UI) chatView(r *http.Request, customModel bool) chatView {
 }
 
 func (ui *UI) chatPage(w http.ResponseWriter, r *http.Request) {
+	if sealedNotes(ui.user(r)) {
+		ui.renderPage(r, w, "mcps", "MCPs", "browser-chat", nil) // the AI in the browser: assistant.js
+		return
+	}
 	ui.renderPage(r, w, "mcps", "MCPs", "chat", ui.chatView(r, false))
 }
 
@@ -252,7 +256,7 @@ func (ui *UI) sendMessage(w http.ResponseWriter, r *http.Request) {
 		caps.Web = false // web search is Anthropic's own service, which a local server doesn't have
 	}
 	run := &agentRun{ui: ui, ws: ws, provider: provider, conversation: conversation, message: message,
-		mcps: allowedMCPs(user.Policy, conversation), caps: caps, env: env, sealed: sealedNotes(user), notes: browserNotes(r)}
+		mcps: allowedMCPs(user.Policy, conversation), caps: caps, env: env}
 	go run.answer()
 	ui.render(w, "chat-card", ui.chatView(r, false))
 }

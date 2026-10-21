@@ -100,6 +100,8 @@ type Manager struct {
 	Credentials func(userID string) []string
 	// LockAfter locks an encrypted user's data after this long without a request.
 	LockAfter time.Duration
+	// OnLock is told when a user's data locks (their tools, which use it, stop).
+	OnLock func(userID string)
 }
 
 func NewManager(paths config.Paths, mfp myfitnesspal.Client, hostAnki anki.Client, gateway *anki.Gateway,

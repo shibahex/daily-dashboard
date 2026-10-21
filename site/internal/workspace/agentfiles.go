@@ -25,9 +25,8 @@ var noteName = regexp.MustCompile(`^[\w][\w .-]{0,79}\.md$`)
 
 // Staged remembers what was copied out, to tell the agent's edits from changes made meanwhile.
 type Staged struct {
-	notes  map[string][32]byte
-	plan   [32]byte
-	sealed bool // the notes came from the browser: changes to them are dropped
+	notes map[string][32]byte
+	plan  [32]byte
 }
 
 // StageFiles fills dir (emptied first) with a copy of the user's notes, plan and data when
@@ -69,9 +68,6 @@ func (w *Workspace) StageFiles(dir string, read bool) (Staged, error) {
 func (w *Workspace) ApplyEdits(dir string, staged Staged) []string {
 	var changed []string
 	edited, _ := filepath.Glob(filepath.Join(dir, "notes", "*.md"))
-	if staged.sealed {
-		edited = nil // sealed notes are saved only by the browser, never here in plain text
-	}
 	for _, path := range edited {
 		name := filepath.Base(path)
 		info, err := os.Lstat(path)
@@ -111,22 +107,4 @@ func (w *Workspace) ApplyEdits(dir string, staged Staged) []string {
 		}
 	}
 	return changed
-}
-
-// StageSealedNotes puts notes the browser decrypted for this one answer into the staged copy
-// (in place of any left in plain files), when reading files is allowed. The agent's changes to
-// them aren't brought back: only the browser can save sealed notes.
-func (w *Workspace) StageSealedNotes(dir string, staged *Staged, notes []store.PlainNote, read bool) {
-	staged.sealed = true
-	if !read {
-		return
-	}
-	notesDir := filepath.Join(dir, "notes")
-	os.RemoveAll(notesDir)
-	os.MkdirAll(notesDir, 0o700)
-	for _, note := range notes {
-		if noteName.MatchString(note.Name) && len(note.Text) <= maxAgentFile {
-			os.WriteFile(filepath.Join(notesDir, note.Name), []byte(note.Text), 0o600)
-		}
-	}
 }

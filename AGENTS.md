@@ -9,7 +9,7 @@
   - `templates/`: one file per tab (`today.html`, `tasks.html`…) plus `page.html` (the frame and shared pieces). They're re-read when they change, so editing one only needs a reload.
   - `css/`: one file per area (`today.css`, `anki.css`, `chat.css`…), with `base.css` first (colour tokens for light and dark, layout) and `components.css` last (buttons, inputs, badges). When two rules match an element equally, the later file wins, so keep that order.
   - `js/app.js`: toasts, keyboard shortcuts, dragging Today's cards and remembering open meals. Keep page logic on the server; reach for JS only for what HTMX and CSS can't do.
-  - `js/keys.js` and `js/notes.js`: the exception, because the server must never see them: the password stays in the browser (forms marked `data-keys` send proofs instead), and notes are encrypted and shown there for everyone but the host. Never send a password or a decrypted note to the server, except notes attached to a chat message.
+  - `js/keys.js`, `js/notes.js` and `js/assistant.js`: the exception, because the server must never see what they handle: the password stays in the browser (forms marked `data-keys` send proofs instead); for everyone but the host, notes and the AI chat are encrypted and shown there, and the MCPs tab's AI runs there, talking to Anthropic directly (the server only runs its MCP tools, `internal/web/browserai.go`). Never send a password, a decrypted note or chat to the server.
 - `noctalia-plugin/`: the Noctalia bar plugin. See `docs/noctalia-plugin.md`.
 - `docs/`: the user's own notes (`*.md`, git-ignored), the guides (`README.md`, `dashboard.md`, `noctalia-plugin.md`) and the starter notes in `docs/templates/`.
 

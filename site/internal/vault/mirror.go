@@ -171,7 +171,7 @@ func (m *Mirror) Save() error {
 			return nil
 		}
 		rel = filepath.ToSlash(rel)
-		if d.IsDir() && (slices.Contains(skipped, d.Name()) || rel == "mfp/data/uv" || rel == "agent-workspace") {
+		if d.IsDir() && (slices.Contains(skipped, d.Name()) || rel == "mfp/data/uv" || rel == "agent-workspace" || rel == "agent-tools") {
 			return filepath.SkipDir
 		}
 		info, err := d.Info()
