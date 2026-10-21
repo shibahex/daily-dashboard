@@ -147,7 +147,7 @@ Your notes are only as private as the scripts that handle them, and those come f
 | `app.js` | `sha384-vS5CAPlqRgKO8DtZjcdK3xQSbSVZDM/vfCkp8572pj0WqgIczLLd/vh6TKsiZoPm` |
 | `keys.js` | `sha384-x7klcKfrC1CwDgEGr/LFl9sbE57XelWNP0gAGhEAM6o5/W996bZ6cF1zOd544sAS` |
 | `notes.js` | `sha384-iW4AiXCfNgQnKveb3A39gXIDQGefd5rlBvVGT5CeA8cMmPOz2/eGusX9YGt9ctl+` |
-| `assistant.js` | `sha384-oAndpOL+QSCni3S0WWC4LBlC8wF8IUzPQhjMP5M5u2fVVULp8ACzgE+9fX+I7wcd` |
+| `assistant.js` | `sha384-M95E9xVba16cmmPPT/hIk3/w8ns9yT7mhUCP6o/wWptqJvvrPyNtXXLQqQrLGPXH` |
 | `htmx.js` | `sha384-HGfztofotfshcF7+8n44JQL2oJmowVChPTg48S+jvZoztPfvwD79OC/LTtG6dMp+` |
 | `htmx-sse.js` | `sha384-fw+eTlCc7suMV/1w/7fr2/PmwElUIt5i82bi+qTiLXvjRXZ2/FkiTNA/w0MhXnGI` |
 | `marked.js` | `sha384-IvVdUXkhyoD0shbjhiiOnuiTbervTaB0VJcnEcg3shUAMVOOF6lKj4ozJrCwvz6s` |

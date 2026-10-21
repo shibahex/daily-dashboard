@@ -16,7 +16,7 @@
   const MAX_NOTES = 192 * 1024;
 
   let root, setup, tools = [], chat = { messages: [], api: [] }, version = 0, key = null, busy = null;
-  // The sealed settings: { anthropicKey, openaiKey, geminiKey, localURL (".../v1"), localModel, localKey }.
+  // The sealed settings: { anthropicKey, claudeCodeKey, openaiKey, geminiKey, localURL (".../v1"), localModel, localKey }.
   let settings = {}, settingsVersion = 0;
   let localModels = null; // what the local server lists, once asked
 
@@ -121,10 +121,12 @@
   // ---------- the AIs on the server ----------
 
   const onServer = () => (setup.server || []).includes(setup.provider);
+  // serverKey is the key the chosen server AI gets, and what to ask for when there's none.
+  // Claude Code takes its own key (a subscription token, say), or else the browser's API key.
   const serverKeys = {
-    "claude-code": ["anthropicKey", "Add a Claude subscription token or an Anthropic API key"],
-    codex: ["openaiKey", "Add your OpenAI API key"],
-    gemini: ["geminiKey", "Add your Gemini API key"],
+    "claude-code": [() => settings.claudeCodeKey || settings.anthropicKey, "Add a Claude subscription token or an Anthropic API key"],
+    codex: [() => settings.openaiKey, "Add your OpenAI API key"],
+    gemini: [() => settings.geminiKey, "Add your Gemini API key"],
   };
 
   // historyText is the chat so far, for a server AI joining it.
@@ -152,7 +154,7 @@
       const body = new FormData();
       const fields = {
         provider: setup.provider, model: setup.model || "", message: question, history,
-        session: same ? chat.server.session || "" : "", key: settings[serverKeys[setup.provider][0]] || "",
+        session: same ? chat.server.session || "" : "", key: serverKeys[setup.provider][0]() || "",
         notes: JSON.stringify(notes),
       };
       for (const [k, v] of Object.entries(fields)) body.set(k, v);
@@ -223,8 +225,8 @@
   // problem is why the chosen AI can't run, or "".
   function problem() {
     if (onServer()) {
-      const [field, ask] = serverKeys[setup.provider];
-      return settings[field] ? "" : ask + " on the Account page first";
+      const [key, ask] = serverKeys[setup.provider];
+      return key() ? "" : ask + " on the Account page first";
     }
     if (setup.provider === "local") {
       if (!settings.localURL) return "Add your local model's address on the Account page first";
@@ -234,8 +236,8 @@
     if (!settings.anthropicKey) return "Add your Anthropic API key on the Account page first";
     if (settings.anthropicKey.startsWith("sk-ant-oat")) {
       return (setup.server || []).includes("claude-code")
-        ? "The saved key is a Claude subscription token: pick Claude Code (on the server) to use it, or add an Anthropic API key (sk-ant-api…) on the Account page first"
-        : "The saved key is a Claude subscription token, which only works with Claude Code on the server: turn that on, or add an Anthropic API key (sk-ant-api…), on the Account page first";
+        ? "The saved Anthropic key is a Claude subscription token: pick Claude Code (on the server) to use it, or add an Anthropic API key (sk-ant-api…) on the Account page first"
+        : "The saved Anthropic key is a Claude subscription token, which only works with Claude Code on the server: turn that on, or add an Anthropic API key (sk-ant-api…), on the Account page first";
     }
     return "";
   }
@@ -672,13 +674,19 @@
   // ---------- the AI's settings, on the Account page ----------
   // Typed keys replace the saved ones; an empty box keeps what's saved, and "-" removes it.
 
-  htmx.onLoad(async node => {
-    const form = node.querySelector?.("form[data-browser-key]");
-    if (!form) return;
-    const showSaved = () => form.querySelectorAll("[data-browser-key-saved]").forEach(n => { n.hidden = !settings[n.dataset.browserKeySaved]; });
+  // Each list (in the browser, on the server) has its own form; each saves only its own fields.
+  const keyFields = { key: "anthropicKey", claude_code_key: "claudeCodeKey", openai_key: "openaiKey", gemini_key: "geminiKey", local_key: "localKey" };
+
+  htmx.onLoad(node => {
+    const forms = node.matches?.("form[data-browser-key]") ? [node] : [...(node.querySelectorAll?.("form[data-browser-key]") || [])];
+    forms.forEach(keysForm);
+  });
+
+  async function keysForm(form) {
     const picker = form.querySelector("[data-local-models]");
-    const error = form.parentElement.querySelector("[data-browser-key-error]");
+    const error = form.querySelector("[data-browser-key-error]");
     const fail = message => { error.textContent = message; error.hidden = false; };
+    const showSaved = () => form.querySelectorAll("[data-browser-key-saved]").forEach(n => { n.hidden = !settings[n.dataset.browserKeySaved]; });
     form.querySelectorAll("[data-origin]").forEach(n => { n.textContent = location.origin; });
     key = await Keys.notesKey().catch(() => null);
     if (!key) return fail("Unlock your notes on the Docs tab first: these settings are encrypted with them.");
@@ -689,6 +697,7 @@
         ...all.map(id => el("option", { value: id, selected: id === settings.localModel, textContent: id })));
     };
     const refreshModels = async () => {
+      if (!picker) return;
       if (!settings.localURL) return showModels([]);
       try { showModels(await listLocalModels()); error.hidden = true; }
       catch (e) { showModels([]); fail(e.message); }
@@ -696,48 +705,50 @@
     try {
       await loadSettings();
       showSaved();
-      form.elements.local_url.value = settings.localURL || "";
-      showModels([]);
-      if (settings.localURL) refreshModels();
+      if (picker) {
+        form.elements.local_url.value = settings.localURL || "";
+        showModels([]);
+        if (settings.localURL) refreshModels();
+      }
     } catch (e) { return fail(e.message); }
 
-    form.querySelector("[data-list-models]").onclick = async () => {
+    form.querySelector("[data-list-models]")?.addEventListener("click", async () => {
       try {
         settings.localURL = localBase(form.elements.local_url.value);
         await refreshModels();
       } catch (e) { fail(e.message); }
-    };
+    });
     form.onsubmit = async event => {
       event.preventDefault();
       error.hidden = true;
-      const take = (field, setting) => {
-        const value = form.elements[field].value.trim();
-        if (value === "-") delete settings[setting];
-        else if (value) {
-          if (value.length > 500 || /\s/.test(value)) throw new Error("That doesn't look like a key");
-          settings[setting] = value;
-        }
-      };
       try {
-        take("key", "anthropicKey");
-        take("local_key", "localKey");
-        take("openai_key", "openaiKey");
-        take("gemini_key", "geminiKey");
-        const address = form.elements.local_url.value.trim();
-        if (!address || address === "-") {
-          delete settings.localURL;
-          delete settings.localModel;
-        } else {
-          settings.localURL = localBase(address);
-          settings.localModel = picker.value || settings.localModel;
+        await loadSettings(); // what the other list saved meanwhile
+        for (const [field, setting] of Object.entries(keyFields)) {
+          if (!form.elements[field]) continue;
+          const value = form.elements[field].value.trim();
+          if (value === "-") delete settings[setting];
+          else if (value) {
+            if (value.length > 500 || /\s/.test(value)) throw new Error("That doesn't look like a key");
+            settings[setting] = value;
+          }
+        }
+        if (picker) {
+          const address = form.elements.local_url.value.trim();
+          if (!address || address === "-") {
+            delete settings.localURL;
+            delete settings.localModel;
+          } else {
+            settings.localURL = localBase(address);
+            settings.localModel = picker.value || settings.localModel;
+          }
         }
         await saveSettings(true);
-        for (const name of ["key", "local_key", "openai_key", "gemini_key"]) form.elements[name].value = "";
-        form.elements.local_url.value = settings.localURL || "";
-        showSaved();
+        for (const field of Object.keys(keyFields)) if (form.elements[field]) form.elements[field].value = "";
+        if (picker) form.elements.local_url.value = settings.localURL || "";
+        document.querySelectorAll("form[data-browser-key] [data-browser-key-saved]").forEach(n => { n.hidden = !settings[n.dataset.browserKeySaved]; });
         toast("Saved in your browser's encrypted settings");
         await refreshModels();
       } catch (e) { fail(e.message); }
     };
-  });
+  }
 })();

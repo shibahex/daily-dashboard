@@ -40,19 +40,21 @@ a.sign-in-btn { display: block; text-align: center; text-decoration: none; borde
 .device { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 14px; }
 .device small { display: block; }
 
-/* The AI card's two places, and a link from the MCPs tab that points at one of them. */
-.ai-place { padding: 10px 0; border-top: 1px solid var(--line); }
-.ai-place h3, .ai-settings h3 { margin: 0 0 4px; }
-.ai-place p { margin: 0 0 8px; }
+/* The AI tab's two lists, side by side when there's room, and a link from the MCPs tab that
+   points at one of them. */
+.account.wide { max-width: 1140px; }
+.ai-lists { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px; align-items: start; }
+.ai-lists .card { display: flex; flex-direction: column; gap: 10px; }
+.ai-lists p { margin: 0; }
+.ai-settings { border-top: 1px solid var(--line); padding-top: 12px; }
+.ai-settings h3 { margin: 6px 0 0; font-size: 15px; }
 .badge.on { background: var(--accent-soft); color: var(--accent); }
 #ai-settings, #server-ai { scroll-margin-top: 24px; }
-#ai-settings:target { animation: point-at 2.4s ease-out; }
-#server-ai:target { animation: point-at 2.4s ease-out; border-radius: 10px; padding: 10px 12px; margin: 0 -12px; }
+#ai-settings:target, #server-ai:target { animation: point-at 2.4s ease-out; }
 @keyframes point-at {
-  0%, 40% { box-shadow: 0 0 0 3px var(--accent); background: var(--accent-soft); }
+  0%, 40% { box-shadow: 0 0 0 3px var(--accent); }
   100% { box-shadow: 0 0 0 3px transparent; }
 }
-.ai-settings { border-top: 1px solid var(--line); padding-top: 10px; }
 
 /* The Account page's tabs. */
 .subtabs { display: flex; gap: 4px; flex-wrap: wrap; margin: 0 0 16px; border-bottom: 1px solid var(--line); }

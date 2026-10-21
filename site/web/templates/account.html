@@ -123,56 +123,62 @@
 {{end}}
 
 {{define "ai-card"}}
-<div class="account" id="ai-card">
+<div class="account wide" id="ai-card">
+  <p class="muted flush">The MCPs tab's AI can run in two places; you pick one at the top of that tab. Keys are encrypted here, like your notes.</p>
+  <div class="ai-lists">
   <div class="card" id="ai-settings">
-    <h2>AI</h2>
-    <p class="muted">The MCPs tab's AI can run in two places; you pick one at the top of that tab.</p>
-    <div class="ai-place">
-      <h3>In your browser</h3>
-      <p class="muted">Claude with an API key, or a model on this computer. Your browser talks to it directly, so your notes, chats and keys never pass through the server.</p>
-    </div>
-    {{template "server-ai" .}}
+    <h2>In your browser</h2>
+    <p class="muted">Claude with an API key, or a model on this computer. Your browser talks to it directly, so your notes, chats and keys never pass through the server.</p>
     <form class="ai-settings" data-browser-key hx-boost="false">
-      <h3>Keys</h3>
-      <p class="small muted">Encrypted here, like your notes. The server only gets a key while an AI on the server answers with it.</p>
-      <label>Anthropic key <span class="ok small" data-browser-key-saved="anthropicKey" hidden>· saved</span>
-        <small class="muted">An API key (sk-ant-api…) works everywhere. A Claude subscription token (run <code>claude setup-token</code>, sk-ant-oat…) works only with Claude Code on the server. <a class="link" href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener noreferrer">Get a key</a></small>
+      <label>Anthropic API key <span class="ok small" data-browser-key-saved="anthropicKey" hidden>· saved</span>
+        <small class="muted">sk-ant-api… A Claude subscription token goes under <b>On the server</b>. <a class="link" href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener noreferrer">Get a key</a></small>
         <input class="txt" type="password" name="key" autocomplete="off" spellcheck="false" placeholder="Paste a key; leave empty to keep it, or type - to remove it"></label>
-      <label>OpenAI API key <span class="ok small" data-browser-key-saved="openaiKey" hidden>· saved</span>
-        <small class="muted">For Codex on the server. <a class="link" href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer">Get a key</a></small>
-        <input class="txt" type="password" name="openai_key" autocomplete="off" spellcheck="false" placeholder="Leave empty to keep it, or type - to remove it"></label>
-      <label>Gemini API key <span class="ok small" data-browser-key-saved="geminiKey" hidden>· saved</span>
-        <small class="muted">For Gemini CLI on the server. <a class="link" href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer">Get a key</a></small>
-        <input class="txt" type="password" name="gemini_key" autocomplete="off" spellcheck="false" placeholder="Leave empty to keep it, or type - to remove it"></label>
       <h3>Local model</h3>
-      <p class="small muted">Ollama, LM Studio or llama.cpp (<code>llama-server</code>) on <b>this computer</b>, with the OpenAI-style API. Let this page reach it: for Ollama, start it with <code>OLLAMA_ORIGINS=<span data-origin></span></code>; in LM Studio, turn on CORS; llama.cpp allows it already. The model needs to handle tool calls.</p>
+      <p class="small muted flush">Ollama, LM Studio or llama.cpp (<code>llama-server</code>) on <b>this computer</b>, with the OpenAI-style API. Let this page reach it: for Ollama, start it with <code>OLLAMA_ORIGINS=<span data-origin></span></code>; in LM Studio, turn on CORS; llama.cpp allows it already. The model needs to handle tool calls.</p>
       <label>Address <input class="txt" name="local_url" autocomplete="off" spellcheck="false" placeholder="localhost:11434 (Ollama), localhost:1234 (LM Studio), localhost:8080 (llama.cpp)"></label>
       <label>Model <span class="row"><select class="txt grow" name="local_model" data-local-models><option value="">Save the address, then pick one</option></select>
         <button type="button" class="sm" data-list-models>List models</button></span></label>
-      <label>API key <small class="muted">(only if your server wants one)</small>
+      <label>API key <small class="muted">(only if your model server wants one)</small>
         <input class="txt" type="password" name="local_key" autocomplete="off" spellcheck="false" placeholder="Leave empty to keep it, or type - to remove it"></label>
+      <p class="sign-in-error" data-browser-key-error hidden></p>
       <div><button class="sm primary">Save</button></div>
     </form>
-    <p class="sign-in-error" data-browser-key-error hidden></p>
+  </div>
+  {{template "server-ai" .}}
   </div>
 </div>
 {{end}}
 
 {{define "server-ai"}}
-<div class="ai-place" id="server-ai">
-  <h3>On the server {{if and .ServerAI .ServerAllowed}}<span class="badge on">on</span>{{end}}</h3>
+<div class="card" id="server-ai">
+  <h2>On the server {{if and .ServerAI .ServerAllowed}}<span class="badge on">on</span>{{end}}</h2>
   <p class="muted">Claude Code, Codex and Gemini CLI can't run in a browser, so they run on the server. That's the way to use a Claude subscription. The catch: while one answers, the server sees your message, your notes and your key. It keeps none of them, but whoever runs the server could read them then.</p>
   {{if not .ServerAllowed}}
   <p class="notice warn">{{if .Admin}}You haven't allowed an AI on the server for your own account yet. Tick the ones you want under your name on the <a class="link" href="/admin">Admin page</a>.{{else}}Your admin hasn't allowed an AI on the server for you yet. Ask them if you'd like to use one.{{end}}</p>
   {{else if and .ServerAI (not .ServerAIs)}}
   <p class="notice warn">The AIs you're allowed aren't installed on the server yet. Ask whoever runs it.</p>
   {{else if .ServerAI}}
-  <p class="small">You can pick {{range $i, $name := .ServerAIs}}{{if $i}}, {{end}}{{$name}}{{end}} on the MCPs tab.</p>
+  <p class="small flush">You can pick {{range $i, $name := .ServerAIs}}{{if $i}}, {{end}}{{$name}}{{end}} on the MCPs tab.</p>
   {{end}}
   {{if .ServerAI}}
-  <button class="sm" hx-post="/account/server-ai" hx-vals="{{vals "on" "0"}}" hx-target="#server-ai" hx-swap="outerHTML">Turn it off</button>
+  <div><button class="sm" hx-post="/account/server-ai" hx-vals="{{vals "on" "0"}}" hx-target="#server-ai" hx-swap="outerHTML">Turn it off</button></div>
   {{else if .ServerAllowed}}
-  <button class="sm" hx-post="/account/server-ai" hx-vals="{{vals "on" "1"}}" hx-target="#server-ai" hx-swap="outerHTML" hx-confirm="Let the server see your messages, notes and key while an AI on the server answers you?">Turn it on</button>
+  <div><button class="sm primary" hx-post="/account/server-ai" hx-vals="{{vals "on" "1"}}" hx-target="#server-ai" hx-swap="outerHTML" hx-confirm="Let the server see your messages, notes and key while an AI on the server answers you?">Turn it on</button></div>
+  {{end}}
+  {{if .ServerAllowed}}
+  <form class="ai-settings" data-browser-key hx-boost="false">
+    <label>Claude Code key <span class="ok small" data-browser-key-saved="claudeCodeKey" hidden>· saved</span>
+      <small class="muted">A Claude subscription token (run <code>claude setup-token</code>, sk-ant-oat…) or an API key. Empty uses your Anthropic API key from the other list.</small>
+      <input class="txt" type="password" name="claude_code_key" autocomplete="off" spellcheck="false" placeholder="Leave empty to keep it, or type - to remove it"></label>
+    <label>OpenAI API key <span class="ok small" data-browser-key-saved="openaiKey" hidden>· saved</span>
+      <small class="muted">For Codex. <a class="link" href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer">Get a key</a></small>
+      <input class="txt" type="password" name="openai_key" autocomplete="off" spellcheck="false" placeholder="Leave empty to keep it, or type - to remove it"></label>
+    <label>Gemini API key <span class="ok small" data-browser-key-saved="geminiKey" hidden>· saved</span>
+      <small class="muted">For Gemini CLI. <a class="link" href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer">Get a key</a></small>
+      <input class="txt" type="password" name="gemini_key" autocomplete="off" spellcheck="false" placeholder="Leave empty to keep it, or type - to remove it"></label>
+    <p class="sign-in-error" data-browser-key-error hidden></p>
+    <div><button class="sm primary">Save</button></div>
+  </form>
   {{end}}
 </div>
 {{end}}
