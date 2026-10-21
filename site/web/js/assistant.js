@@ -122,7 +122,7 @@
       return "";
     }
     if (!settings.anthropicKey) return "Add your Anthropic API key on the Account page first";
-    if (settings.anthropicKey.startsWith("sk-ant-oat")) return "The AI needs an Anthropic API key (sk-ant-api…); a Claude subscription token only works with Claude Code";
+    if (settings.anthropicKey.startsWith("sk-ant-oat")) return "The saved key is a Claude subscription token, which only works with Claude Code: add an Anthropic API key (sk-ant-api…) on the Account page first";
     return "";
   }
 
@@ -418,7 +418,15 @@
   function renderTop() {
     const status = $("status");
     status.classList.toggle("off", !!setup.problem);
-    status.lastChild.textContent = setup.problem || `${providerNames[setup.provider]} · in your browser`;
+    status.lastChild.textContent = `${providerNames[setup.provider] || "AI"} · ${setup.problem ? "needs setup" : "in your browser"}`;
+    // What's wrong gets its own line under the bar, with where to fix it.
+    const notice = $("problem");
+    notice.hidden = !setup.problem;
+    notice.replaceChildren();
+    if (setup.problem) {
+      notice.append(setup.problem.replace(/ on the Account page first$/, "") + ". ");
+      if (/Account page/.test(setup.problem)) notice.append(el("a", { className: "link", href: "/account" }, "Open the Account page"));
+    }
     const toggles = $("toggles");
     toggles.replaceChildren();
     for (const m of setup.mcps || []) {

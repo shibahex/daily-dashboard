@@ -75,3 +75,6 @@
 @media (max-width: 600px) { .sugg { grid-template-columns: 1fr; } .msg { max-width: 94%; } .chat-tools { width: 100%; justify-content: flex-end; } }
 .custom-model { display: inline-flex; gap: 6px; align-items: center; }
 .custom-model .txt { width: 230px; }
+/* Why the AI can't run yet (no key, no local model…): a full-width notice under the bar. */
+.chat-problem { margin: 12px 4px 0; padding: 10px 14px; border-radius: 10px; background: var(--warn-soft); color: var(--warn); font-size: 14px; line-height: 1.5; }
+.chat-problem .link { color: inherit; font-weight: 600; text-decoration: underline; }
