@@ -282,6 +282,8 @@ type connectionsView struct {
 	ServerAI      bool     // the user lets the server run an AI for them
 	ServerAIs     []string // the AIs on the server they may pick
 	ServerAllowed bool     // their admin allows at least one AI on the server
+	ModelServers  []string // model servers on the network their browser may reach (an admin lists them)
+	Relayed       []string // those the server relays to without checking certificates
 	MyFitnessPal  bool     // signed in
 	Anki          anki.Status
 	AnkiURL       string
@@ -301,7 +303,8 @@ func (ui *UI) connectionsView(r *http.Request) connectionsView {
 	user, ws := ui.user(r), ui.ws(r)
 	ankiClient := ws.Anki()
 	view := connectionsView{Tab: accountTab(r), Admin: user.IsAdmin(), Host: ws.Host, MyFitnessPal: ws.MyFitnessPal.Client().Setup().SignedIn,
-		Anki: ankiClient.Status(), AnkiURL: ankiClient.URL, ServerAI: user.ServerAI, ServerAIs: serverAILabels(user)}
+		Anki: ankiClient.Status(), AnkiURL: ankiClient.URL, ServerAI: user.ServerAI, ServerAIs: serverAILabels(user),
+		ModelServers: ui.Auth.ModelServers(), Relayed: ui.Auth.RelayedModelServers()}
 	for _, id := range auth.ServerProviders {
 		view.ServerAllowed = view.ServerAllowed || user.Policy.AllowsProvider(id)
 	}

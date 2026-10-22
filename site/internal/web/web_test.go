@@ -79,6 +79,8 @@ func TestEncryptionTemplatesRender(t *testing.T) {
 		{"account", accountView{Tab: "privacy", Username: "me", Encrypted: true, Sealed: true, NewRecovery: true}, "data-new-recovery-code"},
 		{"ai-card", connectionsView{}, "data-browser-key"},
 		{"ai-card", connectionsView{}, "hasn't allowed an AI on the server"},
+		{"ai-card", connectionsView{ModelServers: []string{"https://models.example.lan", "http://box.lan:11434"}}, `data-model-servers="https://models.example.lan http://box.lan:11434"`},
+		{"admin", adminView{ModelServers: []string{"https://models.example.lan", "http://box.lan:11434"}}, "https://models.example.lan\nhttp://box.lan:11434</textarea>"},
 		{"account", accountView{Tab: "ai", Connections: connectionsView{ServerAllowed: true}}, "Turn it on"},
 		{"account", accountView{Tab: "privacy", Sealed: true}, "recovery code"},
 		{"account", accountView{Username: "me", Sealed: true}, `data-keys="password" data-sealed`},

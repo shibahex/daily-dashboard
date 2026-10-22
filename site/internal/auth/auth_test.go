@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -446,6 +447,24 @@ func TestPolicy(t *testing.T) {
 	_, session := inviteUser(t, a, "newcomer")
 	if newcomer, _ := a.Session(session); newcomer.Policy.AllowsMCP("anki") || !newcomer.Policy.AllowsMCP("myfitnesspal") {
 		t.Fatalf("new users should start with the default policy: %+v", newcomer.Policy)
+	}
+}
+
+func TestModelServers(t *testing.T) {
+	a, _, _ := setUp(t)
+	if err := a.SetModelServers([]string{"https://Models.example.lan/v1/models", "", "box.lan:11434", "https://models.example.lan"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := a.ModelServers(); !slices.Equal(got, []string{"https://models.example.lan", "https://box.lan:11434"}) {
+		t.Fatalf("got %q", got)
+	}
+	for _, bad := range []string{"https://*.example.lan", "ftp://box.lan", "https://box.lan; script-src *", "https://me@box.lan", "https://[::1]:8080"} {
+		if err := a.SetModelServers([]string{bad}); err == nil {
+			t.Errorf("%q should be refused", bad)
+		}
+	}
+	if len(a.ModelServers()) != 2 {
+		t.Fatal("a refused list must leave the saved one alone")
 	}
 }
 

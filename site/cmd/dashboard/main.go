@@ -89,7 +89,7 @@ func main() {
 		fmt.Printf("Create the first (admin) account: %s/setup?code=%s\n", network.BaseURL(), code)
 	}
 	server := &http.Server{
-		Handler:           httpx.RealIP(network.TrustedProxies, httpx.OnlyHosts(network.AllowedHosts(), httpx.Secure(account.Guard(pages.UnlockData(mux))))),
+		Handler:           httpx.RealIP(network.TrustedProxies, httpx.OnlyHosts(network.AllowedHosts(), httpx.Secure(account.ModelServers, account.Guard(pages.UnlockData(mux))))),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	// Stopping (Ctrl+C, systemd) saves everyone's open data and wipes it from memory.

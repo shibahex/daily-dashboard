@@ -70,6 +70,7 @@ func (ui *UI) assistantSetup(w http.ResponseWriter, r *http.Request) {
 		"server":       serverAIs(user), // the providers that run on the server
 		"instructions": !conversation.NoInstructions,
 		"edit":         user.Policy.EditFiles,
+		"relayed":      ui.Auth.RelayedModelServers(), // local model servers reached through the server (modelrelay.go)
 	}
 	// Keys the server kept from before keys moved into the browser: handed over once, for the
 	// browser to seal; they're deleted when it saves its settings (sealed=1).

@@ -4,11 +4,12 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
+	"strings"
 	"testing"
 )
 
 func TestSecureRefusesOtherOrigins(t *testing.T) {
-	handler := Secure(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	handler := Secure(func() []string { return []string{"https://models.example.lan"} }, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
 	cases := []struct {
 		name, method, fetchSite string
 		want                    int
@@ -29,7 +30,7 @@ func TestSecureRefusesOtherOrigins(t *testing.T) {
 		if w.Code != c.want {
 			t.Errorf("%s: got %d, want %d", c.name, w.Code, c.want)
 		}
-		if w.Header().Get("X-Frame-Options") != "DENY" || w.Header().Get("Content-Security-Policy") == "" {
+		if w.Header().Get("X-Frame-Options") != "DENY" || !strings.Contains(w.Header().Get("Content-Security-Policy"), "http://localhost:* http://127.0.0.1:* https://models.example.lan;") {
 			t.Errorf("%s: security headers missing", c.name)
 		}
 	}

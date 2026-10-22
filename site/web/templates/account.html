@@ -129,12 +129,13 @@
   <div class="card" id="ai-settings">
     <h2>In your browser</h2>
     <p class="muted">Claude with an API key, or a model on this computer. Your browser talks to it directly, so your notes, chats and keys never pass through the server.</p>
-    <form class="ai-settings" data-browser-key hx-boost="false">
+    <form class="ai-settings" data-browser-key data-model-servers="{{join .ModelServers " "}}" data-relayed="{{join .Relayed " "}}" hx-boost="false">
       <label>Anthropic API key <span class="ok small" data-browser-key-saved="anthropicKey" hidden>· saved</span>
         <small class="muted">sk-ant-api… A Claude subscription token goes under <b>On the server</b>. <a class="link" href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener noreferrer">Get a key</a></small>
         <input class="txt" type="password" name="key" autocomplete="off" spellcheck="false" placeholder="Paste a key; leave empty to keep it, or type - to remove it"></label>
       <h3>Local model</h3>
-      <p class="small muted flush">Ollama, LM Studio or llama.cpp (<code>llama-server</code>) on <b>this computer</b>, with the OpenAI-style API. Let this page reach it: for Ollama, start it with <code>OLLAMA_ORIGINS=<span data-origin></span></code>; in LM Studio, turn on CORS; llama.cpp allows it already. The model needs to handle tool calls.</p>
+      <p class="small muted flush">Ollama, LM Studio or llama.cpp (<code>llama-server</code>) on <b>this computer</b>{{with .ModelServers}} or on a server your admin allowed ({{range $i, $s := .}}{{if $i}}, {{end}}<code>{{$s}}</code>{{end}}){{end}}, with the OpenAI-style API. Let this page reach it: for Ollama, start it with <code>OLLAMA_ORIGINS=<span data-origin></span></code>; in LM Studio, turn on CORS; llama.cpp allows it already. The model needs to handle tool calls.</p>
+      {{with .Relayed}}<p class="small sign-in-error flush">Your admin turned off certificate checks for {{range $i, $s := .}}{{if $i}}, {{end}}<code>{{$s}}</code>{{end}}, for testing: with one of those, your chats and notes go through the dashboard's server.</p>{{end}}
       <label>Address <input class="txt" name="local_url" autocomplete="off" spellcheck="false" placeholder="localhost:11434 (Ollama), localhost:1234 (LM Studio), localhost:8080 (llama.cpp)"></label>
       <label>Model <span class="row"><select class="txt grow" name="local_model" data-local-models><option value="">Save the address, then pick one</option></select>
         <button type="button" class="sm" data-list-models>List models</button></span></label>

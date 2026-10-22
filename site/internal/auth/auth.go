@@ -155,10 +155,12 @@ type PendingInvite struct {
 // state is accounts.json. Tokens and invites are kept by fingerprint, so the file never holds
 // one that works.
 type state struct {
-	Users         []*User           `json:"users"`
-	Tokens        map[string]string `json:"tokens"`  // fingerprint → user id
-	Invites       map[string]invite `json:"invites"` // fingerprint → invite
-	DefaultPolicy Policy            `json:"default_policy"`
+	Users          []*User           `json:"users"`
+	Tokens         map[string]string `json:"tokens"`  // fingerprint → user id
+	Invites        map[string]invite `json:"invites"` // fingerprint → invite
+	DefaultPolicy  Policy            `json:"default_policy"`
+	ModelServers   []string          `json:"model_servers,omitempty"`    // origins the browser AI may reach (modelservers.go)
+	SkipModelCerts bool              `json:"skip_model_certs,omitempty"` // relay to them without checking certificates (testing)
 }
 
 // failures are wrong passwords in a row, kept in a file so a restart doesn't reset them.

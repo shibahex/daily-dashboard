@@ -77,6 +77,24 @@
       <div><button class="sm primary">Save</button></div>
     </form>
   </div>
+
+  <div class="card">
+    <h2>Model servers on your network</h2>
+    <p class="muted">Besides a model on their own computer, people's browsers may talk to these (Ollama, LM Studio, llama.cpp or another OpenAI-style server) for the <b>Local model</b> AI. Their chats and notes go straight there, never through this server. One address per line, like <code>https://models.example.lan</code>; nothing else on your network is reachable.</p>
+    <p class="small muted">Browsers check HTTPS certificates themselves and no page can skip that: with a self-signed or expired one, each person opens the address once and accepts the warning, or adds your certificate authority to their browser.</p>
+    <form hx-post="/admin/model-servers" hx-target="#admin-card" hx-swap="outerHTML">
+      <textarea class="txt" name="model_servers" rows="3" autocomplete="off" spellcheck="false" placeholder="https://models.example.lan">{{join .ModelServers "\n"}}</textarea>
+      <div><button class="sm primary">Save</button></div>
+    </form>
+    <h3>Skip certificate checks (for testing)</h3>
+    {{if .SkipModelCerts}}
+    <p class="sign-in-error">Certificate checks are off: the server passes the AI's requests on to the https servers above without checking their certificates, so people's chats and notes go through this server, and anyone who can pose as one of those servers on your network can read them.</p>
+    <button class="sm primary" hx-post="/admin/model-servers/skip-certs" hx-vals='{"skip": ""}' hx-target="#admin-card" hx-swap="outerHTML">Turn certificate checks back on</button>
+    {{else}}
+    <p class="small muted">For a server whose certificate is expired or self-signed: the server passes the AI's requests on to it without checking. Each person is asked before their chats go that way.</p>
+    <button class="sm danger" hx-post="/admin/model-servers/skip-certs" hx-vals='{"skip": "on"}' hx-target="#admin-card" hx-swap="outerHTML" hx-confirm="Skip certificate checks for the https model servers? People's chats and notes will then go through this server instead of straight from their browser, and anyone who can pose as one of those servers on your network could read them. Only for testing.">Skip certificate checks…</button>
+    {{end}}
+  </div>
 </div>
 {{end}}
 

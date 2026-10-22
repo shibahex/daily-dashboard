@@ -1,5 +1,5 @@
 // The MCPs tab's AI, which runs in this browser: it talks to Anthropic, or to a model on this
-// computer (Ollama, LM Studio, llama.cpp), directly, so the user's notes go straight there and
+// computer or a model server an admin allowed (Ollama, LM Studio, llama.cpp), directly, so the user's notes go straight there and
 // never through the dashboard's server. The server gives what isn't private (the dashboard's
 // instructions, the plan and data: /assistant/setup) and runs the MCP tools the AI calls
 // (MyFitnessPal, Anki: /assistant/tool). Notes are read and saved here (notes.js). The chat is
@@ -16,9 +16,11 @@
   const MAX_NOTES = 192 * 1024;
 
   let root, setup, tools = [], chat = { messages: [], api: [] }, version = 0, key = null, busy = null;
-  // The sealed settings: { anthropicKey, claudeCodeKey, openaiKey, geminiKey, localURL (".../v1"), localModel, localKey }.
+  // The sealed settings: { anthropicKey, claudeCodeKey, openaiKey, geminiKey, localURL (".../v1"), localModel, localKey,
+  // relayOK (the model server the user agreed to reach through the dashboard's server) }.
   let settings = {}, settingsVersion = 0;
   let localModels = null; // what the local server lists, once asked
+  let relayed = [];       // model servers reached through the dashboard's server (certificate checks off)
   const modelLists = {};   // what each other AI's maker lists for the user's key, once asked
 
   const el = (tag, props = {}, ...children) => {
@@ -98,23 +100,63 @@
     Keys.saved("settings", settings);
   }
 
-  // localBase is the local server's API address from what was typed: on this computer only, since
-  // the page may only reach that (and nothing else on the network), ending in /v1 by default.
-  function localBase(typed) {
+  // localBase is the local server's API address from what was typed: on this computer, or a model
+  // server an admin allowed (servers), since the page may only reach those (and nothing else on
+  // the network), ending in /v1 by default. Without a scheme, an allowed server's is used.
+  function localBase(typed, servers) {
     const text = typed.trim();
-    const url = new URL(text.includes("://") ? text : "http://" + text);
-    if (!["localhost", "127.0.0.1"].includes(url.hostname)) {
-      throw new Error("The local model has to run on this computer (localhost)");
+    let url = new URL(text.includes("://") ? text : "http://" + text);
+    const known = !text.includes("://") && servers.find(s => new URL(s).host === url.host);
+    if (known) url = new URL(known + url.pathname);
+    if (!["localhost", "127.0.0.1"].includes(url.hostname) && !servers.includes(url.origin)) {
+      throw new Error(servers.length
+        ? `The model has to run on this computer (localhost) or on ${servers.join(", ")}`
+        : "The model has to run on this computer (localhost), unless an admin adds its server on the Admin page");
     }
-    const path = url.pathname.replace(/\/+$/, "");
+    // An address copied with the endpoint on it (".../v1/models") is the API's.
+    const path = url.pathname.replace(/\/+$/, "").replace(/\/(models|chat\/completions)$/, "");
     return url.origin + (path || "/v1");
   }
 
+  // localFetch asks the local model server (null when it can't be reached). For one an admin
+  // turned certificate checks off for, the request goes through the dashboard's server
+  // (/assistant/model-relay), which doesn't check them: once the user agrees, since the server
+  // then sees their chat and notes.
+  async function localFetch(path, init = {}) {
+    const url = settings.localURL + path, origin = new URL(url).origin;
+    const headers = { ...init.headers };
+    let address = url;
+    if (relayed.includes(origin)) {
+      if (settings.relayOK !== origin) {
+        if (!confirm(`Your admin turned off certificate checks for ${origin}, for testing. To use it, your chats, notes and its key go through the dashboard's server instead of straight from this browser. Go ahead?`)) {
+          throw new Error(`Not sent: ${origin} only works through the dashboard's server`);
+        }
+        const unsaved = settings;
+        await loadSettings();
+        settings.relayOK = origin;
+        await saveSettings();
+        settings = { ...unsaved, relayOK: origin, seq: settings.seq };
+      }
+      if (settings.localKey) headers["X-Model-Key"] = settings.localKey;
+      headers["HX-Request"] = "true";
+      address = "/assistant/model-relay?to=" + encodeURIComponent(url);
+    } else if (settings.localKey) {
+      headers.Authorization = "Bearer " + settings.localKey;
+    }
+    return fetch(address, { ...init, headers }).catch(e => {
+      if (e.name === "AbortError") throw e;
+      return null;
+    });
+  }
+
   async function listLocalModels() {
-    const headers = settings.localKey ? { Authorization: "Bearer " + settings.localKey } : {};
-    const response = await fetch(settings.localURL + "/models", { headers }).catch(() => null);
+    const response = await localFetch("/models");
     if (!response?.ok) {
-      throw new Error(`Couldn't reach ${settings.localURL}: is it running, and does it allow this page (see the Account page)?`);
+      if (response && relayed.includes(new URL(settings.localURL).origin)) {
+        throw new Error(`${settings.localURL} answered ${response.status}: ${(await response.text()).slice(0, 200)}`);
+      }
+      const certificate = settings.localURL.startsWith("https:") ? " This browser must also trust its certificate: open the address once to check." : "";
+      throw new Error(`Couldn't reach ${settings.localURL}: is it running, and does it allow this page (see the Account page)?${certificate}`);
     }
     return ((await response.json()).data || []).map(m => m.id).filter(Boolean);
   }
@@ -422,19 +464,15 @@
   // streamLocal does what streamClaude does with the local server's chat completions, and gives
   // back the answer in Anthropic's shape.
   async function streamLocal(signal, onText) {
-    const headers = { "content-type": "application/json" };
-    if (settings.localKey) headers.Authorization = "Bearer " + settings.localKey;
     const list = allTools().map(t => ({ type: "function", function: { name: t.name, description: t.description, parameters: t.input_schema } }));
-    const response = await fetch(settings.localURL + "/chat/completions", {
-      method: "POST", signal, headers,
+    const response = await localFetch("/chat/completions", {
+      method: "POST", signal, headers: { "content-type": "application/json" },
       body: JSON.stringify({
         model: setup.model || settings.localModel, stream: true,
         messages: asChatMessages(await systemPrompt()), ...(list.length ? { tools: list } : {}),
       }),
-    }).catch(e => {
-      if (e.name === "AbortError") throw e;
-      throw new Error(`Couldn't reach your local model at ${settings.localURL}: is it running, and does it allow this page?`);
     });
+    if (!response) throw new Error(`Couldn't reach your local model at ${settings.localURL}: is it running, and does it allow this page?`);
     if (!response.ok) {
       const answer = await response.json().catch(() => ({}));
       throw new Error(answer.error?.message || answer.error || `Your local model answered ${response.status}`);
@@ -559,7 +597,8 @@
   function renderTop() {
     const status = $("status");
     status.classList.toggle("off", !!setup.problem);
-    status.lastChild.textContent = `${shortNames[setup.provider] || "AI"} · ${setup.problem ? "needs setup" : onServer() ? "on the server" : "in your browser"}`;
+    const relaying = setup.provider === "local" && settings.localURL && relayed.includes(new URL(settings.localURL).origin);
+    status.lastChild.textContent = `${shortNames[setup.provider] || "AI"} · ${setup.problem ? "needs setup" : onServer() ? "on the server" : relaying ? "through the server (certificate checks off)" : "in your browser"}`;
     // What's wrong gets its own line under the bar, with where to fix it.
     const notice = $("problem");
     notice.hidden = !setup.problem;
@@ -632,6 +671,7 @@
 
   async function refresh() {
     setup = await getJSON("/assistant/setup");
+    relayed = setup.relayed || [];
     await loadSettings();
     if (setup.oldKeys) await takeOldKeys(setup.oldKeys);
     setup.problem ||= problem();
@@ -711,6 +751,8 @@
     const picker = form.querySelector("[data-local-models]");
     const error = form.querySelector("[data-browser-key-error]");
     const fail = message => { error.textContent = message; error.hidden = false; };
+    const servers = (form.dataset.modelServers || "").split(" ").filter(Boolean);
+    relayed = (form.dataset.relayed || "").split(" ").filter(Boolean);
     const showSaved = () => form.querySelectorAll("[data-browser-key-saved]").forEach(n => { n.hidden = !settings[n.dataset.browserKeySaved]; });
     form.querySelectorAll("[data-origin]").forEach(n => { n.textContent = location.origin; });
     key = await Keys.notesKey().catch(() => null);
@@ -739,7 +781,7 @@
 
     form.querySelector("[data-list-models]")?.addEventListener("click", async () => {
       try {
-        settings.localURL = localBase(form.elements.local_url.value);
+        settings.localURL = localBase(form.elements.local_url.value, servers);
         await refreshModels();
       } catch (e) { fail(e.message); }
     });
@@ -760,10 +802,11 @@
         if (picker) {
           const address = form.elements.local_url.value.trim();
           if (!address || address === "-") {
+            delete settings.relayOK;
             delete settings.localURL;
             delete settings.localModel;
           } else {
-            settings.localURL = localBase(address);
+            settings.localURL = localBase(address, servers);
             settings.localModel = picker.value || settings.localModel;
           }
         }

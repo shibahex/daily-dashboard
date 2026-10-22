@@ -3,6 +3,7 @@ package web
 import (
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"dashboard/internal/auth"
@@ -14,21 +15,24 @@ import (
 // see accounts and settings, never anyone's food, notes, tasks or chats.
 
 type adminView struct {
-	Me        string // the signed-in admin's id
-	Users     []auth.User
-	Encrypted map[string]bool // users whose data is encrypted on disk
-	Invites   []auth.PendingInvite
-	Default   auth.Policy
-	Providers []choice
-	MCPs      []choice
-	Link      string // an invite or reset link, shown once
-	LinkFor   string
-	Error     string
-	Saved     string
+	Me             string // the signed-in admin's id
+	Users          []auth.User
+	Encrypted      map[string]bool // users whose data is encrypted on disk
+	Invites        []auth.PendingInvite
+	Default        auth.Policy
+	ModelServers   []string // origins the browser AI may reach besides each person's own computer
+	SkipModelCerts bool     // the model relay is on (modelrelay.go)
+	Providers      []choice
+	MCPs           []choice
+	Link           string // an invite or reset link, shown once
+	LinkFor        string
+	Error          string
+	Saved          string
 }
 
 func (ui *UI) adminView(r *http.Request) adminView {
-	view := adminView{Me: ui.user(r).ID, Users: ui.Auth.Users(), Invites: ui.Auth.Invites(), Default: ui.Auth.DefaultPolicy()}
+	view := adminView{Me: ui.user(r).ID, Users: ui.Auth.Users(), Invites: ui.Auth.Invites(), Default: ui.Auth.DefaultPolicy(),
+		ModelServers: ui.Auth.ModelServers(), SkipModelCerts: ui.Auth.SkipModelCerts()}
 	view.Encrypted = map[string]bool{}
 	for _, user := range view.Users {
 		view.Encrypted[user.ID] = ui.Workspaces.Encrypted(user)
@@ -45,7 +49,7 @@ func (ui *UI) adminView(r *http.Request) adminView {
 var mcpLabels = map[string]string{"myfitnesspal": "MyFitnessPal", "anki": "Anki"}
 
 // providerLabels name the AIs: the browser runs the first two, the server the rest.
-var providerLabels = map[string]string{"claude": "Claude", "local": "Local model (on their own computer)",
+var providerLabels = map[string]string{"claude": "Claude", "local": "Local model (on their computer, or a model server below)",
 	"claude-code": "Claude Code (on the server)", "codex": "Codex (on the server)", "gemini": "Gemini CLI (on the server)"}
 
 func (ui *UI) adminPage(w http.ResponseWriter, r *http.Request) {
@@ -181,4 +185,20 @@ func expiresIn(t time.Time) string {
 		return fmt.Sprintf("expires in %d %s", hours, plural(hours, "hour", "hours"))
 	}
 	return "expires soon"
+}
+
+// setModelServers saves the model servers on the network that browsers may reach, one per line.
+func (ui *UI) setModelServers(w http.ResponseWriter, r *http.Request) {
+	err := ui.Auth.SetModelServers(strings.Split(r.FormValue("model_servers"), "\n"))
+	ui.renderAdmin(w, r, "Saved the model servers", err, nil)
+}
+
+// setSkipModelCerts turns the model relay on or off (modelrelay.go).
+func (ui *UI) setSkipModelCerts(w http.ResponseWriter, r *http.Request) {
+	skip := r.FormValue("skip") == "on"
+	saved := "Certificate checks are back on"
+	if skip {
+		saved = "Certificate checks are off for the https model servers"
+	}
+	ui.renderAdmin(w, r, saved, ui.Auth.SetSkipModelCerts(skip), nil)
 }
