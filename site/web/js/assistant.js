@@ -20,6 +20,9 @@
   // relayOK (the model server the user agreed to reach through the dashboard's server) }.
   let settings = {}, settingsVersion = 0;
   let localModels = null; // what the local server lists, once asked
+  // The chosen local model's state, from a server that says (llama.cpp's router): "loaded",
+  // "loading" or "unloaded"; null when it doesn't. waiting is true until an answer's first words.
+  let localState = null, watching = null, waiting = false, slow = false, loadAsked = 0;
   let relayed = [];       // model servers reached through the dashboard's server (certificate checks off)
   const modelLists = {};   // what each other AI's maker lists for the user's key, once asked
 
@@ -156,6 +159,11 @@
   }
 
   async function listLocalModels() {
+    return (await localModelInfo()).map(m => m.id);
+  }
+
+  // localModelInfo is the local server's model list, with each model's state where it gives one.
+  async function localModelInfo() {
     const response = await localFetch("/models");
     if (!response?.ok) {
       if (response && relayed.includes(new URL(settings.localURL).origin)) {
@@ -164,7 +172,41 @@
       const certificate = settings.localURL.startsWith("https:") ? " This browser must also trust its certificate: open the address once to check." : "";
       throw new Error(`Couldn't reach ${settings.localURL}: is it running, and does it allow this page (see the Account page)?${certificate}`);
     }
-    return ((await response.json()).data || []).map(m => m.id).filter(Boolean);
+    return ((await response.json()).data || []).filter(m => m.id);
+  }
+
+  // watchLocal asks how the chosen local model is doing, and asks again every second or so while
+  // it's loading, or while an answer waits on it.
+  async function watchLocal() {
+    clearTimeout(watching);
+    if (setup?.provider !== "local" || !settings.localURL) return void (localState = null);
+    const info = await localModelInfo().catch(() => null);
+    if (!info) return;
+    localModels = info.map(m => m.id);
+    let state = info.find(m => m.id === (setup.model || settings.localModel))?.status?.value || null;
+    // Just asked to load: the server may not have started yet.
+    if (state === "unloaded" && Date.now() - loadAsked < 10000) state = "loading";
+    if (state !== localState) {
+      localState = state;
+      showStatus();
+      if (busy) renderReply(chat.messages.at(-1));
+    }
+    if (state === "loading" || (waiting && state === "unloaded")) watching = setTimeout(watchLocal, 1200);
+  }
+
+  // loadLocal asks llama.cpp's router to load the chosen model now, before the first message.
+  async function loadLocal() {
+    const response = await fetch(new URL(settings.localURL).origin + "/models/load", {
+      method: "POST", headers: { "content-type": "application/json", ...(settings.localKey ? { Authorization: "Bearer " + settings.localKey } : {}) },
+      body: JSON.stringify({ model: setup.model || settings.localModel }),
+    }).catch(() => null);
+    if (!response?.ok) {
+      return toast(`Couldn't load the model${response ? `: ${(await response.text()).slice(0, 200)}` : ""}`, { bad: true });
+    }
+    loadAsked = Date.now();
+    localState = "loading";
+    showStatus();
+    watchLocal();
   }
 
   // ---------- the AIs on the server ----------
@@ -521,13 +563,21 @@
     renderAll();
     const stream = setup.provider === "local" ? streamLocal : streamClaude;
     let paragraphs = [];
+    // A local model may have to load first: say so until its first words.
+    const local = setup.provider === "local";
+    waiting = local;
+    slow = false;
+    const slowTimer = local && setTimeout(() => { slow = true; if (waiting) renderReply(reply); }, 4000);
+    if (local) { renderReply(reply); watchLocal(); }
     try {
       for (let turn = 0; turn < MAX_TURNS; turn++) {
         let streamed = "", drawing = false;
         const { content, stop } = await stream(busy.signal, soFar => {
+          waiting = false;
           reply.text = [...paragraphs, soFar].filter(Boolean).join("\n\n");
           if (!drawing) { drawing = true; requestAnimationFrame(() => { drawing = false; renderReply(reply); }); }
         });
+        if (waiting) { waiting = false; watchLocal(); }
         content.filter(b => b.type === "text").forEach(b => { streamed += b.text; });
         if (streamed) paragraphs.push(streamed);
         reply.text = paragraphs.join("\n\n");
@@ -551,6 +601,8 @@
       reply.error = e.name === "AbortError" ? "Stopped" : e.message;
       chat.api = validHistory(chat.api);
     } finally {
+      clearTimeout(slowTimer);
+      if (waiting) { waiting = false; watchLocal(); }
       busy = null;
       renderReply(reply);
       renderControls();
@@ -569,7 +621,7 @@
     }
     const text = el("div", { className: "bubble md" });
     if (m.text) text.innerHTML = markdown(m.text);
-    else if (busy && !m.error) text.append(el("span", { className: "typing" }, el("i"), el("i"), el("i")));
+    else if (busy && !m.error) text.append(el("span", { className: "typing" }, el("i"), el("i"), el("i")), waitNote() || "");
     body.append(text);
     if (m.error) body.append(el("div", { className: "err" }, m.error));
     return el("div", { className: "msg bot" }, el("div", { className: "av", innerHTML: $("icon-leaf")?.innerHTML || "" }), body);
@@ -577,6 +629,15 @@
 
   // renderReply redraws the reply as it streams in. It swaps only the bubble's contents, so the
   // message's fade-in doesn't replay on every chunk, and follows the end only if you're there.
+  // waitNote says why a local model is slow to start: loading into memory, as its server says, or
+  // after a few seconds without a word from one that doesn't say.
+  function waitNote() {
+    if (!waiting) return null;
+    const note = localState === "loading" || localState === "unloaded" ? "Loading the model into memory…"
+      : localState === null && slow ? "Waiting for the model (it may be loading)…" : "";
+    return note ? el("span", { className: "wait-note" }, note) : null;
+  }
+
   function renderReply(reply) {
     const log = $("log");
     const last = log.lastElementChild;
@@ -605,16 +666,37 @@
     field.disabled = !!busy || !!setup?.problem;
     $("send").hidden = !!busy;
     $("stop").hidden = !busy;
+    if (setup) showStatus();
   }
 
   const providerNames = { claude: "Claude", local: "Local model", "claude-code": "Claude Code (server)", codex: "Codex (server)", gemini: "Gemini CLI (server)" };
   const shortNames = { claude: "Claude", local: "Local model", "claude-code": "Claude Code", codex: "Codex", gemini: "Gemini CLI" };
 
-  function renderTop() {
+  // showStatus is the line under the title: which AI, where it runs and, for a local model whose
+  // server says, whether it's in memory (with a button to load it).
+  const memory = { loaded: "in memory", loading: "loading into memory…", unloaded: "not in memory" };
+  function showStatus() {
     const status = $("status");
     status.classList.toggle("off", !!setup.problem);
+    status.classList.toggle("loading", localState === "loading");
     const relaying = setup.provider === "local" && settings.localURL && relayed.includes(new URL(settings.localURL).origin);
-    status.lastChild.textContent = `${shortNames[setup.provider] || "AI"} · ${setup.problem ? "needs setup" : onServer() ? "on the server" : relaying ? "through the server (certificate checks off)" : "in your browser"}`;
+    const state = setup.provider === "local" && !setup.problem && memory[localState];
+    status.querySelector("span").textContent = `${shortNames[setup.provider] || "AI"} · ${setup.problem ? "needs setup" : onServer() ? "on the server" : relaying ? "through the server (certificate checks off)" : "in your browser"}${state ? " · " + state : ""}`;
+    // Where the chat goes, under the message box.
+    $("where").textContent = onServer() ? `Runs on the server: your message and notes go to ${shortNames[setup.provider]} there while it answers`
+      : relaying ? "Your notes and this chat go to your model through this server, since its certificate isn't checked"
+      : `Runs in your browser: your notes and this chat go straight to ${setup.provider === "local" ? "your model" : "Anthropic"}, never through this server`;
+    status.querySelector("button")?.remove();
+    // The relay only passes on chats and model lists, so loading ahead is for servers reached directly.
+    if (state && localState === "unloaded" && !relaying && !busy) {
+      const load = el("button", { type: "button", className: "link", title: "Load it now, so the first answer doesn't wait (the server may unload another model to make room)" }, "Load now");
+      load.onclick = loadLocal;
+      status.append(load);
+    }
+  }
+
+  function renderTop() {
+    showStatus();
     // What's wrong gets its own line under the bar, with where to fix it.
     const notice = $("problem");
     notice.hidden = !setup.problem;
@@ -691,9 +773,10 @@
     await loadSettings();
     if (setup.oldKeys) await takeOldKeys(setup.oldKeys);
     setup.problem ||= problem();
-    if (setup.provider === "local" && settings.localURL && localModels === null) {
-      localModels = await listLocalModels().catch(() => []);
-    }
+    if (setup.provider === "local" && settings.localURL) {
+      await watchLocal();
+      localModels ||= [];
+    } else localState = null;
     if (!setup.problem) await listModels().catch(() => {});
     renderTop();
     renderAll();
