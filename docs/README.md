@@ -2,7 +2,7 @@
 
 **Your food, workouts, tasks and flashcards in one place, with MCP support that can manage all of it.**
 
-<img src="screenshots/mashup-1.png" alt="The Today, MCPs, History and Anki tabs">
+<img src="screenshots/mashup.png" alt="The Today, Tasks, Anki, History, MCPs and Docs tabs">
 
 The screenshots use made-up data. More in [`screenshots/`](screenshots/).
 
