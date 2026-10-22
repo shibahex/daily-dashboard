@@ -70,17 +70,23 @@ function hasOpenPanel(card) {
 // The pages may not evaluate code from attributes (the content policy has no 'unsafe-eval'), so
 // the conditions on cards' hx-triggers live here instead:
 // - "tick-N from:body" fires every N seconds (1, 30, 120 or 300), only while the page is visible;
-// - a card reloading on a "…-changed" event skips the one it came from (it just redrew itself);
+// - a card reloading on a "…-changed" event skips the one it came from when that request already
+//   redrew it (not one with hx-swap="none", like a task's Done, Start or Skip);
 // - a timer never reloads a card with a form or panel open.
 
 for (const seconds of [1, 30, 120, 300]) {
   setInterval(() => { if (!document.hidden) htmx.trigger(document.body, `tick-${seconds}`); }, seconds * 1000);
 }
+function swappedNothing(source, card) {
+  const swap = source.closest("[hx-swap]");
+  return !!swap && card.contains(swap) && swap.getAttribute("hx-swap").trim().startsWith("none");
+}
 document.body.addEventListener("htmx:confirm", event => {
   const trigger = event.detail.triggeringEvent;
   const card = event.detail.elt;
   if (!trigger) return;
-  if (trigger.type.endsWith("-changed") && trigger.target instanceof Node && card.contains(trigger.target)) {
+  const source = trigger.target instanceof Element ? trigger.target : null;
+  if (trigger.type.endsWith("-changed") && source && card.contains(source) && !swappedNothing(source, card)) {
     event.preventDefault();
   } else if (trigger.type.startsWith("tick-") && hasOpenPanel(card)) {
     event.preventDefault();

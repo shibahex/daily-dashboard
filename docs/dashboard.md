@@ -145,7 +145,7 @@ Your notes are only as private as the scripts that handle them, and those come f
 
 | Script | Hash |
 |---|---|
-| `app.js` | `sha384-vS5CAPlqRgKO8DtZjcdK3xQSbSVZDM/vfCkp8572pj0WqgIczLLd/vh6TKsiZoPm` |
+| `app.js` | `sha384-qinJNCVNarn0NpHIXcpQgWaR9UF5XyC7gDNjX0g9l48qGUR+FzgzXmJqLcH5A3Pn` |
 | `keys.js` | `sha384-nwe1d2+ABaJt3Q/12zr1QRW8BolKLItadMXGeqOorCsyP4qfCfXFCb1JdeSaVU2g` |
 | `notes.js` | `sha384-iW4AiXCfNgQnKveb3A39gXIDQGefd5rlBvVGT5CeA8cMmPOz2/eGusX9YGt9ctl+` |
 | `assistant.js` | `sha384-+r7/On77t7mkhnGpoWTsHr6SGo0E5H94Y7IkbCP++hpS5S2NVh8MuMUoKYHSKZYJ` |
