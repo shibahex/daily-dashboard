@@ -31,7 +31,7 @@ Reasons are what make the data useful. Three skipped workouts that say "tired" p
 Each piece also works alone. MyFitnessPal and Anki take a few minutes to link (steps 3 and 4 in [Make it yours](#make-it-yours)).
 
 ## Why the AI support is built in
-Tracking tools only help if you keep them up to date, and that upkeep can kill the habit. The AI takes the busywork so you can spend your time on the habits themselves. Because it also sees everything you log, it can help you review your routine and plan what to change next.
+Tracking tools only help if you keep them up to date, and that upkeep can kill the habit. The AI takes the busywork so you can spend your time on the habits themselves. Also since all this data exists in one dashboard, it can help you review your routine and plan what to change next.
 
 - **Turn conversations into actions.** "Log 2 eggs and toast for breakfast" goes into MyFitnessPal without you opening the app or hunting through its food database, or talk about starting a new plan with target macros and the MCP will make a new plan for you.
 - **Cards without the chore.** Point it at your notes and it drafts flashcards into Anki. Ask it to find, fix or tidy up existing cards, and it edits them for you. Or ask about existing decks and manage them for you.
