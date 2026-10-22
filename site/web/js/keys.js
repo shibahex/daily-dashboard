@@ -95,15 +95,17 @@ const Keys = (() => {
   async function openBlob(key, kind, sealed) {
     const value = JSON.parse(new TextDecoder().decode(await openLabeled(key, sealed, label(username(), kind))));
     if ((value.seq || 0) < seenSeq(kind)) {
-      throw new Error(`The server sent an older copy of your ${kind} than this browser has seen, so it isn't shown or saved over. Reload; if it stays, the server's copy was rolled back.`);
+      throw Object.assign(new Error(`The server sent an older copy of your ${kind} than this browser has seen, so it isn't shown or saved over. Reload; if it stays, the server's copy was rolled back.`), { rolledBack: true });
     }
     remember(kind, value.seq || 0);
     return value;
   }
 
-  // sealBlob seals value with its counter one up; call saved() once the server has taken it.
+  // sealBlob seals value with its counter one up; call saved() once the server has taken it. It
+  // counts on from the highest this browser has seen too, so a value started afresh (a new chat)
+  // isn't taken for an older copy next time.
   async function sealBlob(key, kind, value) {
-    value.seq = (value.seq || 0) + 1;
+    value.seq = Math.max(value.seq || 0, seenSeq(kind)) + 1;
     return seal(key, text.encode(JSON.stringify(value)), label(username(), kind));
   }
   const saved = (kind, value) => remember(kind, value.seq || 0);

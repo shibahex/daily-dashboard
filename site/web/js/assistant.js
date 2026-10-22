@@ -15,7 +15,7 @@
   const MAX_TURNS = 20; // tool rounds in one answer
   const MAX_NOTES = 192 * 1024;
 
-  let root, setup, tools = [], chat = { messages: [], api: [] }, version = 0, key = null, busy = null;
+  let root, setup, tools = [], chat = { messages: [], api: [] }, version = 0, key = null, busy = null, saving = null;
   // The sealed settings: { anthropicKey, claudeCodeKey, openaiKey, geminiKey, localURL (".../v1"), localModel, localKey,
   // relayOK (the model server the user agreed to reach through the dashboard's server) }.
   let settings = {}, settingsVersion = 0;
@@ -73,7 +73,13 @@
     }
   }
 
-  async function saveChat(sealed) {
+  // saveChat saves the chat; saving is the save under way, which a reload of the chat waits for.
+  function saveChat(sealed) {
+    saving = sendChat(sealed).finally(() => { saving = null; });
+    return saving;
+  }
+
+  async function sendChat(sealed) {
     const fields = { version, blob: await Keys.sealBlob(key, "chat", chat) };
     if (sealed) fields.sealed = "1";
     try {
@@ -243,7 +249,8 @@
       if (reply.text) chat.api.push({ role: "assistant", content: reply.text });
       chat.api = validHistory(chat.api);
       busy = null;
-      renderAll();
+      renderReply(reply);
+      renderControls();
       await saveChat();
     }
   }
@@ -545,7 +552,8 @@
       chat.api = validHistory(chat.api);
     } finally {
       busy = null;
-      renderAll();
+      renderReply(reply);
+      renderControls();
       await saveChat();
     }
   }
@@ -567,12 +575,16 @@
     return el("div", { className: "msg bot" }, el("div", { className: "av", innerHTML: $("icon-leaf")?.innerHTML || "" }), body);
   }
 
+  // renderReply redraws the reply as it streams in. It swaps only the bubble's contents, so the
+  // message's fade-in doesn't replay on every chunk, and follows the end only if you're there.
   function renderReply(reply) {
     const log = $("log");
     const last = log.lastElementChild;
+    const atEnd = log.scrollHeight - log.scrollTop - log.clientHeight < 40;
     const fresh = bubble(reply);
-    if (last?.classList.contains("bot")) last.replaceWith(fresh); else log.append(fresh);
-    log.scrollTo({ top: log.scrollHeight, behavior: "smooth" });
+    if (last?.classList.contains("bot")) last.querySelector(".body").replaceWith(fresh.querySelector(".body"));
+    else log.append(fresh);
+    if (atEnd) log.scrollTop = log.scrollHeight;
   }
 
   function renderAll() {
@@ -585,6 +597,10 @@
           : "It reads your notes here in your browser and sends them straight to the AI: this server never sees them.")));
     }
     log.scrollTo({ top: log.scrollHeight, behavior: "instant" });
+    renderControls();
+  }
+
+  function renderControls() {
     const field = $("form").elements.message;
     field.disabled = !!busy || !!setup?.problem;
     $("send").hidden = !!busy;
@@ -646,7 +662,7 @@
     const fresh = el("button", { type: "button", className: "pill", title: "Start over" }, "New chat");
     fresh.onclick = async () => {
       if (busy || (chat.messages.length && !confirm("Start a new chat?"))) return;
-      chat = { messages: [], api: [] };
+      chat = { messages: [], api: [], seq: chat.seq };
       renderAll();
       await saveChat();
     };
@@ -712,12 +728,34 @@
     }
     key = await Keys.notesKey();
     if (!key) return locked();
+    // Back on the tab while it answers: the chat here is newer than the server's, so it's only
+    // drawn again; the answer carries on into the new page.
+    if (busy && setup) {
+      renderTop();
+      return renderAll();
+    }
     try {
+      await saving;
       await loadChat();
       await refresh();
     } catch (e) {
+      if (e.rolledBack) return rolledBack(e);
       $("log").replaceChildren(el("p", { className: "sign-in-error" }, e.message));
     }
+  }
+
+  // rolledBack is for a chat the server sent back older than this browser has seen: it isn't
+  // shown, and nothing is saved over it unless you choose to start a new chat in its place.
+  function rolledBack(e) {
+    const fresh = el("button", { type: "button", className: "sm primary" }, "Start a new chat");
+    fresh.onclick = async () => {
+      if (!confirm("Start a new chat in place of the one the server sent?")) return;
+      fresh.disabled = true;
+      chat = { messages: [], api: [] };
+      await saveChat();
+      try { await refresh(); } catch (err) { $("log").replaceChildren(el("p", { className: "sign-in-error" }, err.message)); }
+    };
+    $("log").replaceChildren(el("p", { className: "sign-in-error" }, e.message), el("p", {}, fresh));
   }
 
   htmx.onLoad(node => {
