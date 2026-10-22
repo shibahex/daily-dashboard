@@ -75,3 +75,5 @@ Everything personal is git-ignored, so you can pull updates or share your fork w
 - [Dashboard guide](dashboard.md): every feature, MyFitnessPal sync, the MCPs tab
 - [Noctalia plugin](noctalia-plugin.md): install and use the bar plugin
 - [AGENTS.md](../AGENTS.md): notes for AI coding agents working on this repo
+
+Unlike my other repos, this one was mostly written by AI just as a means to help me, but decided to open-source release it because I haven't seen a good productivity app that doesn't have a subscription.
