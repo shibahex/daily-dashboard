@@ -4,8 +4,6 @@
 
 <img src="screenshots/mashup.png" alt="The Today, Tasks, Anki, History, MCPs and Docs tabs">
 
-The screenshots use made-up data. More in [`screenshots/`](screenshots/).
-
 A private, self-hosted dashboard for getting healthier. Check in once a day, see what's left, and ask the AI to log a meal, quiz you on your Anki flashcards, manage all your Anki flashcards, or suggest what to eat tonight. It runs on your own computer or server, for you or for several people. Every account is separate, and nobody sees anyone else's data.
 
 - **Today:** workout, checklist with streaks, weight trend, calories and macros from MyFitnessPal (log and edit foods right there), tasks due, time tracked. Drag the cards to arrange them.
@@ -15,6 +13,8 @@ A private, self-hosted dashboard for getting healthier. Check in once a day, see
 - **Anki:** decks and due counts, add cards, search and edit notes, plus an Anki card on Today and your review history in History (through the AnkiConnect add-on).
 - **MCPs:** chat with Claude Code, Codex or Gemini CLI through the [MyFitnessPal](https://github.com/Mason-Levyy/myfitnesspal-mcp) and [Anki](https://github.com/ankimcp/anki-mcp-server) MCPs: "what should I eat tonight?", "log 2 eggs for breakfast", "make flashcards from my notes".
 - **Noctalia bar plugin** (optional): checklist, due tasks and a task timer on the [Noctalia](https://github.com/noctalia-dev/noctalia-shell) bar.
+
+More screenshots in [`screenshots/`](screenshots/).
 
 ## Why it works
 
