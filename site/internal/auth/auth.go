@@ -463,7 +463,8 @@ func (a *Auth) userByID(id string) *User {
 	return nil
 }
 
-// ChangePassword needs the current password. It ends the user's other sessions (all but keep).
+// ChangePassword needs the current password. It ends the user's other sessions (all but keep)
+// and removes their plugin token, so nothing made before the change still gets in.
 func (a *Auth) ChangePassword(userID, keep, current, password, confirm string) error {
 	a.checking.Lock()
 	defer a.checking.Unlock()
@@ -491,6 +492,7 @@ func (a *Auth) ChangePassword(userID, keep, current, password, confirm string) e
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	user.Password, user.ProofLogin = hash, true
+	a.dropTokens(userID)
 	if err := a.save(); err != nil {
 		return err
 	}
@@ -703,8 +705,8 @@ func (a *Auth) Invite(username string, role Role) (string, error) {
 	return a.addInvite(invite{Username: username, Role: role})
 }
 
-// ResetPassword makes a one-time link where the user sets a new password. Their sessions end
-// when it's used.
+// ResetPassword makes a one-time link where the user sets a new password. Their sessions and
+// plugin token end when it's used.
 func (a *Auth) ResetPassword(userID string) (string, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -786,6 +788,7 @@ func (a *Auth) AcceptInvite(code, password, confirm string) (string, error) {
 			return "", problem.NotFoundf("That account was deleted")
 		}
 		user.Password, user.ProofLogin = hash, true
+		a.dropTokens(user.ID) // like the sessions: a token made before the reset stops working
 		if err := a.endSessions(user.ID, ""); err != nil {
 			return "", err
 		}

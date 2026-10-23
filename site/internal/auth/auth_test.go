@@ -189,6 +189,7 @@ func TestSessionsExpireAndEnd(t *testing.T) {
 func TestChangePassword(t *testing.T) {
 	a, _, session := setUp(t)
 	other, _ := a.Login("me", goodPassword, "")
+	token, _ := a.NewToken(adminID(a))
 	const newPassword = "a different long one"
 	if err := a.ChangePassword(adminID(a), session, "wrong current pw", newPassword, newPassword); err == nil {
 		t.Fatal("changing needs the current password")
@@ -198,6 +199,9 @@ func TestChangePassword(t *testing.T) {
 	}
 	if !valid(a, session) || valid(a, other) {
 		t.Fatal("a new password should end every other session")
+	}
+	if _, ok := a.TokenUser(token); ok || a.HasToken(adminID(a)) {
+		t.Fatal("a new password should remove the plugin token")
 	}
 	if _, err := a.Login("me", goodPassword, ""); err == nil {
 		t.Fatal("the old password should stop working")
@@ -337,6 +341,7 @@ func TestInvites(t *testing.T) {
 func TestResetPassword(t *testing.T) {
 	a, _, _ := setUp(t)
 	id, session := inviteUser(t, a, "friend")
+	token, _ := a.NewToken(id)
 	code, err := a.ResetPassword(id)
 	if err != nil {
 		t.Fatal(err)
@@ -350,6 +355,9 @@ func TestResetPassword(t *testing.T) {
 	}
 	if valid(a, session) {
 		t.Fatal("a reset should end the old sessions")
+	}
+	if _, ok := a.TokenUser(token); ok {
+		t.Fatal("a reset should remove the plugin token")
 	}
 	if _, err := a.Login("friend", newPassword, ""); err != nil {
 		t.Fatal("the new password should work")

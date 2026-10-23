@@ -232,6 +232,9 @@ func (ui *UI) acceptInvite(w http.ResponseWriter, r *http.Request) {
 			return ui.useKeys(user, keys, session)
 		}
 		startedOver, err := ui.Workspaces.Reset(user, keys.proof, session, oldRecovery, keys.recovery)
+		if err == nil {
+			ui.Workspaces.Prune(user.ID) // the ended sessions' and the token's key copies go too
+		}
 		switch {
 		case err != nil:
 			return false, err
@@ -469,7 +472,7 @@ func (ui *UI) changePassword(w http.ResponseWriter, r *http.Request) {
 	ui.Workspaces.Prune(user.ID)
 	announce(w, say("Password changed"))
 	view = ui.accountView(r)
-	view.Saved = "Password changed. Every other browser was logged out."
+	view.Saved = "Password changed. Every other browser was logged out, and the bar plugin needs a new token."
 	ui.render(w, "account-card", view)
 }
 
