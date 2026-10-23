@@ -7,6 +7,11 @@
     let
       system = "x86_64-linux";
       pkgs = nixpkgs.legacyPackages.${system};
+      # Claude Code is unfree; allow just that one package.
+      unfreePkgs = import nixpkgs {
+        inherit system;
+        config.allowUnfreePredicate = p: pkgs.lib.getName p == "claude-code";
+      };
 
       # Taskwarrior hook: `task start` starts a Timewarrior timer, `stop`/`done` stops it.
       # Absolute store paths so it also works from a plain terminal, outside this flake.
@@ -60,7 +65,9 @@
       # the image has nothing else. The site's pages sit at /app/site and its data on a volume.
       container = pkgs.writeShellApplication {
         name = "health-dashboard-container";
-        runtimeInputs = [ pkgs.taskwarrior3 pkgs.timewarrior pkgs.uv pkgs.bubblewrap pkgs.socat pkgs.bash pkgs.coreutils pkgs.nodejs_22 pkgs.python312 ];
+        # The image has no Nix to fetch the AIs on the server later, so they come built in.
+        runtimeInputs = [ pkgs.taskwarrior3 pkgs.timewarrior pkgs.uv pkgs.bubblewrap pkgs.socat pkgs.bash pkgs.coreutils pkgs.nodejs_22 pkgs.python312
+          unfreePkgs.claude-code pkgs.codex pkgs.gemini-cli ];
         text = ''
           export MFP_LIBRARY_PATH=${pkgs.stdenv.cc.cc.lib}/lib
           export SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt
