@@ -171,8 +171,8 @@
       if (response && relayed.includes(new URL(settings.localURL).origin)) {
         throw new Error(`${settings.localURL} answered ${response.status}: ${(await response.text()).slice(0, 200)}`);
       }
-      const certificate = settings.localURL.startsWith("https:") ? " This browser must also trust its certificate: open the address once to check." : "";
-      throw new Error(`Couldn't reach ${settings.localURL}: is it running, and does it allow this page (see the Account page)?${certificate}`);
+      const certificate = settings.localURL.startsWith("https:") ? " Also open the address once to check this browser trusts its certificate." : "";
+      throw new Error(`Couldn't reach ${settings.localURL}: is it running, and does it allow this page? Ask your admin.${certificate}`);
     }
     return ((await response.json()).data || []).filter(m => m.id);
   }
