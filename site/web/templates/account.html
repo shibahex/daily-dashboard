@@ -94,11 +94,13 @@
     <p>Connected{{if .Host}} (the server computer's own login){{end}}. The Today tab syncs your diary every 10 minutes.</p>
     {{if not .Host}}<div class="row"><button class="sm ghost" hx-post="/account/myfitnesspal/remove" hx-target="#connections-card" hx-swap="outerHTML" hx-confirm="Disconnect MyFitnessPal?">Disconnect</button></div>{{end}}
     {{end}}
-    <form hx-post="/account/myfitnesspal" hx-target="#connections-card" hx-swap="outerHTML" hx-disabled-elt="find button">
+    <form class="mfp-connect" hx-post="/account/myfitnesspal" hx-target="#connections-card" hx-swap="outerHTML" hx-disabled-elt="find button">
       <p class="muted small">Log in at myfitnesspal.com in a normal (not private) window. Open the developer tools (F12) → <b>Network</b>, reload the page and click the first request. Under <b>Request Headers</b>, right-click <code>cookie</code> → <b>Copy value</b>. MyFitnessPal needs the whole header: its <code>remember_me</code> cookie is what keeps you signed in.</p>
       <label>{{if .MyFitnessPal}}Replace the cookie header{{else}}Cookie header{{end}}
-        <input class="txt" type="password" name="token" required autocomplete="off" spellcheck="false"></label>
-      <div><button class="sm primary">{{if .MyFitnessPal}}Reconnect{{else}}Connect{{end}}</button> <small class="muted">Checking it with MyFitnessPal takes a few seconds.</small></div>
+        <input class="txt" type="password" name="token" value="{{.MFPToken}}" required autocomplete="off" spellcheck="false"></label>
+      {{if .MFPAskName}}<label>MyFitnessPal username <small class="muted">(on your profile page, not your email)</small>
+        <input class="txt" name="username" required autofocus autocomplete="off" spellcheck="false" maxlength="50"></label>{{end}}
+      <div><button class="sm primary">{{if .MyFitnessPal}}Reconnect{{else}}Connect{{end}}</button> <small class="muted wait-hint">Checking it with MyFitnessPal takes a few seconds.</small><span class="busy-note">Checking with MyFitnessPal…</span></div>
     </form>
   </div>
 

@@ -10,6 +10,7 @@ import (
 	"dashboard/internal/anki"
 	"dashboard/internal/auth"
 	"dashboard/internal/httpx"
+	"dashboard/internal/myfitnesspal"
 	"dashboard/internal/problem"
 )
 
@@ -287,6 +288,8 @@ type connectionsView struct {
 	ModelServers  []string // model servers on the network their browser may reach (an admin lists them)
 	Relayed       []string // those the server relays to without checking certificates
 	MyFitnessPal  bool     // signed in
+	MFPAskName    bool     // the cookie worked but MyFitnessPal needs the username too
+	MFPToken      string   // ...and the cookie they pasted, so they don't paste it again
 	Anki          anki.Status
 	AnkiURL       string
 	Error         string
@@ -349,7 +352,15 @@ func (ui *UI) renderConnections(w http.ResponseWriter, r *http.Request, saved st
 
 func (ui *UI) connectMyFitnessPal(w http.ResponseWriter, r *http.Request) {
 	ws := ui.ws(r)
-	err := ws.MyFitnessPal.Client().Connect(r.FormValue("token"))
+	token, username := r.FormValue("token"), r.FormValue("username")
+	err := ws.MyFitnessPal.Client().Connect(token, username)
+	if errors.Is(err, myfitnesspal.ErrNeedsUsername) {
+		view := ui.connectionsView(r)
+		view.Error, view.MFPAskName, view.MFPToken = problem.Public(err), true, strings.TrimSpace(token)
+		w.Header().Set("Cache-Control", "no-store") // it holds their cookie
+		ui.render(w, "connections-card", view)
+		return
+	}
 	if err == nil {
 		go ws.MyFitnessPal.Sync()
 	}

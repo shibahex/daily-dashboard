@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -186,13 +187,23 @@ func (c Client) command(ctx context.Context, program ...string) *exec.Cmd {
 	return cmd
 }
 
+// ErrNeedsUsername is Connect's answer when the cookie works but MyFitnessPal won't say whose
+// it is (it happens to some accounts that sign in by email): try again with the username.
+var ErrNeedsUsername = problem.Invalidf("Your cookie works, but MyFitnessPal didn't say which account it's for. Enter your MyFitnessPal username (not your email) and connect again.")
+
+var usernamePattern = regexp.MustCompile(`^[A-Za-z0-9_.-]{1,50}$`)
+
 // Connect signs the user in with their browser's MyFitnessPal Cookie header (it must include
 // remember_me; the session token alone no longer signs in), through the MCP's own `auth`,
-// which checks it with MyFitnessPal before saving it in the user's folder.
-func (c Client) Connect(token string) error {
-	token = strings.TrimSpace(token)
+// which checks it with MyFitnessPal before saving it in the user's folder. username is only
+// needed after ErrNeedsUsername; the MCP saves it with the login.
+func (c Client) Connect(token, username string) error {
+	token, username = strings.TrimSpace(token), strings.TrimSpace(username)
 	if token == "" || len(token) > 32000 || strings.ContainsAny(token, "\r\n") {
 		return problem.Invalidf("Paste the whole Cookie header from a myfitnesspal.com request")
+	}
+	if username != "" && !usernamePattern.MatchString(username) {
+		return problem.Invalidf("That doesn't look like a MyFitnessPal username: use the one on your profile, not your email")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
@@ -201,10 +212,17 @@ func (c Client) Connect(token string) error {
 	// Unbuffered, so the output keeps its order: buffered stdout ("Validating…") would
 	// otherwise land after the reason on stderr and hide it.
 	cmd.Env = append(cmd.Env, "PYTHONUNBUFFERED=1")
+	if username != "" {
+		cmd.Env = append(cmd.Env, "MFP_USERNAME="+username)
+	}
 	var output bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &output, &output
 	if err := cmd.Run(); err != nil {
-		return problem.Invalidf("MyFitnessPal didn't accept that token: " + authFailure(output.String(), err))
+		reason := authFailure(output.String(), err)
+		if strings.Contains(reason, "couldn't read your MyFitnessPal profile") {
+			return ErrNeedsUsername
+		}
+		return problem.Invalidf("MyFitnessPal didn't accept that token: " + reason)
 	}
 	c.session().reset()
 	return nil
