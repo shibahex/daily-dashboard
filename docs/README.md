@@ -2,7 +2,7 @@
 
 **Your food, workouts, tasks and flashcards in one place, with MCP support that can manage all of it.**
 
-<img src="screenshots/mashup.png" alt="The Today, Tasks, Anki, History, MCPs and Docs tabs">
+<img src="screenshots/mashup.png" alt="The Today, Tasks, Lifting, Anki, History, MCPs and Docs tabs">
 
 A private, self-hosted dashboard for getting healthier. Check in once a day, see what's left, and ask the AI to log a meal, quiz you on your Anki flashcards, manage all your Anki flashcards, or suggest what to eat tonight. It runs on your own computer or server, for you or for several people. Every account is separate, and nobody sees anyone else's data.
 
