@@ -48,6 +48,7 @@ location / {
     proxy_pass http://127.0.0.1:1628;
     proxy_set_header Host $host;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    client_max_body_size 64m; # Import data uploads your export
 }
 ```
 
@@ -89,7 +90,8 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_buffering off;     # the AI chat streams its replies
         proxy_read_timeout 1h;
-        }
+        client_max_body_size 64m; # Import data uploads your export
+    }
 }
 ```
 
@@ -218,7 +220,8 @@ Your notes are only as private as the scripts that handle them, and those come f
 |---|---|
 | `app.js` | `sha384-JnctrkvlZGdxCnBCEGJ0/B983nJBDl/YhS/5Pw5MaBcNP2ds3+FkYlaqvzAPCQoo` |
 | `keys.js` | `sha384-nwe1d2+ABaJt3Q/12zr1QRW8BolKLItadMXGeqOorCsyP4qfCfXFCb1JdeSaVU2g` |
-| `notes.js` | `sha384-iW4AiXCfNgQnKveb3A39gXIDQGefd5rlBvVGT5CeA8cMmPOz2/eGusX9YGt9ctl+` |
+| `notes.js` | `sha384-AfMYqfyrh1ctxfqOKdVHMa363w7VG3KevRVtPk4h/8s2lM91Imr4obUH9Apa8X8o` |
+| `backup.js` | `sha384-+eJ3xoNA73/NQzsBvUaKsl/LOmHLN3oP4Qvy5Ll9yE35LgxOKDXT5xEGx1yb+7sb` |
 | `assistant.js` | `sha384-nBTyKfoOV8/ZXFY5wlssTjFnjWtyf9WkWiIoo8QD9sjnHF1zhf2IQe8hNOw+F8if` |
 | `htmx.js` | `sha384-HGfztofotfshcF7+8n44JQL2oJmowVChPTg48S+jvZoztPfvwD79OC/LTtG6dMp+` |
 | `htmx-sse.js` | `sha384-fw+eTlCc7suMV/1w/7fr2/PmwElUIt5i82bi+qTiLXvjRXZ2/FkiTNA/w0MhXnGI` |
@@ -227,7 +230,9 @@ Your notes are only as private as the scripts that handle them, and those come f
 
 ## Your data
 
-**Download it:** Account → **Privacy** → **Download everything (.zip)**. You get your plan, checklist history, weigh-ins (JSON and CSV), `lifting.json` and `lifting-sets.csv` (every set, one row each: date, workout, exercise, weight in lb and kg, reps, estimated 1RM, notes, skips and why), your Anki review history, and every Taskwarrior task (`task import tasks.json` loads them back) and Timewarrior entry, with a README saying what each file is. Notes, AI chat and keys are encrypted in your browser, so they aren't in it; nor are logins, or your food diary (MyFitnessPal has its own export). The Lifting tab's **Export (CSV)** downloads just the sets.
+**Download it:** Account → **Privacy** → **Download everything (.zip)**. You get your plan, checklist history, weigh-ins (JSON and CSV), `lifting.json` and `lifting-sets.csv` (every set, one row each: date, workout, exercise, weight in lb and kg, reps, estimated 1RM, notes, skips and why), your Anki review history, and every Taskwarrior task (`task import tasks.json` loads them back) and Timewarrior entry, with a README saying what each file is. Your browser adds your notes (one Markdown file each) and AI chat, decrypted, and your AI keys if you tick the box, so keep the file safe. Logins aren't in it, nor your food diary (MyFitnessPal has its own export). The Lifting tab's **Export (CSV)** downloads just the sets.
+
+**Move it to another server:** sign up there, then Account → **Privacy** → **Import data** and pick the zip. Your plan is replaced by the file's; everything else is added and nothing is deleted: checklist days and weigh-ins (the file's win for days both have), routines and workouts, tasks (`task import`, so ones already there are updated, not doubled), time entries (ones already there or overlapping are skipped), Anki history, notes (a note with the same title gets the file's text, its old text kept in its history), the chat (if there's none yet) and AI settings you haven't set. Importing the same file twice adds nothing. Your browser seals the notes, chat and keys again with your new account's key; the server never sees them. Behind nginx, allow the upload with `client_max_body_size` (above).
 
 None of this is tracked by git:
 

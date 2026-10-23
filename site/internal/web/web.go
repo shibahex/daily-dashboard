@@ -68,6 +68,7 @@ func (ui *UI) Routes(mux *http.ServeMux) {
 	change("/account/anki", ui.connectAnki)
 	change("/account/anki/remove", ui.disconnectAnki)
 	page("/account/export", ui.exportData)
+	change("/account/import", ui.importData)
 
 	// Admin: accounts and what each person's AI may use. Admins only.
 	admin := func(pattern string, handler http.HandlerFunc) { change(pattern, auth.RequireAdmin(handler)) }

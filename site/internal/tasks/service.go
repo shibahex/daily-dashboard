@@ -381,3 +381,20 @@ func nonEmpty(s string) *string {
 	}
 	return &s
 }
+
+// Import adds the tasks in a `task export` (a JSON array), as `task import` does: a task that's
+// already here (same uuid) is updated, so importing twice changes nothing. Hooks are off, so a
+// started task doesn't start a timer. It answers how many tasks there were.
+func (s *Service) Import(export []byte) (int, error) {
+	var list []json.RawMessage
+	if err := json.Unmarshal(export, &list); err != nil {
+		return 0, problem.Invalidf("tasks.json isn't a Taskwarrior export")
+	}
+	if len(list) == 0 {
+		return 0, nil
+	}
+	if err := commandErr(s.tasks.RunWithInput(string(export), "rc.hooks=off", "import", "-")); err != nil {
+		return 0, err
+	}
+	return len(list), nil
+}

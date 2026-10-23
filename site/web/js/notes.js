@@ -294,5 +294,23 @@ const SealedNotes = (() => {
     return note ? "updated (its old text is kept in its history)" : "added";
   }
 
-  return { all, exists, saveNote, unlock: Keys.unlockWithPassword };
+  // importNotes adds notes from an export (backup.js), or gives a note with the same title the
+  // imported text (its old text stays in its history), and saves once. It answers how many.
+  async function importNotes(list) {
+    if (!(await all())) throw new Error("the notes are locked");
+    let count = 0;
+    for (const { title, text } of list) {
+      const cleanTitle = String(title || "").trim() || "Untitled";
+      const note = byTitle(cleanTitle);
+      if (note && note.text === text) continue;
+      if (note) rewrite(note, note.title, String(text ?? ""));
+      else state.notes.push({ id: newId(), title: cleanTitle, text: String(text ?? "") });
+      count++;
+    }
+    if (count) await save();
+    render();
+    return count;
+  }
+
+  return { all, exists, saveNote, importNotes, unlock: Keys.unlockWithPassword };
 })();

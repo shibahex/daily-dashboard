@@ -18,7 +18,8 @@ import (
 // The Privacy tab's "Download your data": one zip with everything the dashboard keeps for the
 // user that the server can read, in open formats (JSON as the dashboard and Taskwarrior keep it,
 // plus CSV for the lifting log and weigh-ins), and a README saying what each file is.
-// Notes, chat and AI keys are encrypted in the browser, and logins aren't data, so they stay out.
+// Notes, chat and AI keys are encrypted in the browser, which adds them (web/js/backup.js); logins
+// aren't data, so they stay out. Import data reads the same zip (import.go).
 
 const exportReadme = `# Your Daily Dashboard data
 
