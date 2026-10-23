@@ -1,5 +1,5 @@
 # Builds the container image from main and publishes it as ghcr.io/<owner>/<repo>, tagged
-# latest and with the commit (e.g. sha-336abb5), for compose.yaml to pull.
+# latest and with the commit (e.g. sha-336abb5), for docker-compose.yml to pull.
 name: Docker image
 
 on:

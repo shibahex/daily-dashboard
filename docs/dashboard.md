@@ -59,7 +59,7 @@ With [Tailscale](https://tailscale.com), `tailscale serve --bg 1628` gives it an
 
 ## Docker
 
-GitHub builds an image from `main` (`ghcr.io/shibahex/daily-dashboard`), and `compose.yaml` runs it. Everything people save lives on one volume, mounted at `/app/site/data`.
+GitHub builds an image from `main` (`ghcr.io/shibahex/daily-dashboard`), and `docker-compose.yml` runs it. Everything people save lives on one volume, mounted at `/app/site/data`.
 
 ```sh
 git clone https://github.com/shibahex/daily-dashboard.git
@@ -95,11 +95,11 @@ server {
 
 In Nginx Proxy Manager: a proxy host for `health.example.com` that forwards to `http://<server's IP>:1628`, with an SSL certificate.
 
-**Portainer:** **Stacks → Add stack → Repository**, with the URL `https://github.com/shibahex/daily-dashboard`, reference `refs/heads/main` and compose path `compose.yaml`. Add `DOMAIN` and `TZ` under **Environment variables**, deploy, and find the sign-up link in the container's logs. To update, use **Pull and redeploy**; the volume keeps the data.
+**Portainer:** **Stacks → Add stack → Repository**, with the URL `https://github.com/shibahex/daily-dashboard`, reference `refs/heads/main` and compose path `docker-compose.yml`. Add `DOMAIN` and `TZ` under **Environment variables**, deploy, and find the sign-up link in the container's logs. To update, use **Pull and redeploy**; the volume keeps the data.
 
 - Updating with plain Docker: `docker compose pull && docker compose up -d`.
 - Optional settings in `.env`: `ANKI_CONNECT_URL` (and `ANKI_CONNECT_API_KEY`) for AnkiConnect on the computer that runs Anki, `DASHBOARD_PORT` for another port.
-- `compose.yaml` turns off Docker's seccomp and AppArmor filters and its masking of `/proc` for this container (`security_opt`), because the AI's MyFitnessPal and Anki tools run in a bubblewrap sandbox, which makes user namespaces and mounts its own `/proc`. The server itself still runs as an unprivileged user. Remove those lines if you don't use the AI's tools.
+- `docker-compose.yml` turns off Docker's seccomp and AppArmor filters and its masking of `/proc` for this container (`security_opt`), because the AI's MyFitnessPal and Anki tools run in a bubblewrap sandbox, which makes user namespaces and mounts its own `/proc`. The server itself still runs as an unprivileged user. Remove those lines if you don't use the AI's tools.
 - A reset link for a locked-out admin: `docker compose stop`, then `docker compose run --rm dashboard reset-password <username>`.
 - No image for your machine (it's built for x86-64) or offline? `docker compose up -d --build` builds it from the `Dockerfile`, with Nix, in a few minutes.
 
