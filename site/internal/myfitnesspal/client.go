@@ -194,7 +194,7 @@ var ErrNeedsUsername = problem.Invalidf("Your cookie works, but MyFitnessPal did
 var usernamePattern = regexp.MustCompile(`^[A-Za-z0-9_.-]{1,50}$`)
 
 // Connect signs the user in with their browser's MyFitnessPal Cookie header (it must include
-// remember_me; the session token alone no longer signs in), through the MCP's own `auth`,
+// remember_me; the session token alone doesn't sign in), through the MCP's own `auth`,
 // which checks it with MyFitnessPal before saving it in the user's folder. username is only
 // needed after ErrNeedsUsername; the MCP saves it with the login.
 func (c Client) Connect(token, username string) error {

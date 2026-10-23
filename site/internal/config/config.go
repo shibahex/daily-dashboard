@@ -52,8 +52,8 @@ func (p Paths) Plan() string                { return p.PlanFile }
 func (p Paths) PlanExample() string         { return filepath.Join(p.Site, "plan.example.json") }
 func (p Paths) DataFile(name string) string { return filepath.Join(p.Data, name) }
 
-// MakePrivate makes the personal files readable by their owner only: files made before the
-// dashboard had an account were readable by every user on the computer.
+// MakePrivate makes the personal files readable by their owner only (older versions created
+// them readable by every user on the computer).
 func (p Paths) MakePrivate() {
 	os.MkdirAll(p.ServerData, 0o700)
 	os.Chmod(p.ServerData, 0o700)

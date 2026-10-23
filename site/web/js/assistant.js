@@ -1,12 +1,11 @@
-// The MCPs tab's AI, which runs in this browser: it talks to Anthropic, or to a model on this
-// computer or a model server an admin allowed (Ollama, LM Studio, llama.cpp), directly, so the user's notes go straight there and
-// never through the dashboard's server. The server gives what isn't private (the dashboard's
+// The MCPs tab's AI, which runs in this browser. It talks directly to Anthropic, a model on this
+// computer, or a model server an admin allowed (Ollama, LM Studio, llama.cpp), so the user's notes
+// never pass through the dashboard's server. The server gives what isn't private (the dashboard's
 // instructions, the plan and data: /assistant/setup) and runs the MCP tools the AI calls
-// (MyFitnessPal, Anki: /assistant/tool). With Web search on, Claude searches with Anthropic's own
-// web search, and a local model with the server's web__search and web__fetch tools (a SearXNG the
-// admin set, and public pages: internal/web/webtools.go). Notes are read and saved here (notes.js). The chat is
-// kept sealed like the notes (/assistant/chat), and so are the keys and the local model's address
-// (/assistant/keys): the server has none of them.
+// (MyFitnessPal, Anki: /assistant/tool). With Web search on, Claude uses Anthropic's own web
+// search, and a local model the server's web__search and web__fetch tools (internal/web/webtools.go).
+// Notes are read and saved here (notes.js). The chat, the keys and the local model's address are
+// kept sealed like the notes (/assistant/chat, /assistant/keys): the server has none of them.
 //
 // The exception, for people who turn it on (Account page): Claude Code, Codex and Gemini CLI,
 // which can't run in a browser, run on the server (/assistant/run). For those, each message goes

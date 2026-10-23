@@ -11,9 +11,9 @@ import (
 // The MCP servers the tab knows, in order. Both are on unless the user turned one off.
 var KnownMCPs = auth.KnownMCPs
 
-// Conversation is data/chat.json: the AI's settings (which MCPs, "Attach prompt", the model). It
-// also held the chat of the server-side AI there used to be, which the browser seals once
-// (web/sealed.go) and the server then forgets.
+// Conversation is data/chat.json: the AI's settings (which MCPs, "Attach prompt", the model).
+// Older files also hold a plain chat, which the browser seals once (web/sealed.go) and the
+// server then forgets.
 type Conversation struct {
 	Provider  string            `json:"provider"`
 	SessionID string            `json:"session_id,omitempty"` // the CLI's id, to resume

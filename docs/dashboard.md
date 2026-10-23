@@ -223,7 +223,7 @@ Your notes are only as private as the scripts that handle them, and those come f
 | `keys.js` | `sha384-nwe1d2+ABaJt3Q/12zr1QRW8BolKLItadMXGeqOorCsyP4qfCfXFCb1JdeSaVU2g` |
 | `notes.js` | `sha384-AfMYqfyrh1ctxfqOKdVHMa363w7VG3KevRVtPk4h/8s2lM91Imr4obUH9Apa8X8o` |
 | `backup.js` | `sha384-+eJ3xoNA73/NQzsBvUaKsl/LOmHLN3oP4Qvy5Ll9yE35LgxOKDXT5xEGx1yb+7sb` |
-| `assistant.js` | `sha384-9hL4tzDe06WCxoiaMIft1I7fpD0GCjg/9+TxIJc+C5Af1fsusns1gWs/nSYgi0mm` |
+| `assistant.js` | `sha384-Dwr2k9PR7xp2mkld69ILXxm5MaHtvib91nYPFYBEob39fdCLRoYcV/JzKJFyYr6b` |
 | `htmx.js` | `sha384-HGfztofotfshcF7+8n44JQL2oJmowVChPTg48S+jvZoztPfvwD79OC/LTtG6dMp+` |
 | `htmx-sse.js` | `sha384-fw+eTlCc7suMV/1w/7fr2/PmwElUIt5i82bi+qTiLXvjRXZ2/FkiTNA/w0MhXnGI` |
 | `marked.js` | `sha384-IvVdUXkhyoD0shbjhiiOnuiTbervTaB0VJcnEcg3shUAMVOOF6lKj4ozJrCwvz6s` |

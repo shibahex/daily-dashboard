@@ -84,7 +84,7 @@ type Policy struct {
 	EditFiles bool     `json:"edit_files"`       // the AI may save the user's notes (it always reads them)
 	NoWeb     bool     `json:"no_web,omitempty"` // the AI may not search the web or read pages (allowed unless an admin says)
 
-	// Kept only to read old files: the server-side AI's web access and file reading.
+	// Unused: Clean clears them, so older accounts.json files drop them on the next save.
 	Web       bool `json:"web,omitempty"`
 	ReadFiles bool `json:"read_files,omitempty"`
 }
@@ -116,7 +116,7 @@ func (p Policy) Clean() Policy {
 		return kept
 	}
 	p.Providers, p.MCPs = keep(p.Providers, KnownProviders), keep(p.MCPs, KnownMCPs)
-	p.Web, p.ReadFiles = false, false // nothing uses them since the AI moved into the browser
+	p.Web, p.ReadFiles = false, false
 	return p
 }
 

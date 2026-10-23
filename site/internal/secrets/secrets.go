@@ -1,6 +1,6 @@
-// Package secrets read the AI keys users once kept on the server (sealed with site/data/
-// secret.key), from before keys moved into their browser: the browser takes them over once and
-// the server clears them (web/sealed.go). Nothing new is stored here.
+// Package secrets reads the AI keys older versions kept on the server (sealed with
+// site/data/secret.key). The browser takes them over once and the server clears them
+// (web/sealed.go). Nothing new is stored here.
 package secrets
 
 import (

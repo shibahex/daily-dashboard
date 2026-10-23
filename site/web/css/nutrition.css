@@ -1,5 +1,4 @@
 /* Nutrition card (MyFitnessPal) and its food forms */
-/* Nutrition (MyFitnessPal) */
 .nut-cal { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
 .nut-cal .of { color: var(--muted); font-size: 15px; }
 .nut-eq { font-size: 13px; color: var(--muted); margin: -4px 0 12px; }

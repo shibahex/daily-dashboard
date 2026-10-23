@@ -43,8 +43,8 @@ type browserMCP struct {
 	Ready   bool   `json:"ready"`
 }
 
-// oldKeys are where the server kept AI keys and the local model before they moved into the
-// browser, and the browser's names for them (assistant.js settings).
+// oldKeys are the AI keys and local model settings older versions kept on the server, and the
+// browser's names for them (assistant.js settings).
 var oldKeys = map[string]string{"anthropic": "anthropicKey", "local_key": "localKey", "local_url": "localURL", "local_model": "localModel"}
 
 // assistantSetup tells the browser how to run the AI: which AIs it may use (Claude, a local
@@ -76,8 +76,8 @@ func (ui *UI) assistantSetup(w http.ResponseWriter, r *http.Request) {
 		"web":          webOn(user, conversation), // Claude searches with Anthropic's tool, the others with web__* (websearch.go)
 		"webSearch":    ui.Auth.SearchURL() != "", // the web__search tool is there (an admin set a SearXNG)
 	}
-	// Keys the server kept from before keys moved into the browser: handed over once, for the
-	// browser to seal; they're deleted when it saves its settings (sealed=1).
+	// Keys kept on the server by older versions: handed over once for the browser to seal, and
+	// deleted when it saves its settings (sealed=1).
 	old := map[string]string{}
 	for name, id := range oldKeys {
 		if value := ws.Secrets.Get(name); value != "" {

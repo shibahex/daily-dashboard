@@ -112,7 +112,6 @@ func (s *Syncer) Change(date string, op func(ctx context.Context) error) (Cache,
 	return s.save(data, nil), nil
 }
 
-// RunForever syncs every SyncEvery.
 // RunUntil syncs now and then every SyncEvery, until stop is closed.
 func (s *Syncer) RunUntil(stop <-chan struct{}) {
 	ticker := time.NewTicker(SyncEvery)
