@@ -66,6 +66,17 @@
           export SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt
           export TZDIR=${pkgs.tzdata}/share/zoneinfo ZONEINFO=${pkgs.tzdata}/share/zoneinfo
           mkdir -p "$HOME" /tmp
+
+          # The first admin uses "this computer's" Taskwarrior and Timewarrior, which in the
+          # container live in $HOME on the volume; nothing else sets them up.
+          if [ ! -e "$HOME/.taskrc" ]; then
+            printf '%s\n' "# Made by the container for the admin's own tasks." \
+              "data.location=$HOME/.task" "hooks.location=$HOME/.task/hooks" "hooks=on" > "$HOME/.taskrc"
+          fi
+          mkdir -p "$HOME/.task/hooks" "$HOME/.local/share/timewarrior/data" "$HOME/.config/timewarrior"
+          touch "$HOME/.config/timewarrior/timewarrior.cfg"
+          ln -sfn ${timewHook} "$HOME/.task/hooks/on-modify.timewarrior"
+
           exec ${server}/bin/dashboard "$@"
         '';
       };
