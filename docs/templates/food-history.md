@@ -1,6 +1,6 @@
 # Food History
 
-What you actually eat, so advice fits real habits. Tip: ask the AI in the MCPs tab to fill this in from your MyFitnessPal diary.
+What you actually eat, so advice fits real habits.
 
 ## What I always eat
 

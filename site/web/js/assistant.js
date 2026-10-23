@@ -395,7 +395,7 @@
     if (setup.edit) {
       list.push({
         name: "save_note",
-        description: "Create or replace one of the user's notes (Markdown). Use an existing note's exact title to change it, and send its whole new text. Only when the user asks.",
+        description: "Create or replace one of the user's notes (Markdown). Only call this when the user's latest message asks you to write or change a note; never for a greeting or a question. Use an existing note's exact title to change it, and send its whole new text.",
         input_schema: { type: "object", properties: { title: { type: "string" }, text: { type: "string" } }, required: ["title", "text"] },
       });
     }
@@ -454,11 +454,13 @@
 
   async function runTool(block) {
     if (block.name === "save_note") {
-      // Replacing a note is the user's call: what the AI read (a food name, a card) may have
-      // asked it to. The old text is kept in the note's history either way.
-      if (await SealedNotes.exists(block.input.title) &&
-          !confirm(`The AI wants to replace your note “${block.input.title}”. Allow it?`)) {
-        return { text: "The user didn't allow replacing that note.", isError: true };
+      // Every note the AI writes is the user's call: what it read (a food name, a card) may have
+      // asked it to, and small models call tools unasked. A replaced note's old text stays in its history.
+      const title = String(block.input?.title || "").trim();
+      const replacing = title && await SealedNotes.exists(title);
+      if (!title || !confirm(replacing ? `The AI wants to replace your note “${title}”. Allow it?`
+        : `The AI wants to add a note called “${title}”. Allow it?`)) {
+        return { text: `The user didn't allow ${replacing ? "replacing" : "adding"} that note. Don't try again unless they ask.`, isError: true };
       }
       const done = await SealedNotes.saveNote(block.input.title, block.input.text);
       return { text: `Note "${block.input.title}" ${done}.`, isError: false };

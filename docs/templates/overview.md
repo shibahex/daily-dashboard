@@ -19,7 +19,7 @@ Who you are and what you're working toward. The dashboard's AI reads this first,
 
 ## To-do
 
-- [ ] Fill in background.md, nutrition-plan.md and workout-plan.md
+- [ ] Write your background, nutrition plan and workout plan (Docs tab)
 - [ ] Set your calorie and macro goals in MyFitnessPal
 - [ ] Edit the dashboard's checklist and training schedule (Today tab → Edit)
 
