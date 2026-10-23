@@ -1,12 +1,19 @@
-// Moving your data to another dashboard (Account → Privacy). The server's "Download your data"
+// Moving your data to another dashboard (Account → Data). The server's "Download your data"
 // zip has what it can read; this adds what only this browser can: the notes (as Markdown files),
-// the AI chat and, if asked, the AI settings and keys, decrypted, so the file works on any server.
-// "Import data" reads such a zip: the notes, chat and settings are sealed again here with this
+// the AI chat and the AI settings and keys, decrypted, so the file works on any server. Either
+// side holds only the parts the user ticked. "Import data" reads such a zip and imports the parts
+// ticked from what's in it: the notes, chat and settings are sealed again here with this
 // account's key (the server never sees them), and the rest is posted to /account/import.
 
 const Backup = (() => {
-  // The server's files, as the export names them and /account/import takes them.
-  const SERVER_FILES = ["plan.json", "checklist.json", "weights.json", "lifting.json", "tasks.json", "time.json", "anki-history.json"];
+  // The server's parts (the Data tab's checkboxes, dataParts in export.go) and the file each is
+  // imported from, as the export names it and /account/import takes it.
+  const SERVER_PARTS = { plan: "plan.json", checklist: "checklist.json", weights: "weights.json", lifting: "lifting.json",
+    tasks: "tasks.json", time: "time.json", anki: "anki-history.json" };
+  // This browser's parts: which files in a zip are each one's.
+  const isNote = name => /^notes\/[^/]+\.md$/.test(name);
+  const BROWSER_PARTS = { notes: isNote, chat: name => name === "private/chat.json", "ai-settings": name => name === "private/ai-settings.json" };
+  const PRIVATE_NAMES = { notes: "your notes", chat: "AI chat", "ai-settings": "AI keys" };
 
   // ---------- zip files ----------
   // Just enough of the format for these exports: no zip64, no encryption; stored or deflated.
@@ -119,21 +126,21 @@ const Backup = (() => {
     return answer;
   }
 
-  // privateFiles are the notes, the chat and (withKeys) the AI settings, decrypted.
-  async function privateFiles(key, withKeys) {
+  // privateFiles are the chosen ones of the notes, the chat and the AI settings, decrypted.
+  async function privateFiles(key, chosen) {
     const files = {}, names = new Set();
-    for (const note of await SealedNotes.all() || []) {
+    for (const note of chosen.has("notes") ? await SealedNotes.all() || [] : []) {
       let name = fileName(note.title || "Untitled");
       for (let n = 2; names.has(name.toLowerCase()); n++) name = `${fileName(note.title || "Untitled")} (${n})`;
       names.add(name.toLowerCase());
       files[`notes/${name}.md`] = text(note.text || "");
     }
-    const chat = await sealedJSON("/assistant/chat");
+    const chat = chosen.has("chat") ? await sealedJSON("/assistant/chat") : {};
     if (chat.blob) {
       const { messages = [], api = [], server } = await Keys.openBlob(key, "chat", chat.blob);
       if (messages.length) files["private/chat.json"] = json({ messages, api, server });
     }
-    if (withKeys) {
+    if (chosen.has("ai-settings")) {
       const settings = await sealedJSON("/assistant/keys");
       if (settings.blob) {
         const { seq, ...values } = await Keys.openBlob(key, "settings", settings.blob);
@@ -143,47 +150,61 @@ const Backup = (() => {
     return files;
   }
 
-  const privateReadme = withKeys => `
+  const privateReadme = chosen => `
 
 ## Added by your browser
 
 | File | What it is |
 |---|---|
-| notes/*.md | Your notes, one Markdown file each, named after its title |
-| private/chat.json | Your AI chat (the MCPs tab) |
-${withKeys ? "| private/ai-settings.json | Your AI keys and the local model's address |\n" : ""}
-These were encrypted on the server; here they're plain text${withKeys ? ", and the AI keys work for anyone who has this file" : ""}. Keep it somewhere safe.
-To move to another dashboard, open its Account page → Privacy → Import data, and pick this file.
+${chosen.has("notes") ? "| notes/*.md | Your notes, one Markdown file each, named after its title |\n" : ""}${chosen.has("chat") ? "| private/chat.json | Your AI chat (the MCPs tab) |\n" : ""}${chosen.has("ai-settings") ? "| private/ai-settings.json | Your AI keys and the local model's address |\n" : ""}
+These were encrypted on the server; here they're plain text${chosen.has("ai-settings") ? ", and the AI keys work for anyone who has this file" : ""}. Keep it somewhere safe.
+To move to another dashboard, open its Account page → Data → Import data, and pick this file.
 `;
+
+  // ticked are the values of the ticked checkboxes in a list.
+  const ticked = list => new Set([...list.querySelectorAll("input[type=checkbox]:checked")].map(input => input.value));
 
   // ---------- download ----------
 
-  async function download(button) {
-    const withKeys = !!button.closest("[data-backup]").querySelector("[data-backup-keys]")?.checked;
+  async function downloadParts(button) {
+    const chosen = ticked(button.closest("[data-backup]").querySelector("[data-export-parts]"));
+    const serverParts = [...chosen].filter(id => SERVER_PARTS[id]);
+    const privateParts = [...chosen].filter(id => BROWSER_PARTS[id]);
+    if (!chosen.size) { toast("Tick what to download first", { bad: true }); return; }
     button.disabled = true;
     try {
-      const response = await fetch("/account/export");
-      if (!response.ok) throw new Error("Couldn't make the export: " + response.statusText);
-      const files = await readZip(await response.arrayBuffer());
-      const key = await Keys.notesKey().catch(() => null);
+      let files = {};
+      if (serverParts.length) {
+        const response = await fetch("/account/export?" + new URLSearchParams(serverParts.map(id => ["part", id])));
+        if (!response.ok) throw new Error("Couldn't make the export: " + response.statusText);
+        files = await readZip(await response.arrayBuffer());
+      }
       let added = null;
-      if (key) {
-        added = await privateFiles(key, withKeys).catch(e => {
-          toast("Your notes and chat aren't in this download: " + e.message, { bad: true });
-          return null;
-        });
+      if (privateParts.length) {
+        const key = await Keys.notesKey().catch(() => null);
+        if (key) {
+          added = await privateFiles(key, chosen).catch(e => {
+            toast("Your notes and chat aren't in this download: " + e.message, { bad: true });
+            return null;
+          });
+        } else {
+          toast("Your notes are locked, so they aren't in this download: unlock them on the Docs tab first", { bad: true });
+        }
       }
       if (added) {
         Object.assign(files, added);
-        const readme = new TextDecoder().decode(files["README.md"] || new Uint8Array());
-        files["README.md"] = text(readme.replace(/\nNot included: your notes, AI chat and AI keys \([^)]*\), your/,
-          `\nNot included: ${withKeys ? "" : "your AI keys (you left them out), "}your`) + privateReadme(withKeys));
-      } else if (!key) {
-        toast("Your notes are locked, so they aren't in this download: unlock them on the Docs tab first", { bad: true });
+        const leftOut = Object.keys(BROWSER_PARTS).filter(id => !chosen.has(id)).map(id => PRIVATE_NAMES[id]);
+        const readme = files["README.md"]
+          ? new TextDecoder().decode(files["README.md"]).replace(/\nNot included: your notes, AI chat and AI keys \([^)]*\), your/,
+            `\nNot included: ${leftOut.length ? leftOut.join(", ") + " (you left them out), " : ""}your`)
+          : `# Your Daily Dashboard data\n\nExported ${new Date().toLocaleString()}.`;
+        files["README.md"] = text(readme + privateReadme(chosen));
       }
+      if (!Object.keys(files).some(name => name !== "README.md")) throw new Error("There was nothing to download");
+      const only = chosen.size === 1 ? `${[...chosen][0]}-` : "export-";
       const link = Object.assign(document.createElement("a"), {
         href: URL.createObjectURL(await writeZip(files)),
-        download: `dashboard-export-${new Date().toISOString().slice(0, 10)}.zip`,
+        download: `dashboard-${only}${new Date().toISOString().slice(0, 10)}.zip`,
       });
       document.body.append(link);
       link.click();
@@ -198,21 +219,31 @@ To move to another dashboard, open its Account page → Privacy → Import data,
 
   // ---------- import ----------
 
-  async function importZip(form, file) {
+  // partsIn are the parts a zip has, with how many files each (notes can be many).
+  function partsIn(files) {
+    const found = {};
+    for (const [id, name] of Object.entries(SERVER_PARTS)) if (files[name]) found[id] = 1;
+    for (const [id, matches] of Object.entries(BROWSER_PARTS)) {
+      const count = Object.keys(files).filter(matches).length;
+      if (count) found[id] = count;
+    }
+    return found;
+  }
+
+  async function importZip(form, files, chosen) {
     const result = form.querySelector("[data-import-result]");
     const show = (lines, bad) => {
       result.hidden = false;
       result.className = bad ? "sign-in-error" : "muted";
       result.replaceChildren(...lines.flatMap((line, i) => [i ? document.createElement("br") : "", line]));
     };
-    const files = await readZip(await file.arrayBuffer());
     const done = [], problems = [];
 
     // The server's part.
     const body = new FormData();
     let any = false;
-    for (const name of SERVER_FILES) {
-      if (files[name]) { body.set(name, new Blob([files[name]]), name); any = true; }
+    for (const [id, name] of Object.entries(SERVER_PARTS)) {
+      if (chosen.has(id) && files[name]) { body.set(name, new Blob([files[name]]), name); any = true; }
     }
     if (any) {
       const answer = await postSealed("/account/import", body);
@@ -221,9 +252,10 @@ To move to another dashboard, open its Account page → Privacy → Import data,
     }
 
     // This browser's part, sealed with this account's key.
-    const notes = Object.entries(files).filter(([name]) => /^notes\/[^/]+\.md$/.test(name))
+    const notes = !chosen.has("notes") ? [] : Object.entries(files).filter(([name]) => isNote(name))
       .map(([name, data]) => ({ title: name.slice(6, -3), text: new TextDecoder().decode(data) }));
-    const chatFile = files["private/chat.json"], settingsFile = files["private/ai-settings.json"];
+    const chatFile = chosen.has("chat") && files["private/chat.json"];
+    const settingsFile = chosen.has("ai-settings") && files["private/ai-settings.json"];
     if (notes.length || chatFile || settingsFile) {
       const key = await Keys.notesKey().catch(() => null);
       if (!key) {
@@ -241,7 +273,7 @@ To move to another dashboard, open its Account page → Privacy → Import data,
         }
       }
     }
-    if (!done.length && !problems.length) problems.push("There was nothing to import: pick a file from Download your data");
+    if (!done.length && !problems.length) problems.push("There was nothing to import: tick something in the list");
     show([...(done.length ? ["Imported " + done.join(", ") + "."] : []), ...problems], problems.length > 0 && !done.length);
     if (done.length) toast("Imported your data");
     if (problems.length) toast(problems[0], { bad: true });
@@ -271,26 +303,68 @@ To move to another dashboard, open its Account page → Privacy → Import data,
     return `${added} AI ${added === 1 ? "setting" : "settings"}`;
   }
 
-  // ---------- the Privacy tab ----------
+  // ---------- the Data tab ----------
 
   htmx.onLoad(node => {
     const cards = node.matches?.("[data-backup]") ? [node] : [...(node.querySelectorAll?.("[data-backup]") || [])];
     for (const card of cards) {
-      card.querySelector("[data-backup-download]")?.addEventListener("click", event => {
+      const exportList = card.querySelector("[data-export-parts]");
+      const download = card.querySelector("[data-backup-download]");
+      const tickAll = on => exportList.querySelectorAll("input[type=checkbox]").forEach(input => { input.checked = on; });
+      card.querySelector("[data-parts-all]")?.addEventListener("click", () => tickAll(true));
+      card.querySelector("[data-parts-none]")?.addEventListener("click", () => tickAll(false));
+      download?.addEventListener("click", event => {
         event.preventDefault();
-        download(event.currentTarget);
+        downloadParts(event.currentTarget);
       });
+
       const form = card.querySelector("form[data-import]");
-      form?.addEventListener("submit", async event => {
-        event.preventDefault();
+      if (!form) continue;
+      const importList = form.querySelector("[data-import-parts]"), importButton = form.querySelector("button.primary");
+      let files = null;
+      const clear = () => {
+        files = null;
+        importList.hidden = true;
+        importButton.disabled = true;
+      };
+      // Choosing a file lists what's in it, all ticked.
+      form.elements.file.addEventListener("change", async () => {
+        clear();
+        form.querySelector("[data-import-result]").hidden = true;
         const file = form.elements.file.files[0];
         if (!file) return;
-        if (!confirm("Import this file? Your plan is replaced by its plan; everything else is added to what's here, and nothing is deleted.")) return;
-        const button = form.querySelector("button");
-        button.disabled = true;
-        try { await importZip(form, file); }
+        try {
+          files = await readZip(await file.arrayBuffer());
+        } catch (e) {
+          toast(e.message, { bad: true });
+          return;
+        }
+        const found = partsIn(files);
+        if (!Object.keys(found).length) {
+          toast("There's nothing to import in that file: pick one from Download your data", { bad: true });
+          files = null;
+          return;
+        }
+        for (const label of importList.querySelectorAll("[data-part]")) {
+          const count = found[label.dataset.part];
+          label.hidden = !count;
+          label.querySelector("input").checked = !!count;
+          label.querySelector("[data-part-count]").textContent = label.dataset.part === "notes" && count ? `${count} in this file` : "";
+        }
+        importList.hidden = false;
+        importButton.disabled = false;
+      });
+      form.addEventListener("submit", async event => {
+        event.preventDefault();
+        if (!files) return;
+        const chosen = new Set([...ticked(importList)].filter(id => !importList.querySelector(`[data-part="${id}"]`)?.hidden));
+        if (!chosen.size) { toast("Tick what to import first", { bad: true }); return; }
+        const warning = chosen.has("plan") ? "Your plan is replaced by its plan; everything else is added to what's here" : "It's added to what's here";
+        if (!confirm(`Import what you ticked? ${warning}, and nothing is deleted.`)) return;
+        importButton.disabled = true;
+        try { await importZip(form, files, chosen); }
         catch (e) { toast(e.message, { bad: true }); }
-        finally { button.disabled = false; form.reset(); }
+        finally { form.elements.file.value = ""; clear(); }
       });
     }
   });

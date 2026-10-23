@@ -278,6 +278,7 @@ type accountView struct {
 	Error        string
 	Saved        string
 	Connections  connectionsView
+	DataParts    []dataPart // what the Data tab can download and import, one at a time
 }
 
 // connectionsView is the user's own MyFitnessPal, Anki and AI keys.
@@ -303,7 +304,8 @@ func (ui *UI) accountView(r *http.Request) accountView {
 	user := ui.user(r)
 	view := accountView{Tab: accountTab(r), Username: user.Username, Admin: user.IsAdmin(), Sessions: ui.Auth.SessionCount(user.ID),
 		Devices:  ui.Auth.Devices(user.ID, auth.SessionFrom(r)),
-		HasToken: ui.Auth.HasToken(user.ID), Connections: ui.connectionsView(r), Encrypted: ui.Workspaces.Encrypted(user), Sealed: sealedNotes(user), PlainStorage: user.PlainStorage}
+		HasToken: ui.Auth.HasToken(user.ID), Connections: ui.connectionsView(r), Encrypted: ui.Workspaces.Encrypted(user), Sealed: sealedNotes(user), PlainStorage: user.PlainStorage,
+		DataParts: dataParts}
 	return view
 }
 
@@ -321,7 +323,7 @@ func (ui *UI) connectionsView(r *http.Request) connectionsView {
 
 // accountTabs are the Account page's tabs, by their ?tab= value ("" is the first).
 var accountTabs = []struct{ ID, Label string }{
-	{"", "Account"}, {"privacy", "Privacy"}, {"connections", "Connections"}, {"ai", "AI"},
+	{"", "Account"}, {"privacy", "Privacy"}, {"data", "Data"}, {"connections", "Connections"}, {"ai", "AI"},
 }
 
 // accountTab is the tab a request is for: the page's ?tab=, or for a change made on the page,

@@ -11,10 +11,10 @@ import (
 	"dashboard/internal/problem"
 )
 
-// The Privacy tab's "Import data": the files of a "Download your data" zip, from this dashboard
-// or another one, so moving to a new server keeps everything. The browser opens the zip
+// The Data tab's "Import data": the files of a "Download your data" zip, from this dashboard or
+// another one, so moving to a new server keeps everything. The browser opens the zip
 // (web/js/backup.js), keeps the notes, chat and AI settings for itself (it seals them again
-// there; they're never sent here) and posts the rest, one form file each. Nothing is deleted:
+// there; they're never sent here) and posts the parts the user ticked, one form file each. Nothing is deleted:
 // the plan is replaced, the rest is added (see each Import).
 
 const maxImport = 64 << 20

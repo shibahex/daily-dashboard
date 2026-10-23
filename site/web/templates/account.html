@@ -71,6 +71,7 @@
 <nav class="subtabs" aria-label="Account settings">
   <a href="/account"{{if eq .Tab ""}} class="on" aria-current="page"{{end}}>Account</a>
   <a href="/account?tab=privacy"{{if eq .Tab "privacy"}} class="on" aria-current="page"{{end}}>Privacy</a>
+  <a href="/account?tab=data"{{if eq .Tab "data"}} class="on" aria-current="page"{{end}}>Data</a>
   <a href="/account?tab=connections"{{if eq .Tab "connections"}} class="on" aria-current="page"{{end}}>Connections</a>
   <a href="/account?tab=ai"{{if eq .Tab "ai"}} class="on" aria-current="page"{{end}}>AI</a>
 </nav>
@@ -188,28 +189,43 @@
 
 {{define "account-card"}}
 <div class="account" id="account-card">
-  {{if eq .Tab "privacy"}}
+  {{if eq .Tab "data"}}
   <div class="card backup" data-backup>
     <section>
       <h2>Download your data</h2>
-      <p class="muted">One .zip with everything the dashboard keeps for you, in open formats: your plan, checklist, weigh-ins, lifting (also as a spreadsheet, one row per set), Anki history, all your Taskwarrior tasks and Timewarrior time, and your notes (as Markdown files) and AI chat. A README inside says what each file is.</p>
+      <p class="muted">A .zip with what you tick, in open formats, and a README saying what each file is. Tick one thing to download just that, or everything to move to another dashboard.</p>
       <p class="muted small">Your browser adds the notes and chat, decrypted, so the file works on any dashboard: keep it somewhere safe. Logins aren't in it, and your food diary lives in MyFitnessPal.</p>
-      <label class="check"><input type="checkbox" data-backup-keys>
-        <span>Include my AI keys and local model <small class="muted">Anyone with the file can read them.</small></span></label>
-      <a class="sm-button primary" href="/account/export" download hx-boost="false" data-backup-download>Download everything (.zip)</a>
+      <fieldset class="backup-parts" data-export-parts>
+        <legend>What to download</legend>
+        {{range .DataParts}}<label class="check"><input type="checkbox" value="{{.ID}}"{{if not .Off}} checked{{end}}>
+          <span>{{.Label}} <small class="muted">{{.Hint}}</small></span></label>
+        {{end}}
+      </fieldset>
+      <div class="row">
+        <a class="sm-button primary" href="/account/export" download hx-boost="false" data-backup-download>Download (.zip)</a>
+        <button type="button" class="sm ghost" data-parts-all>Tick all</button>
+        <button type="button" class="sm ghost" data-parts-none>Untick all</button>
+      </div>
     </section>
     <section class="backup-import">
       <h2>Import data</h2>
-      <p class="muted">Moving to a new server? Pick the .zip you downloaded from the old one. Your plan is replaced by its plan; everything else (days, weigh-ins, workouts, tasks, time, notes, the chat) is added to what's here, and nothing is deleted. Importing the same file twice adds nothing new.</p>
+      <p class="muted">Pick a .zip from Download your data, here or on another dashboard, then tick what to bring in. A plan replaces yours; everything else (days, weigh-ins, workouts, tasks, time, notes, the chat) is added to what's here, and nothing is deleted. Importing the same file twice adds nothing new.</p>
       <form data-import>
         <div class="file-row">
           <input type="file" name="file" accept=".zip,application/zip" required aria-label="Backup .zip">
-          <button class="sm primary">Import</button>
         </div>
+        <fieldset class="backup-parts" data-import-parts hidden>
+          <legend>What to import from this file</legend>
+          {{range .DataParts}}<label class="check" data-part="{{.ID}}" hidden><input type="checkbox" value="{{.ID}}" checked>
+            <span>{{.Label}} <small class="muted" data-part-count></small></span></label>
+          {{end}}
+        </fieldset>
+        <div><button class="sm primary" disabled>Import</button></div>
         <p data-import-result hidden></p>
       </form>
     </section>
   </div>
+  {{else if eq .Tab "privacy"}}
   <form class="card" hx-post="/account/recovery" hx-target="#account-card" hx-swap="outerHTML" data-keys="recovery" data-sealed>
     <h2>Your notes and recovery code</h2>
     <p class="muted">Your notes, AI chat and AI keys are encrypted here in your browser: the server only ever has them scrambled. If you forget your password, your recovery code is the only way back in.</p>

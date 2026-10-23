@@ -83,6 +83,7 @@ func TestEncryptionTemplatesRender(t *testing.T) {
 		{"admin", adminView{ModelServers: []string{"https://models.example.lan", "http://box.lan:11434"}}, "https://models.example.lan\nhttp://box.lan:11434</textarea>"},
 		{"account", accountView{Tab: "ai", Connections: connectionsView{ServerAllowed: true}}, "Turn it on"},
 		{"account", accountView{Tab: "privacy", Sealed: true}, "recovery code"},
+		{"account", accountView{Tab: "data", DataParts: dataParts}, `data-part="tasks"`},
 		{"account", accountView{Username: "me", Sealed: true}, `data-keys="password" data-sealed`},
 		{"browser-chat", nil, "data-browser-chat"},
 		{"docs", docsView{HasGuides: true, Docs: []docLink{{Name: "README.md", Title: "Getting started"}}}, "data-sealed-notes"},
