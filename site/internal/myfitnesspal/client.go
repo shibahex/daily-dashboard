@@ -169,10 +169,13 @@ func (c Client) command(ctx context.Context, program ...string) *exec.Cmd {
 		where = []string{"--directory", c.CheckoutDir, "--extra", "autorefresh"}
 	}
 	uv := uvCommand()
-	args := append(uv[1:], "run", "--quiet", "--python", "3.12", "--managed-python")
-	args = append(append(args, where...), program...)
+	args := append(uv[1:], "run", "--quiet")
+	args = append(append(append(args, pythonArgs()...), where...), program...)
 	cmd := exec.CommandContext(ctx, uv[0], args...)
 	cmd.Env = os.Environ()
+	if lib := os.Getenv("MFP_LIBRARY_PATH"); lib != "" {
+		cmd.Env = append(cmd.Env, "LD_LIBRARY_PATH="+lib)
+	}
 	if c.ConfigHome != "" {
 		// Another user's MFP_COOKIE from the server's environment mustn't sign this one in.
 		cmd.Env = slices.DeleteFunc(cmd.Env, func(v string) bool { return strings.HasPrefix(v, "MFP_COOKIE=") })
@@ -243,6 +246,17 @@ func uvPythonDir() string {
 		data = filepath.Join(home, ".local", "share")
 	}
 	return filepath.Join(data, "uv", "python")
+}
+
+// pythonArgs picks the MCP's Python: Nix's python3.12 when it's on the PATH (nix run and the
+// container put it there, as the AI's sandbox uses), otherwise one uv downloads. A downloaded
+// Python can't run in the container: it has no /bin/sh for uv to read the libc from, and no
+// system loader to start it with.
+func pythonArgs() []string {
+	if python, err := exec.LookPath("python3.12"); err == nil {
+		return []string{"--python", python}
+	}
+	return []string{"--python", "3.12", "--managed-python"}
 }
 
 // uvCommand is uv from the PATH, or from Nix when it isn't installed.

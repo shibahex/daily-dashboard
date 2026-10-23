@@ -11,7 +11,7 @@
   </form>
   {{else}}
   <div class="goals">{{range .Goals}}<div class="goal"><b>{{.Value}}</b><span>{{.Label}}{{with .Unit}} · {{.}}{{end}}</span></div>{{end}}</div>
-  <p class="small muted note">{{if .LastError}}<span class="err">MyFitnessPal: {{.LastError}}</span> <a class="link" href="/mcps">Set up</a>{{else if .Syncing}}{{if eq .DayName "today"}}Connecting to MyFitnessPal…{{else}}Loading {{.DayName}} from MyFitnessPal…{{end}}{{else}}Change the calorie and macro goals in MyFitnessPal too.{{end}}</p>
+  <p class="small muted note">{{if .LastError}}<span class="err">MyFitnessPal: {{.LastError}}</span> <a class="link" href="/account?tab=connections">Set up</a>{{else if .Syncing}}{{if eq .DayName "today"}}Connecting to MyFitnessPal…{{else}}Loading {{.DayName}} from MyFitnessPal…{{end}}{{else}}Change the calorie and macro goals in MyFitnessPal too.{{end}}</p>
   {{end}}
   {{end}}
 </div>
