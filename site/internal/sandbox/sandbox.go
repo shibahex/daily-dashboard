@@ -154,3 +154,13 @@ func (t Tools) startScript(anki bool) string {
 	script += "for i in $(seq 40); do (exec 3<>/dev/tcp/127.0.0.1/3128) 2>/dev/null && break; sleep 0.05; done\n"
 	return script + "exec \"$@\"\n"
 }
+
+// Explain adds the fix to a failure the host causes: Ubuntu 23.10 and later strip the
+// permissions from user namespaces made by programs without an AppArmor profile, so bwrap can't
+// set up its network or mounts. The container needs a profile that allows user namespaces.
+func Explain(err error) error {
+	if err != nil && strings.Contains(err.Error(), "bwrap:") && strings.Contains(err.Error(), "Operation not permitted") {
+		return fmt.Errorf("%w (the host restricts user namespaces: in Docker, set DASHBOARD_APPARMOR=podman; see docs/dashboard.md)", err)
+	}
+	return err
+}

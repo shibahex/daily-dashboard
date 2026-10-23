@@ -23,9 +23,10 @@ services:
     shm_size: 256m
     # The AI's MyFitnessPal and Anki tools run in a bubblewrap sandbox, which makes user
     # namespaces and mounts its own /proc. Without these the dashboard works but those tools don't.
+    # On Ubuntu 23.10 and later set DASHBOARD_APPARMOR=podman (see .env.example).
     security_opt:
       - seccomp=unconfined
-      - apparmor=unconfined
+      - apparmor=${DASHBOARD_APPARMOR:-unconfined}
       - systempaths=unconfined
 
 volumes:

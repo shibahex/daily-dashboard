@@ -43,7 +43,7 @@ func Public(err error) string {
 	var p Error
 	if errors.As(err, &p) {
 		if err.Error() != p.Message {
-			log.Printf("%s: %v", p.Message, err)
+			log.Print(err)
 		}
 		return p.Message
 	}

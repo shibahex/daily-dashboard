@@ -15,6 +15,7 @@ import (
 	"dashboard/internal/auth"
 	"dashboard/internal/mcp"
 	"dashboard/internal/problem"
+	"dashboard/internal/sandbox"
 	"dashboard/internal/workspace"
 )
 
@@ -307,7 +308,7 @@ func (ts *toolSessions) open(ui *UI, user auth.User, ws *workspace.Workspace) (*
 	}
 	s, err := startTools(ui, ws, names)
 	if err != nil {
-		return nil, err
+		return nil, sandbox.Explain(err)
 	}
 	s.key = key
 	ts.byUser[user.ID] = s
