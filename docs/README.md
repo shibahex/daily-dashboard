@@ -4,9 +4,9 @@
 
 <img src="screenshots/mashup.png" alt="The Today, Tasks, Lifting, Anki, History, MCPs and Docs tabs">
 
-Log your sets, reps and weights as you train, and track your PRs and progress over time. Your calories, macros and weight trend sit alongside your lifts, with a daily checklist, tasks and time tracking, plus your flashcards if you study. A history view ties it all together, and an AI assistant can log meals, plan your training and answer questions about your data. Run it for yourself or share it: every account is private.
+Log your sets, reps and weights as you train, and track your PRs and bodyweight trends over time. Your calories and macros sit alongside your lifts, with a daily checklist, tasks and time tracking, plus your flashcards if you study. and an AI assistant can log meals, plan your training and answer questions about your data.
 
-It takes the place of a workout logger, a food diary app, a weight tracker and a to-do list, all on one screen.
+It takes the place of a workout logger, a food diary app, a weight tracker and a to-do list, all on one place.
 
 - **Today:** workout, checklist with streaks, weight trend, calories and macros from MyFitnessPal (log and edit foods right there), lifting progress, tasks due, Anki cards due, time tracked. Drag the cards to arrange them.
 - **Tasks:** [Taskwarrior](https://taskwarrior.org) tasks with repeating schedules, skips with reasons, and time tracking in [Timewarrior](https://timewarrior.net).
