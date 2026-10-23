@@ -52,7 +52,16 @@ cd daily-dashboard/site
 nix run            # opens on http://localhost:1628
 ```
 
-The terminal prints a link to create the first account: a username and a password of at least 12 characters. The link includes a one-time setup code, so nobody else can claim the server first. If you missed it, the code is also in `site/data/setup-code`. The first account is an admin, and the **host**: it uses this computer's own Taskwarrior, MyFitnessPal login and Anki.
+Or with Docker (no Nix needed), behind your nginx: see [Docker](dashboard.md#docker).
+
+```sh
+git clone https://github.com/shibahex/daily-dashboard.git
+cd daily-dashboard
+cp .env.example .env     # your domain and time zone
+docker compose up -d
+```
+
+The terminal (or `docker compose logs dashboard`) prints a link to create the first account: a username and a password of at least 12 characters. The link includes a one-time setup code, so nobody else can claim the server first. If you missed it, the code is also in `site/data/setup-code`. The first account is an admin, and the **host**: it uses this computer's own Taskwarrior, MyFitnessPal login and Anki.
 
 Each account gets its own private folder (`site/data/users/<id>/`, ignored by git) with starter notes from `docs/templates/` and a plan from `site/plan.example.json`.
 

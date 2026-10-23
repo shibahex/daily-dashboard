@@ -1,0 +1,32 @@
+# The dashboard in Docker or Portainer. Settings go in .env (copy .env.example), or in
+# Portainer's environment variables. See "Docker" in docs/dashboard.md.
+services:
+  dashboard:
+    # The image GitHub builds from main; without it (or offline), compose builds it here.
+    image: ${DASHBOARD_IMAGE:-ghcr.io/shibahex/daily-dashboard:latest}
+    build: .
+    container_name: daily-dashboard
+    restart: unless-stopped
+    ports:
+      - "${DASHBOARD_PORT:-1628}:1628"
+    environment:
+      # The domain you open the dashboard at (your nginx site), always over https.
+      DASHBOARD_PUBLIC_URL: https://${DOMAIN:-localhost}
+      TZ: ${TZ:-UTC}
+      ANKI_CONNECT_URL: ${ANKI_CONNECT_URL:-}
+      ANKI_CONNECT_API_KEY: ${ANKI_CONNECT_API_KEY:-}
+      # Your reverse proxy reaches the container from a Docker network.
+      DASHBOARD_TRUSTED_PROXIES: 172.16.0.0/12
+    volumes:
+      - dashboard-data:/app/site/data
+    # Signed-in people's data is unlocked into memory (/dev/shm).
+    shm_size: 256m
+    # The AI's MyFitnessPal and Anki tools run in a bubblewrap sandbox, which makes user
+    # namespaces and mounts its own /proc. Without these the dashboard works but those tools don't.
+    security_opt:
+      - seccomp=unconfined
+      - apparmor=unconfined
+      - systempaths=unconfined
+
+volumes:
+  dashboard-data:

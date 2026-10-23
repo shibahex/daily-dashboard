@@ -1,0 +1,12 @@
+# Keep personal files out of the image: only the app, the guides and the starter notes go in.
+**
+!site/
+site/data/
+site/plan.json
+site/.env
+site/.timew-hook
+site/result
+!docs/README.md
+!docs/dashboard.md
+!docs/noctalia-plugin.md
+!docs/templates/

@@ -56,12 +56,26 @@
           exec ${server}/bin/dashboard "$@"
         '';
       };
+      # What the container (../Dockerfile) runs: the server with every program it needs, since
+      # the image has nothing else. The site's pages sit at /app/site and its data on a volume.
+      container = pkgs.writeShellApplication {
+        name = "health-dashboard-container";
+        runtimeInputs = [ pkgs.taskwarrior3 pkgs.timewarrior pkgs.uv pkgs.bubblewrap pkgs.socat pkgs.bash pkgs.coreutils pkgs.nodejs_22 pkgs.python312 ];
+        text = ''
+          export MFP_LIBRARY_PATH=${pkgs.stdenv.cc.cc.lib}/lib
+          export SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt
+          export TZDIR=${pkgs.tzdata}/share/zoneinfo ZONEINFO=${pkgs.tzdata}/share/zoneinfo
+          mkdir -p "$HOME" /tmp
+          exec ${server}/bin/dashboard "$@"
+        '';
+      };
     in
     {
       packages.${system} = {
         default = dashboard;
         server = server;
         timew-hook = timewHook;
+        container = container;
       };
 
       apps.${system}.default = {

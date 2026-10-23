@@ -57,6 +57,52 @@ With [Tailscale](https://tailscale.com), `tailscale serve --bg 1628` gives it an
 - Over HTTPS the session cookie is `Secure` (`__Host-session`). Requests must use `localhost` or the public address; anything else is refused.
 - Login rate limits use the client's address, which it takes from `X-Forwarded-For` only when the request comes from a trusted proxy.
 
+## Docker
+
+GitHub builds an image from `main` (`ghcr.io/shibahex/daily-dashboard`), and `compose.yaml` runs it. Everything people save lives on one volume, mounted at `/app/site/data`.
+
+```sh
+git clone https://github.com/shibahex/daily-dashboard.git
+cd daily-dashboard
+cp .env.example .env     # set DOMAIN and TZ
+docker compose up -d
+docker compose logs dashboard   # the sign-up link for the first account
+```
+
+`.env` has two settings to fill in:
+
+- `DOMAIN`: the domain you type in the browser to open the dashboard, like `health.example.com`: the one your nginx site uses. Just the name, no `https://`.
+- `TZ`: your time zone, like `America/New_York`, so "today" starts at your midnight.
+
+Then point nginx at port 1628. The browser only does the dashboard's password and notes encryption on an `https://` page, so you can't sign in over plain `http://<server>:1628` (only on `http://localhost:1628` on the server itself). Keep the `Host` header: the dashboard refuses names it doesn't know.
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name health.example.com;
+    # ssl_certificate and ssl_certificate_key as for your other sites
+
+    location / {
+        proxy_pass http://127.0.0.1:1628;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_buffering off;     # the AI chat streams its replies
+        proxy_read_timeout 1h;
+    }
+}
+```
+
+In Nginx Proxy Manager: a proxy host for `health.example.com` that forwards to `http://<server's IP>:1628`, with an SSL certificate.
+
+**Portainer:** **Stacks → Add stack → Repository**, with the URL `https://github.com/shibahex/daily-dashboard`, reference `refs/heads/main` and compose path `compose.yaml`. Add `DOMAIN` and `TZ` under **Environment variables**, deploy, and find the sign-up link in the container's logs. To update, use **Pull and redeploy**; the volume keeps the data.
+
+- Updating with plain Docker: `docker compose pull && docker compose up -d`.
+- Optional settings in `.env`: `ANKI_CONNECT_URL` (and `ANKI_CONNECT_API_KEY`) for AnkiConnect on the computer that runs Anki, `DASHBOARD_PORT` for another port.
+- `compose.yaml` turns off Docker's seccomp and AppArmor filters and its masking of `/proc` for this container (`security_opt`), because the AI's MyFitnessPal and Anki tools run in a bubblewrap sandbox, which makes user namespaces and mounts its own `/proc`. The server itself still runs as an unprivileged user. Remove those lines if you don't use the AI's tools.
+- A reset link for a locked-out admin: `docker compose stop`, then `docker compose run --rm dashboard reset-password <username>`.
+- No image for your machine (it's built for x86-64) or offline? `docker compose up -d --build` builds it from the `Dockerfile`, with Nix, in a few minutes.
+
 ## MyFitnessPal
 
 The **Nutrition today** card shows what you've eaten against your MyFitnessPal goals: calories (goal − food + exercise), protein/carbs/fat, where the calories came from, the cholesterol-related limits (sat fat, fiber, sodium, cholesterol, sugar, potassium) and each meal's foods.

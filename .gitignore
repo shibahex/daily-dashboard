@@ -22,3 +22,6 @@ result
 __pycache__/
 
 updates
+
+# Docker settings (copy .env.example)
+/.env
