@@ -131,6 +131,7 @@ func (ui *UI) renderDueTasksCard(r *http.Request) (template.HTML, error) {
 			due = append(due, row)
 		}
 	}
+	ui.linkWorkouts(r, due)
 	return ui.renderToHTML("card-tasks", dueTasksView{Rows: due})
 }
 

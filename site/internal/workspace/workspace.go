@@ -4,7 +4,7 @@
 //
 // A user's folder holds:
 //
-//	plan.json, checklist.json, weights.json, mfp.json, chat.json, anki_history.json
+//	plan.json, checklist.json, weights.json, lifting.json, mfp.json, chat.json, anki_history.json
 //	docs/          their notes
 //	taskrc, task/  their Taskwarrior; timewarrior/ their Timewarrior
 //	mfp/           their MyFitnessPal login (the MCP's config and browser profile)
@@ -27,6 +27,7 @@ import (
 	"dashboard/internal/auth"
 	"dashboard/internal/config"
 	"dashboard/internal/jsonfile"
+	"dashboard/internal/lifting"
 	"dashboard/internal/myfitnesspal"
 	"dashboard/internal/problem"
 	"dashboard/internal/secrets"
@@ -43,6 +44,7 @@ type Workspace struct {
 	Host          bool
 	Paths         config.Paths
 	Store         *store.Store
+	Lifting       *lifting.Store // routines and workouts
 	Tasks         *tasks.Service
 	Time          timewarrior.Client
 	MyFitnessPal  *myfitnesspal.Syncer
@@ -252,6 +254,7 @@ func (m *Manager) openWorkspace(user auth.User, dir string) *Workspace {
 	m.useAnki(ws, ankiClient)
 	ws.Secrets = secrets.NewStore(m.box, dir, user.ID)
 	ws.Tasks = tasks.NewService(taskClient, ws.Time)
+	ws.Lifting = lifting.New(paths.DataFile("lifting.json"))
 	ws.MyFitnessPal = myfitnesspal.NewSyncer(mfp, files, paths.DataFile("mfp.json"))
 	ws.Conversations = assistant.NewConversations(paths.DataFile("chat.json"))
 	return ws

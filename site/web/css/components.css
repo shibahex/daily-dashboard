@@ -27,10 +27,12 @@ input.txt:focus, select.txt:focus, textarea.txt:focus { outline: 2px solid var(-
   padding: 8px 16px; border-radius: 8px; font-size: 14px; transition: .2s; pointer-events: none; max-width: calc(100% - 32px); }
 #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 #toast.bad { background: var(--warn); color: #fff; }
-/* A <summary> that looks like a small button (Show copies, Skip) */
-summary.sm-button { list-style: none; display: inline-block; font-size: 13px; padding: 4px 10px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); cursor: pointer; }
+/* A <summary> or link that looks like a small button (Show copies, Skip, Open workout) */
+summary.sm-button, a.sm-button { list-style: none; display: inline-block; font-size: 13px; padding: 4px 10px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); cursor: pointer; }
 summary.sm-button::-webkit-details-marker { display: none; }
-summary.sm-button:hover { border-color: var(--accent); }
+summary.sm-button:hover, a.sm-button:hover { border-color: var(--accent); }
+a.sm-button { text-decoration: none; line-height: 1.5; }
+a.sm-button.primary { background: var(--accent); color: var(--panel); border-color: var(--accent); }
 summary.sm-button.ghost { border-color: transparent; color: var(--muted); }
 details[open] > summary.sm-button { background: var(--chip); }
 /* The default button of a row editor: Enter in a row saves instead of moving it */

@@ -8,6 +8,8 @@ A private, self-hosted dashboard for getting healthier. Check in once a day, see
 
 - **Today:** workout, checklist with streaks, weight trend, calories and macros from MyFitnessPal (log and edit foods right there), tasks due, time tracked. Drag the cards to arrange them.
 - **Tasks:** [Taskwarrior](https://taskwarrior.org) tasks with repeating schedules, skips with reasons, and time tracking in [Timewarrior](https://timewarrior.net).
+- **Lifting:** routines with days of exercises, a workout logger that fills in last time's weights, a rest timer, notes per set, each set's estimated 1RM as you type, PRs and progress charts. A Strength card on Today charts your lifts over time; you pick which. Finishing a workout can tick its task and log the time.
+- **Your data is yours:** one click downloads all of it (plan, checklist, weigh-ins, lifting as JSON and CSV, tasks, time) in open formats.
 - **History:** activity heatmap, activity feed, time log.
 - **Docs:** your own notes (goals, nutrition plan, workout plan…), which the AI can also read.
 - **Anki:** decks and due counts, add cards, search and edit notes, plus an Anki card on Today and your review history in History (through the AnkiConnect add-on).

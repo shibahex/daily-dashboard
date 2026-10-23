@@ -62,6 +62,8 @@
   <div class="title" hx-get="/tasks/{{.UUID}}/editor" hx-target="#slot-{{.UUID}}" title="Click to edit">{{.Description}}</div>
   <div class="meta"><span>{{.DueLabel}}</span>{{template "task-badges" .}}{{if gt .MissedCount 1}}<span class="badge warn">{{.MissedCount}} missed</span>{{end}}</div>
   <div class="actions">
+    {{with .Workout}}{{if .Going}}<a class="sm-button primary" href="/lifting">Open workout</a>
+    {{else}}<button class="sm primary" hx-post="/lifting/start" hx-vals="{{vals "routine" .Routine "day" .Day}}" hx-swap="none" title="Start this routine day on the Lifting tab">Start workout</button>{{end}}{{end}}
     {{if .Active}}
     <button class="sm primary" hx-post="/tasks/{{.UUID}}/done" hx-swap="none">Done</button>
     {{else}}

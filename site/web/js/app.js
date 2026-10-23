@@ -1,5 +1,5 @@
-// The little the server can't do: toasts, keyboard shortcuts, dragging Today's cards, and
-// remembering which meals are open. Everything else is HTMX (see web/templates).
+// The little the server can't do: toasts, keyboard shortcuts, dragging Today's cards, the
+// workout clocks, and remembering which meals are open. Everything else is HTMX (see web/templates).
 
 // ---------- toasts ----------
 // The server sends {"toast": {message, bad, undo}} in HX-Trigger; errors come back as plain text.
@@ -103,6 +103,64 @@ function scrollToEnd(root, behavior = "instant") {
 }
 htmx.onLoad(root => scrollToEnd(root));
 document.body.addEventListener("htmx:sseMessage", () => scrollToEnd(document, "smooth"));
+
+// ---------- workout clocks ----------
+// The Lifting tab's clocks: how long the workout has gone (data-since) and the rest left
+// (data-rest-until, out of data-rest-for seconds). The server keeps the times; this only counts,
+// and beeps (or buzzes, on a phone) when a rest is over.
+
+function clock(seconds) {
+  const s = Math.max(0, Math.round(seconds));
+  const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), rest = String(s % 60).padStart(2, "0");
+  return h ? `${h}:${String(m).padStart(2, "0")}:${rest}` : `${m}:${rest}`;
+}
+let sound;
+function restOver() {
+  try { navigator.vibrate?.([200, 100, 200]); } catch {}
+  try {
+    sound ??= new AudioContext();
+    const tone = sound.createOscillator(), volume = sound.createGain(), now = sound.currentTime;
+    tone.frequency.value = 880;
+    volume.gain.setValueAtTime(0.2, now);
+    volume.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+    tone.connect(volume).connect(sound.destination);
+    tone.start(now);
+    tone.stop(now + 0.5);
+  } catch {}
+}
+function tickClocks() {
+  const now = Date.now();
+  document.querySelectorAll("[data-since]").forEach(el => { el.textContent = clock((now - Date.parse(el.dataset.since)) / 1000); });
+  document.querySelectorAll("[data-rest-until]").forEach(box => {
+    const left = (Date.parse(box.dataset.restUntil) - now) / 1000, total = Number(box.dataset.restFor) || 1;
+    box.querySelector(".rest-left").textContent = left > 0 ? clock(left) : "over";
+    box.style.setProperty("--left", Math.max(0, Math.min(1, left / total)));
+    if (left <= 0 && !box.classList.contains("over")) {
+      box.classList.add("over");
+      if (left > -3) restOver(); // not for a rest that ended while the page was away
+    }
+  });
+}
+setInterval(tickClocks, 1000);
+htmx.onLoad(tickClocks);
+
+// An exercise's estimated one-rep max (in its heading), redrawn as its sets' weights and reps are
+// typed: the best set's, by Epley as lifting.go works it out (a single is itself), to the nearest
+// plate (the form's data-plate: 2.5 lb, 1.25 kg). Skipped sets have no inputs, so they don't count.
+document.addEventListener("input", event => {
+  const exercise = event.target.closest(".lift-ex");
+  const shown = exercise?.querySelector(".ex-1rm-now");
+  if (!shown) return;
+  let best = 0;
+  exercise.querySelectorAll(".lift-set").forEach(row => {
+    const [weightBox, repsBox] = row.querySelectorAll("input.num");
+    if (!weightBox || !repsBox) return;
+    const weight = parseFloat(weightBox.value.replace(",", ".")), reps = parseInt(repsBox.value, 10);
+    if (weight > 0 && reps > 0) best = Math.max(best, reps === 1 ? weight : weight * (1 + reps / 30));
+  });
+  const step = Number(exercise.closest("[data-plate]")?.dataset.plate) || 2.5;
+  shown.textContent = best > 0 ? String(parseFloat((Math.round(best / step) * step).toFixed(2))) : "";
+});
 
 // ---------- meals stay open ----------
 

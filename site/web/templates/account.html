@@ -187,6 +187,12 @@
 {{define "account-card"}}
 <div class="account" id="account-card">
   {{if eq .Tab "privacy"}}
+  <div class="card">
+    <h2>Download your data</h2>
+    <p class="muted">One .zip with everything the dashboard keeps for you, in open formats: your plan, checklist, weigh-ins, lifting (also as a spreadsheet, one row per set), Anki history, and all your Taskwarrior tasks and Timewarrior time. A README inside says what each file is.</p>
+    <p class="muted small">Your notes, AI chat and keys aren't in it: they're encrypted in your browser, so the server can't read them. Logins aren't either, and your food diary lives in MyFitnessPal.</p>
+    <div class="row"><a class="sm-button primary" href="/account/export" download hx-boost="false">Download everything (.zip)</a></div>
+  </div>
   <form class="card" hx-post="/account/recovery" hx-target="#account-card" hx-swap="outerHTML" data-keys="recovery" data-sealed>
     <h2>Your notes and recovery code</h2>
     <p class="muted">Your notes, AI chat and AI keys are encrypted here in your browser: the server only ever has them scrambled. If you forget your password, your recovery code is the only way back in.</p>

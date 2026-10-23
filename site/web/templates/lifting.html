@@ -1,0 +1,363 @@
+{{/* The Lifting tab: the workout in progress (sets, rest timer), routines, progress and past
+     workouts. The clocks (data-since, data-rest-until) tick in app.js; the times are the server's. */}}
+{{define "lifting"}}
+<div class="lift-top">
+  <a class="edit-btn" href="/lifting/export.csv" download hx-boost="false" title="Every finished set, one row each">Export (CSV)</a>
+  <span class="small muted">Weights in</span>
+  <form class="seg" hx-post="/lifting/unit" hx-trigger="change" hx-swap="none">
+    <label><input type="radio" name="unit" value="lb"{{if eq .Unit "lb"}} checked{{end}}>lb</label><label><input type="radio" name="unit" value="kg"{{if eq .Unit "kg"}} checked{{end}}>kg</label>
+  </form>
+</div>
+<div class="lift-grid">
+  <div class="col">{{template "lift-workout" .Workout}}{{template "lift-routines" .Routines}}</div>
+  <div class="col">{{template "lift-progress" .Progress}}{{template "lift-history" .History}}</div>
+</div>
+{{end}}
+
+{{define "lift-workout"}}
+<div class="card lift-workout" hx-disinherit="*" id="card-workout" hx-get="/lifting/workout" hx-trigger="lifting-changed from:body" hx-swap="outerHTML">
+{{if .Going}}
+  <div class="card-head"><h2>Workout</h2><span class="lift-clock" title="Time so far"><span data-since="{{.Started.Format "2006-01-02T15:04:05Z07:00"}}">{{.Elapsed}}</span></span></div>
+  <h3>{{.Title}}</h3>
+  <div class="small muted">{{.Sets}} {{plural .Sets "set" "sets"}} done · {{.Volume}} {{.Unit}} lifted{{with .Task}} · finishing ticks “{{.}}”{{end}}</div>
+  <form class="lift-form" hx-post="/lifting/workout" hx-target="closest .card" hx-swap="outerHTML" data-plate="{{.Plate}}">
+    <input type="hidden" name="workout" value="{{.ID}}">
+    <button class="default-submit" name="op" value="" tabindex="-1" aria-hidden="true"></button>
+    {{if not .RestUntil.IsZero}}
+    <div class="lift-rest" data-rest-until="{{.RestUntil.Format "2006-01-02T15:04:05Z07:00"}}" data-rest-for="{{.RestFor}}">
+      <span class="lift-rest-bar"><span></span></span>
+      <span class="lift-rest-text">Rest <b class="rest-left">{{.RestLeft}}</b></span>
+      <span class="lift-btns"><button class="sm" name="op" value="rest:-15">−15s</button><button class="sm" name="op" value="rest:30">+30s</button><button class="sm ghost" name="op" value="skip-rest">Skip</button></span>
+    </div>
+    {{end}}
+    {{range $ex := .Exercises}}
+    <section class="lift-ex{{if .Skipped}} skipped{{end}}">
+      <div class="lift-ex-head">
+        <div>
+          <div class="lift-ex-title"><b>{{.Name}}</b>
+            {{if not .Skipped}}<span class="ex-1rm{{if .Record}} pr{{end}}" title="Estimated one-rep max (Epley) from the best set below, to the nearest {{$.Plate}} {{$.Unit}}{{with .Best}}. Your best so far: {{.}}{{end}}">
+              <span class="ex-1rm-label">{{if .Record}}PR{{else}}1RM{{end}}</span> <b class="ex-1rm-now">{{.Est}}</b>{{with .Best}}<span class="muted"> / best {{.}}</span>{{end}}</span>{{end}}
+          </div>
+          <div class="small muted">{{if .Skipped}}Skipped{{with .Why}}: {{.}}{{end}}{{else}}{{.Plan}}{{with .Last}} · last time {{.}}{{end}}{{end}}</div>
+        </div>
+        <span class="lift-btns">
+          {{if .Skipped}}<button class="sm" name="op" value="unskip-exercise:{{.Index}}">Undo skip</button>
+          {{else}}
+          <button class="icon" name="op" value="up:{{.Index}}" title="Move up"{{if .Top}} disabled{{end}}>↑</button>
+          <button class="icon" name="op" value="down:{{.Index}}" title="Move down"{{if .Bottom}} disabled{{end}}>↓</button>
+          <label class="icon skip-btn" title="Skip this exercise"><input type="checkbox">⤼</label>
+          {{end}}
+          <button class="icon del" name="op" value="remove-exercise:{{.Index}}" title="Remove from this workout">✕</button>
+        </span>
+      </div>
+      {{if not .Skipped}}
+      <div class="lift-ex-skip">
+        <input class="txt" name="why{{.Index}}" maxlength="200" placeholder="Why skip it? (optional): no bench free, sore shoulder…" autocomplete="off">
+        <button class="sm" name="op" value="skip-exercise:{{.Index}}">Skip exercise</button>
+      </div>
+      <div class="lift-sets">
+        <div class="lift-set head"><span>Set</span><span>{{$.Unit}}</span><span>Reps</span><span></span><span></span></div>
+        {{range .Sets}}
+        <div class="lift-set-wrap">
+        {{if .Skipped}}
+        <div class="lift-set skipped">
+          <span class="lift-n">{{add .Index 1}}</span>
+          <span class="lift-skipped-why">Skipped{{with .Why}}: {{.}}{{end}}</span>
+          <button class="sm ghost" name="op" value="unskip-set:{{$ex.Index}}:{{.Index}}">Undo</button>
+        </div>
+        {{else}}
+        <div class="lift-set{{if .Done}} done{{end}}">
+          <span class="lift-n{{if .Record}} pr{{end}}"{{if .Record}} title="A new best estimated one-rep max"{{end}}>{{if .Record}}PR{{else}}{{add .Index 1}}{{end}}</span>
+          <input class="txt num" name="w{{$ex.Index}}.{{.Index}}" value="{{.Weight}}" placeholder="BW" inputmode="decimal" autocomplete="off" aria-label="Weight, set {{add .Index 1}}"
+            hx-post="/lifting/workout?quiet=1" hx-trigger="change" hx-include="closest form" hx-swap="none">
+          <input class="txt num" name="r{{$ex.Index}}.{{.Index}}" value="{{.Reps}}" placeholder="reps" inputmode="numeric" autocomplete="off" aria-label="Reps, set {{add .Index 1}}"
+            hx-post="/lifting/workout?quiet=1" hx-trigger="change" hx-include="closest form" hx-swap="none">
+          {{if .Done}}<button class="tick on" name="op" value="undo:{{$ex.Index}}:{{.Index}}" title="Done (click to undo)">✓</button>
+          {{else}}<button class="tick" name="op" value="done:{{$ex.Index}}:{{.Index}}" title="Log this set and start the rest timer">✓</button>{{end}}
+          <label class="icon note-btn" title="Note, skip or remove this set"><input type="checkbox"{{if .Note}} checked{{end}}>✎</label>
+        </div>
+        <div class="lift-set-note">
+          <input class="txt" name="n{{$ex.Index}}.{{.Index}}" value="{{.Note}}" maxlength="200" placeholder="Note for set {{add .Index 1}}, or why you're skipping it" autocomplete="off"
+            hx-post="/lifting/workout?quiet=1" hx-trigger="change" hx-include="closest form" hx-swap="none">
+          {{if not .Done}}<button class="sm" name="op" value="skip-set:{{$ex.Index}}:{{.Index}}" title="Skip this set (the note says why)">Skip set</button>{{end}}
+          <button class="icon del" name="op" value="remove-set:{{$ex.Index}}:{{.Index}}" title="Remove this set">✕</button>
+        </div>
+        {{end}}
+        </div>
+        {{end}}
+      </div>
+      <button class="sm ghost" name="op" value="add-set:{{.Index}}">+ Add set</button>
+      {{end}}
+    </section>
+    {{end}}
+    <div class="lift-add">
+      <input class="txt" name="new_exercise" list="lift-names" placeholder="Add an exercise…" maxlength="80" autocomplete="off">
+      <button class="sm" name="op" value="add-exercise">Add</button>
+      <datalist id="lift-names">{{range .Names}}<option value="{{.}}">{{end}}</datalist>
+    </div>
+    <input class="txt" name="workout_note" value="{{.Note}}" maxlength="500" placeholder="Note for this workout (optional)" autocomplete="off"
+      hx-post="/lifting/workout?quiet=1" hx-trigger="change" hx-include="closest form" hx-swap="none">
+    <div class="lift-foot">
+      <button type="button" class="sm primary" hx-get="/lifting/finish" hx-target="#lift-finish" hx-swap="innerHTML">Finish workout</button>
+      <button type="button" class="sm ghost" hx-post="/lifting/discard" hx-swap="none" hx-confirm="Discard this workout? Its sets won't be saved.">Discard</button>
+    </div>
+  </form>
+  <div class="task-slot" id="lift-finish"></div>
+{{else}}
+  <div class="card-head"><h2>Workout</h2></div>
+  <p class="muted">No workout going. Start a day from one of your routines, or start an empty workout and add exercises as you go.</p>
+  <button class="sm" hx-post="/lifting/start" hx-swap="none">Start an empty workout</button>
+{{end}}
+</div>
+{{end}}
+
+{{define "lift-finish"}}
+<form class="panel lift-finish" hx-post="/lifting/finish" hx-swap="none" hx-disabled-elt="find button">
+  {{if .NoneDone}}<span class="err small">No sets are ticked yet. Tick the ones you did first.</span>{{end}}
+  <label>Took <input class="txt num" name="took" value="{{.Took}}" title="Minutes or hours: 45, 50m, 1h 10m. Leave blank to not log time."></label>
+  <input class="txt" name="note" value="{{.Note}}" maxlength="500" placeholder="Note (optional): felt strong, left shoulder tight…">
+  <span class="small muted">{{with .Task}}{{if $.TaskDue}}Ticks “{{.}}” and logs the time to it.{{else}}“{{.}}” isn't due, so it stays as it is. The time is logged as Lifting.{{end}}{{else}}The time is logged as Lifting. Blank = don't log.{{end}}</span>
+  <span><button class="sm primary">Save workout</button> {{template "close-button"}}</span>
+</form>
+{{end}}
+
+{{define "lift-routines"}}
+<div class="card" hx-disinherit="*" id="card-routines" hx-get="/lifting/routines" hx-trigger="lifting-changed from:body" hx-swap="outerHTML">
+  <div class="card-head"><h2>Routines</h2><button class="edit-btn" hx-get="/lifting/routines/new/edit" hx-target="closest .card" hx-swap="outerHTML">+ New routine</button></div>
+  {{range .Routines}}{{$routine := .}}
+  <div class="lift-routine">
+    <div class="lift-routine-head"><h3>{{.Name}}</h3><button class="edit-btn" hx-get="/lifting/routines/{{.ID}}/edit" hx-target="closest .card" hx-swap="outerHTML">Edit</button></div>
+    {{range .Days}}
+    <div class="lift-day">
+      <div>
+        <div>{{.Name}}</div>
+        <div class="small muted">{{range $i, $e := .Exercises}}{{if $i}} · {{end}}{{$e.Name}}{{else}}No exercises yet{{end}}</div>
+        {{with .Task}}<div class="small muted">Ticks the task “{{.}}”</div>{{end}}
+      </div>
+      {{if and $.Going (eq $.GoingDay .ID)}}<span class="badge active">in progress</span>
+      {{else}}<button class="sm primary" hx-post="/lifting/start" hx-vals="{{vals "routine" $routine.ID "day" .ID}}" hx-swap="none"{{if $.Going}} disabled title="Finish the workout that's going first"{{end}}>Start</button>{{end}}
+    </div>
+    {{end}}
+  </div>
+  {{else}}<p class="muted">No routines yet. Make one with the days you train (Push, Pull, Legs…) and each day's exercises.</p>{{end}}
+</div>
+{{end}}
+
+{{define "lift-routine-editor"}}
+<div class="card" id="card-routines">
+  <div class="card-head"><h2>{{if .New}}New routine{{else}}Edit routine{{end}}</h2></div>
+  <form class="lift-editor" hx-post="/lifting/routines/{{if .New}}new{{else}}{{.Routine.ID}}{{end}}" hx-target="closest .card" hx-swap="outerHTML">
+    <button class="default-submit" name="op" value="" tabindex="-1" aria-hidden="true"></button>
+    <label class="lift-name"><span>Name</span><input class="txt" name="name" value="{{.Routine.Name}}" placeholder="e.g. Push / Pull / Legs" maxlength="80"></label>
+    {{$days := len .Routine.Days}}
+    {{range $d, $day := .Routine.Days}}
+    <fieldset class="lift-edit-day">
+      <input type="hidden" name="d{{$d}}.id" value="{{.ID}}">
+      <div class="lift-edit-dayhead">
+        <input class="txt" name="d{{$d}}.name" value="{{.Name}}" placeholder="Day {{add $d 1}}, e.g. Push" maxlength="80" aria-label="Day name">
+        <input class="txt" name="d{{$d}}.task" value="{{.Task}}" list="lift-tasks" placeholder="Task it ticks (optional)" maxlength="300" aria-label="Task it ticks">
+        <span class="lift-btns">
+          <button class="icon" name="op" value="up-day:{{$d}}" title="Move day up"{{if eq $d 0}} disabled{{end}}>↑</button>
+          <button class="icon" name="op" value="down-day:{{$d}}" title="Move day down"{{if eq (add $d 1) $days}} disabled{{end}}>↓</button>
+          <button class="icon del" name="op" value="remove-day:{{$d}}" title="Remove day">✕</button>
+        </span>
+      </div>
+      <div class="lift-edit-ex head"><span>Exercise</span><span>Sets</span><span>Reps</span><span>Rest (s)</span><span></span></div>
+      {{$count := len .Exercises}}
+      {{range $e, $ex := .Exercises}}
+      <div class="lift-edit-ex">
+        <input class="txt" name="d{{$d}}.e{{$e}}.name" value="{{.Name}}" list="lift-names-edit" placeholder="Exercise" maxlength="80" aria-label="Exercise">
+        <input class="txt num" name="d{{$d}}.e{{$e}}.sets" value="{{.Sets}}" inputmode="numeric" aria-label="Sets">
+        <input class="txt num" name="d{{$d}}.e{{$e}}.reps" value="{{.Reps}}" placeholder="10" maxlength="20" aria-label="Reps" title="A number, a range (8-12), max, 45 s…">
+        <input class="txt num" name="d{{$d}}.e{{$e}}.rest" value="{{.Rest}}" inputmode="numeric" aria-label="Rest in seconds">
+        <span class="lift-btns">
+          <button class="icon" name="op" value="up-ex:{{$d}}:{{$e}}" title="Move up"{{if eq $e 0}} disabled{{end}}>↑</button>
+          <button class="icon" name="op" value="down-ex:{{$d}}:{{$e}}" title="Move down"{{if eq (add $e 1) $count}} disabled{{end}}>↓</button>
+          <button class="icon del" name="op" value="remove-ex:{{$d}}:{{$e}}" title="Remove">✕</button>
+        </span>
+      </div>
+      {{end}}
+      <button class="sm ghost" name="op" value="add-ex:{{$d}}">+ Exercise</button>
+    </fieldset>
+    {{end}}
+    <button class="sm" name="op" value="add-day">+ Add day</button>
+    <datalist id="lift-tasks">{{range .Tasks}}<option value="{{.}}">{{end}}</datalist>
+    <datalist id="lift-names-edit">{{range .Names}}<option value="{{.}}">{{end}}</datalist>
+    <div class="foot">
+      {{if .New}}<span></span>{{else}}<button type="button" class="sm ghost" hx-post="/lifting/routines/{{.Routine.ID}}/delete" hx-target="closest .card" hx-swap="outerHTML" hx-confirm="Delete the routine “{{.Routine.Name}}”? Past workouts stay in the history.">Delete routine</button>{{end}}
+      <span><button type="button" class="sm" hx-get="/lifting/routines" hx-target="closest .card" hx-swap="outerHTML">Cancel</button> <button class="sm primary" name="op" value="">Save</button></span>
+    </div>
+  </form>
+</div>
+{{end}}
+
+{{define "lift-progress"}}
+<div class="card" hx-disinherit="*" id="card-progress" hx-get="/lifting/progress?exercise={{query .Name}}" hx-trigger="lifting-changed from:body" hx-swap="outerHTML">
+  <div class="card-head"><h2>Progress</h2>
+    {{if .Names}}<select class="txt lift-pick" name="exercise" aria-label="Exercise" hx-get="/lifting/progress" hx-trigger="change" hx-target="closest .card" hx-swap="outerHTML">{{range .Names}}<option{{if eq . $.Name}} selected{{end}}>{{.}}</option>{{end}}</select>{{end}}</div>
+  {{if .Count}}
+  <div class="lift-stats">
+    <div><b>{{or .Best "—"}}</b><span>best est. 1RM{{if .Best}} ({{.Unit}}){{end}}</span></div>
+    <div><b>{{or .Heaviest "BW"}}</b><span>heaviest{{if .Heaviest}} ({{.Unit}}){{end}}</span></div>
+    <div><b>{{.Count}}</b><span>{{plural .Count "session" "sessions"}}</span></div>
+  </div>
+  {{with .Trend}}
+  <div class="spark-wrap">
+    <svg class="spark" viewBox="0 0 300 60" preserveAspectRatio="none"><path d="{{.Path}}" fill="none" stroke="var(--accent)" stroke-width="2" vector-effect="non-scaling-stroke"/></svg>
+    {{range .Points}}<span class="spark-point{{if gt .Left 70.0}} right{{else if lt .Left 30.0}} left{{end}}" style="left:{{.Left}}%;top:{{.Top}}%" tabindex="0"><span class="tip">{{shortDay .Day}} · <b>~{{pounds .LB}} {{$.Unit}}</b></span></span>{{end}}
+  </div>
+  <div class="small muted spread"><span>{{monthDay .From}}</span><span>est. 1RM per session</span><span>{{monthDay .To}}</span></div>
+  {{end}}
+  <table class="lift-table">
+    {{range .Sessions}}<tr><td class="small muted">{{shortDay .Day}}</td><td>{{.Sets}}{{if .Record}} <span class="badge lift-pr">PR</span>{{end}}</td><td class="small muted num">{{with .Best}}~{{.}}{{end}}</td></tr>{{end}}
+  </table>
+  {{else}}<p class="muted">Finish a workout to see each exercise's progress here: the best estimated one-rep max, the heaviest set and every session.</p>{{end}}
+</div>
+{{end}}
+
+{{define "lift-history"}}
+<div class="card" hx-disinherit="*" id="card-lift-history" hx-get="/lifting/history?limit={{.Limit}}" hx-trigger="lifting-changed from:body" hx-swap="outerHTML">
+  <div class="card-head"><h2>Workouts</h2></div>
+  {{range .Workouts}}
+  <details class="lift-past">
+    <summary><span><b>{{.Title}}</b> <span class="small muted">{{shortDay .Day}}</span></span>
+      <span class="small muted">{{.Took}} · {{.Sets}} {{plural .Sets "set" "sets"}} · {{.Volume}} {{$.Unit}}{{if .Records}} <span class="badge lift-pr">{{.Records}} PR</span>{{end}}</span></summary>
+    <div class="lift-past-body">
+      {{range .Exercises}}<div><b>{{.Name}}</b> <span class="muted">{{.Sets}}</span></div>{{end}}
+      {{with .Note}}<p class="small muted">{{.}}</p>{{end}}
+      <span class="lift-btns"><button class="sm" hx-get="/lifting/workouts/{{.ID}}/edit" hx-target="closest .lift-past" hx-swap="outerHTML">Edit</button>
+        <button class="sm ghost" hx-post="/lifting/workouts/{{.ID}}/delete" hx-swap="none" hx-confirm="Delete this workout from the history?">Delete</button></span>
+    </div>
+  </details>
+  {{else}}<p class="muted">No workouts yet.</p>{{end}}
+  {{if .More}}<button class="sm spaced-top" hx-get="/lifting/history?limit={{add .Limit 30}}" hx-target="closest .card" hx-swap="outerHTML">Show {{.More}} more</button>{{end}}
+</div>
+{{end}}
+
+{{/* ---------- how strong you are: the Today card and the 1RM calculator ---------- */}}
+{{define "card-strength"}}
+<div class="card" hx-disinherit="*" id="card-strength" hx-get="/cards/strength" hx-trigger="lifting-changed from:body, nutrition-changed from:body, tick-300 from:body" hx-swap="outerHTML">
+  <div class="card-head"><h2>Strength</h2><a class="edit-btn" href="/lifting">Open tab →</a></div>
+  {{if not .HasLifts}}
+  <p class="small muted">Log a workout with weights on the <a class="link" href="/lifting">Lifting tab</a> to see your lifts climb here.</p>
+  {{else}}
+  <form class="strength-controls" hx-post="/cards/strength" hx-trigger="change" hx-target="closest .card" hx-swap="outerHTML">
+    <div class="seg" role="radiogroup" aria-label="What to chart">
+      <label title="The heaviest weight you logged each session"><input type="radio" name="measure" value="heaviest"{{if eq .Measure "heaviest"}} checked{{end}}>Heaviest</label><label title="Each session's best estimated one-rep max (Epley)"><input type="radio" name="measure" value="e1rm"{{if eq .Measure "e1rm"}} checked{{end}}>Est. 1RM</label>
+    </div>
+    <div class="seg" role="radiogroup" aria-label="How far back">
+      {{range .Ranges}}<label><input type="radio" name="range" value="{{.ID}}"{{if eq .ID $.Range}} checked{{end}}>{{.Label}}</label>{{end}}
+    </div>
+  </form>
+  {{if .Series}}
+  <ul class="strength-legend">
+    {{range .Series}}
+    <li><span class="strength-key" style="--c: var(--lift-{{.Slot}})"></span><span class="strength-name">{{.Name}}</span>
+      <span class="strength-num">{{if .Latest}}<b>{{.Latest}}</b> <span class="small muted">{{$.Unit}}</span>{{with .Ratio}}<span class="small muted" title="Your best in this range, × your bodyweight ({{$.Body}} {{$.Unit}})"> · {{.}}×</span>{{end}}{{with .Change}} <span class="badge active" title="Up over this range">{{.}}</span>{{end}}{{else}}<span class="small muted">nothing in this range</span>{{end}}</span></li>
+    {{end}}
+  </ul>
+  {{with .Chart}}
+  <div class="strength-chart" role="img" aria-label="{{if eq $.Measure "e1rm"}}Estimated one-rep max{{else}}Heaviest weight{{end}} per session, {{monthDay .From}} to {{monthDay .To}}">
+    {{range .Ticks}}<span class="strength-tick" style="top:{{.Top}}%"><span>{{.Label}}</span></span>{{end}}
+    <div class="strength-plot">
+      <svg viewBox="0 0 300 120" preserveAspectRatio="none" aria-hidden="true">{{range $.Series}}{{if .Path}}<path d="{{.Path}}" fill="none" stroke="var(--lift-{{.Slot}})" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>{{end}}{{end}}</svg>
+      {{range $s := $.Series}}{{range .Points}}<span class="spark-point strength-point{{if gt .Left 70.0}} right{{else if lt .Left 30.0}} left{{end}}" style="left:{{.Left}}%;top:{{.Top}}%;--c: var(--lift-{{$s.Slot}})" tabindex="0"><span class="tip"><b>{{$s.Name}}</b> · {{shortDay .Day}}<br>{{if eq $.Measure "e1rm"}}~{{.Value}} {{$.Unit}} est. 1RM{{with .Set}} from {{.}}{{end}}{{else}}{{.Value}} {{$.Unit}} heaviest{{with .Set}}<br>best set {{.}}{{end}} · ~{{.E1RM}} est. 1RM{{end}}</span></span>{{end}}{{end}}
+    </div>
+  </div>
+  <div class="small muted spread strength-dates"><span>{{monthDay .From}}</span><span>{{monthDay .To}}</span></div>
+  {{end}}
+  {{else}}<p class="small muted">Pick a lift to chart.</p>{{end}}
+  {{end}}
+  <div class="strength-more">
+  {{if .HasLifts}}
+  <details class="strength-pick"{{if .PickOpen}} open{{end}}><summary class="sm-button ghost">Choose lifts</summary>
+    <form hx-post="/cards/strength" hx-trigger="change" hx-target="closest .card" hx-swap="outerHTML">
+      <input type="hidden" name="pick" value="1">
+      <p class="small muted">Up to 4 at once. A lift keeps its colour while it's shown.</p>
+      {{range .Choices}}<label class="toggle"><input type="checkbox" name="lift" value="{{.Name}}"{{if .Slot}} checked{{else if $.Full}} disabled{{end}}>{{if .Slot}}<span class="strength-key" style="--c: var(--lift-{{.Slot}})"></span>{{end}}{{.Name}} <span class="small muted">· {{.Sessions}} {{plural .Sessions "session" "sessions"}}</span></label>{{end}}
+    </form>
+  </details>
+  {{with .Series}}<details class="strength-table"><summary class="sm-button ghost">Table</summary>
+    <table class="lift-table">{{range .}}{{$s := .}}{{range .Points}}<tr><td>{{$s.Name}}</td><td class="small muted">{{shortDay .Day}}</td><td class="num">{{.Value}} {{$.Unit}}</td><td class="small muted">{{.Set}}</td></tr>{{end}}{{end}}</table>
+  </details>{{end}}
+  {{end}}
+  <details class="strength-calc"><summary class="sm-button ghost">1RM calculator</summary>{{template "lift-calc-form" .Calc}}</details>
+  </div>
+</div>
+{{end}}
+
+{{define "lift-calc-form"}}
+<form class="lift-calc" hx-get="/lifting/one-rep-max" hx-trigger="input changed delay:250ms, submit" hx-target="find .lift-calc-result" hx-swap="innerHTML">
+  <div class="lift-calc-in">
+    <input class="txt num" name="weight" value="{{.Weight}}" placeholder="225" inputmode="decimal" autocomplete="off" aria-label="Weight lifted"><span class="muted">{{.Unit}} ×</span>
+    <input class="txt num" name="reps" value="{{.Reps}}" placeholder="5" inputmode="numeric" autocomplete="off" aria-label="Reps in one set"><span class="muted">reps</span>
+  </div>
+  <div class="lift-calc-result">{{template "lift-calc-result" .}}</div>
+</form>
+{{end}}
+
+{{define "lift-calc-result"}}
+{{if .Problem}}<p class="small err">{{.Problem}}</p>
+{{else if .Epley}}
+<div class="lift-calc-max"><span class="big">{{.Epley}}</span> <span class="muted">{{.Unit}} estimated 1RM</span></div>
+<div class="small muted">Epley: weight × (1 + reps ÷ 30), as the Lifting tab's PRs use. Brzycki says {{.Brzycki}} {{.Unit}}.</div>
+<table class="lift-table lift-calc-table">
+  <tr class="small muted"><td>Reps</td><td>{{.Unit}}</td><td>of 1RM</td></tr>
+  {{range .Table}}<tr><td>{{.Reps}}</td><td>{{.Weight}}</td><td class="muted">{{.Percent}}%</td></tr>{{end}}
+</table>
+{{else}}<p class="small muted">Type one set (say 225 × 5) to see your estimated one-rep max and what it suggests for other rep counts.</p>{{end}}
+{{end}}
+
+{{/* A past workout opened for editing, in place of its row in the Workouts card. Save answers
+     with the whole card; the buttons inside (add a set...) answer with the editor. */}}
+{{define "lift-workout-editor"}}
+<div class="lift-past lift-past-edit">
+  <form class="lift-editor" hx-post="/lifting/workouts/{{.ID}}" hx-target="closest .lift-past" hx-swap="outerHTML">
+    <button class="default-submit" name="op" value="" tabindex="-1" aria-hidden="true"></button>
+    <div class="lift-edit-meta">
+      <label class="wide"><span>Name</span><input class="txt" name="title" value="{{.Title}}" maxlength="80"></label>
+      <label><span>Day</span><input class="txt" type="date" name="day" value="{{.Day}}" required></label>
+      <label><span>Started</span><input class="txt" type="time" name="time" value="{{.Time}}"></label>
+      <label><span>Took</span><input class="txt" name="took" value="{{.Took}}" placeholder="45m" title="Minutes or hours: 45, 50m, 1h 10m"></label>
+    </div>
+    {{range $ex := .Exercises}}
+    <fieldset class="lift-edit-day">
+      <div class="lift-edit-dayhead lift-edit-exhead">
+        <input class="txt" name="e{{.Index}}.name" value="{{.Name}}" list="lift-names-past" placeholder="Exercise" maxlength="80" aria-label="Exercise">
+        <span class="lift-btns">
+          <button class="icon" name="op" value="up:{{.Index}}" title="Move up"{{if .Top}} disabled{{end}}>↑</button>
+          <button class="icon" name="op" value="down:{{.Index}}" title="Move down"{{if .Bottom}} disabled{{end}}>↓</button>
+          <button class="icon del" name="op" value="remove-ex:{{.Index}}" title="Remove exercise">✕</button>
+        </span>
+      </div>
+      {{if .Skipped}}<input type="hidden" name="e{{.Index}}.skipped" value="1">
+      <label class="lift-edit-why"><span>Skipped because</span><input class="txt" name="e{{.Index}}.why" value="{{.Why}}" maxlength="200" placeholder="(no reason given)"></label>
+      {{if .Sets}}<span class="small muted">Sets with reps count as done, so saving un-skips it.</span>{{end}}{{end}}
+      {{if or .Sets (not .Skipped)}}<div class="lift-set lift-set-edit head"><span>Set</span><span>{{$.Unit}}</span><span>Reps</span><span></span><span></span></div>{{end}}
+      {{range .Sets}}
+      <div class="lift-set-wrap">
+      <div class="lift-set lift-set-edit">
+        <span class="lift-n">{{add .Index 1}}</span>
+        <input class="txt num" name="e{{$ex.Index}}.s{{.Index}}.w" value="{{.Weight}}" placeholder="BW" inputmode="decimal" autocomplete="off" aria-label="Weight, set {{add .Index 1}}">
+        <input class="txt num" name="e{{$ex.Index}}.s{{.Index}}.r" value="{{.Reps}}" placeholder="reps" inputmode="numeric" autocomplete="off" aria-label="Reps, set {{add .Index 1}}">
+        <label class="icon note-btn" title="A note for this set"><input type="checkbox"{{if .Note}} checked{{end}}>✎</label>
+        <button class="icon del" name="op" value="remove-set:{{$ex.Index}}:{{.Index}}" title="Remove set">✕</button>
+      </div>
+      <div class="lift-set-note"><input class="txt" name="e{{$ex.Index}}.s{{.Index}}.n" value="{{.Note}}" maxlength="200" placeholder="Note for set {{add .Index 1}}" autocomplete="off"></div>
+      </div>
+      {{end}}
+      <button class="sm ghost" name="op" value="add-set:{{.Index}}">+ Add set</button>
+    </fieldset>
+    {{end}}
+    <button class="sm" name="op" value="add-ex">+ Add exercise</button>
+    <datalist id="lift-names-past">{{range .Names}}<option value="{{.}}">{{end}}</datalist>
+    <input class="txt" name="note" value="{{.Note}}" maxlength="500" placeholder="Note (optional)">
+    <p class="small muted">Sets without reps are dropped. Changing this doesn't change the task it ticked or the time it logged (edit those on the Tasks and History tabs).</p>
+    <div class="foot">
+      <button type="button" class="sm ghost" hx-post="/lifting/workouts/{{.ID}}/delete" hx-swap="none" hx-confirm="Delete this workout from the history?">Delete</button>
+      <span><button type="button" class="sm" hx-get="/lifting/history" hx-target="closest .card" hx-swap="outerHTML">Cancel</button>
+        <button class="sm primary" name="op" value="" hx-post="/lifting/workouts/{{.ID}}" hx-target="closest .card" hx-swap="outerHTML">Save</button></span>
+    </div>
+  </form>
+</div>
+{{end}}

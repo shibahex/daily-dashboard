@@ -67,6 +67,7 @@ func (ui *UI) Routes(mux *http.ServeMux) {
 	change("/account/myfitnesspal/remove", ui.disconnectMyFitnessPal)
 	change("/account/anki", ui.connectAnki)
 	change("/account/anki/remove", ui.disconnectAnki)
+	page("/account/export", ui.exportData)
 
 	// Admin: accounts and what each person's AI may use. Admins only.
 	admin := func(pattern string, handler http.HandlerFunc) { change(pattern, auth.RequireAdmin(handler)) }
@@ -148,6 +149,29 @@ func (ui *UI) Routes(mux *http.ServeMux) {
 	page("/reasons/edit", ui.reasonForm)
 	page("/reasons", ui.reasonButton)
 	change("/reasons", ui.saveReason)
+
+	// Lifting
+	page("/lifting", ui.liftingPage)
+	page("/lifting/workout", ui.workoutCard)
+	change("/lifting/workout", ui.changeWorkout)
+	change("/lifting/start", ui.startWorkout)
+	page("/lifting/finish", ui.finishPanel)
+	change("/lifting/finish", ui.finishWorkout)
+	change("/lifting/discard", ui.discardWorkout)
+	page("/lifting/routines", ui.routinesCard)
+	page("/lifting/routines/{id}/edit", ui.routineEditor)
+	change("/lifting/routines/{id}", ui.saveRoutine)
+	change("/lifting/routines/{id}/delete", ui.deleteRoutine)
+	page("/lifting/progress", ui.progressCard)
+	page("/lifting/history", ui.liftingHistoryCard)
+	page("/lifting/workouts/{id}/edit", ui.workoutEditor)
+	change("/lifting/workouts/{id}", ui.saveWorkout)
+	change("/lifting/workouts/{id}/delete", ui.deleteWorkout)
+	change("/lifting/unit", ui.setLiftingUnit)
+	page("/lifting/export.csv", ui.exportLifting)
+	page("/lifting/one-rep-max", ui.oneRepMax)
+	page("/cards/strength", ui.strengthCard)
+	change("/cards/strength", ui.saveStrength)
 
 	// History
 	page("/history", ui.historyPage)

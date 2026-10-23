@@ -26,10 +26,11 @@ var todayCards = []todayCard{
 	{"card-notes", 0, 7, (*UI).renderNotesCard},
 	{"card-checklist", 1, 2, (*UI).renderChecklistCard},
 	{"card-tasks", 1, 4, (*UI).renderDueTasksCard},
-	{"card-anki", 1, 5, (*UI).renderAnkiTodayCard},
+	{"card-strength", 1, 7, (*UI).renderStrengthCard},
 	{"card-weight", 2, 3, (*UI).renderWeightCard},
 	{"card-time", 2, 4, (*UI).renderTimeCard},
 	{"card-week", 2, 6, (*UI).renderWeekCard},
+	{"card-anki", 2, 5, (*UI).renderAnkiTodayCard},
 }
 
 const columnCount = 3

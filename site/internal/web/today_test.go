@@ -85,3 +85,11 @@ func TestEarlierDayTemplatesRender(t *testing.T) {
 		}
 	}
 }
+
+// The default layout: Strength ends the middle column, Anki the right one.
+func TestDefaultLayout(t *testing.T) {
+	columns := cardColumns(nil)
+	if columns[1][len(columns[1])-1] != "card-strength" || columns[2][len(columns[2])-1] != "card-anki" {
+		t.Errorf("default layout %v", columns)
+	}
+}

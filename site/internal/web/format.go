@@ -64,7 +64,7 @@ var templateFuncs = template.FuncMap{
 type navTab struct{ ID, Label, URL string }
 
 var navTabs = []navTab{
-	{"today", "Today", "/"}, {"tasks", "Tasks", "/tasks"}, {"anki", "Anki", "/anki"},
+	{"today", "Today", "/"}, {"tasks", "Tasks", "/tasks"}, {"lifting", "Lifting", "/lifting"}, {"anki", "Anki", "/anki"},
 	{"history", "History", "/history"}, {"mcps", "MCPs", "/mcps"}, {"docs", "Docs", "/docs"},
 }
 

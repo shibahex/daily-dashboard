@@ -66,6 +66,7 @@ type taskRow struct {
 	Bucket       string // "overdue", "today", "week", "later", "none"
 	Copies       int
 	OverdueUUIDs []string
+	Workout      *workoutLink // linked to a routine day: the row can start that workout
 }
 
 // DueLabel is "was due Mon, Oct 20", "due Fri, Oct 24" or "no due date".

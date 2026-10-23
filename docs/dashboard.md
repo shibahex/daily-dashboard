@@ -2,8 +2,9 @@
 
 The web dashboard in `site/`: a self-hosted page for daily habits: today's workout, a daily checklist (with skips and reasons), goals, weight, and full Taskwarrior + Timewarrior management. Several people can use one server, each with their own account and their own data: nobody sees anyone else's.
 
-- **Today:** training for the day, checklist with streaks, weight log, nutrition from MyFitnessPal, due tasks, time tracked. The ‹ › arrows around the date at the top go to earlier days (say, after midnight) to see or fix them: that day's training, checklist, weigh-in, food and time. Due tasks and Anki always show now.
+- **Today:** training for the day, checklist with streaks, weight log, strength (estimated one-rep max per lift), nutrition from MyFitnessPal, due tasks, time tracked. The ‹ › arrows around the date at the top go to earlier days (say, after midnight) to see or fix them: that day's training, checklist, weigh-in, food and time. Due tasks and Anki always show now.
 - **Tasks:** add, edit, complete (asks how long it took, default 30 min, and logs it in Timewarrior; also on past days), skip with reasons, repeating schedules (every N days, specific weekdays every N weeks, monthly), undo
+- **Lifting:** routines, a workout logger with a rest timer, progress per exercise and past workouts (below)
 - **History:** GitHub-style activity heatmap (tasks done, hours tracked, checklist), activity feed, time log editor, skip reasons
 - **Docs:** your own Markdown notes, encrypted in your browser (see **Encrypted data**), plus these guides. **Edit** a note, add one with the box under the list, move the open one with ↑ ↓, or delete it. Each note keeps its last 10 versions (**Earlier versions**, under it) and deleted notes stay in **Recently deleted** until 20 newer ones push them out.
 - **Anki:** your decks and due cards, add cards, search and edit notes (below)
@@ -67,6 +68,20 @@ The **Nutrition today** card shows what you've eaten against your MyFitnessPal g
 - Weigh-ins in MyFitnessPal are copied into the weight log (and tick "Weigh in"). A weight logged on the dashboard is sent to MyFitnessPal.
 - Goals are read from MyFitnessPal; change them there. If MyFitnessPal can't be reached, the card falls back to the goals in `plan.json`.
 - If the login expires and the automatic refresh can't renew it, paste a fresh Cookie header on the Account page.
+
+## Lifting tab
+
+- **Routines** are made of days (Push, Pull, Legs…), each a list of exercises with sets, target reps (`10`, `8-12`, `max`, `45 s`) and rest in seconds. **+ New routine** or **Edit** opens the editor; ↑ ↓ reorder days and exercises. The first time you open the tab, the training sessions in your plan (Today's training) are copied in as a routine called "My plan".
+- **A day can tick a task:** type the task's name in **Task it ticks** (it suggests your pending tasks). That task then gets a **Start workout** button on Today's due tasks, and finishing the workout marks it done.
+- **During a workout** each exercise shows its sets, filled in from the last time you did it (set by set), or the target reps the first time. Change the weight or reps and tick ✓ to log a set: that starts the rest timer at the top (−15s, +30s, Skip), which beeps or buzzes when it's over. For an exercise you haven't done before, logging a set fills its weight and reps into the sets after it (not ones you've typed in); with a last session, the sets keep last time's numbers. Each exercise's heading shows its estimated one-rep max (**1RM**, from its best set) as you type, next to your best so far; it turns into **PR** when a set you ticked beats it, and that set's number becomes **PR**. **✎** on a set opens its note, **Skip set** (the note says why) and ✕ to remove it. **⤼** skips a whole exercise, with an optional reason; **Undo** brings either back. Skipped sets and exercises are kept with the workout and show in its history with the reason. The box under the exercises is a note for the whole workout. Add sets, add exercises (it suggests ones you've done), reorder or remove them. What you type is kept, so you can close the page mid-workout.
+- **Finish workout** asks how long it took (the clock so far) and for the workout's note, then saves the sets you ticked. If the day's task is due it's ticked, and the time is logged to it in Timewarrior; otherwise the time is logged as `Lifting` plus the workout's name. **Discard** throws the workout away.
+- **PR** marks a set that beats your best estimated one-rep max for that exercise (Epley: weight × (1 + reps / 30)). **Progress** shows one exercise: best estimated 1RM, heaviest weight, a chart per session and the last sessions. **Workouts** lists past workouts with their time, sets and volume; open one to see its sets, **Edit** it or **Delete** it.
+- **Editing a past workout:** change its name, day, start time, how long it took, note, exercises (add, remove, reorder) and each set's weight, reps and note (✎). Sets without reps are dropped. PRs, progress and "last time" follow the change. It doesn't change the task it ticked or the time it logged: edit those on the Tasks and History tabs.
+- **1RM calculator** (folded into the Strength card on Today): type one set, say 225 × 5, for its estimated one-rep max (Epley: 262.5; Brzycki, a little lower: 252.5) and a table of what that suggests for 1 to 15 reps. It takes one set's reps: how many sets you did doesn't change the estimate.
+- **Strength card on Today:** a chart of your logged lifts, one line per lift: each session's best estimated one-rep max, or switch to **Heaviest** for the heaviest weight you logged, over 3 months, 6 months, a year or everything. Hover or tap a point for the day, best set and estimate. **Choose lifts** picks up to 4 (by default your 3 most-done); a lift keeps its colour while it's shown. Under the chart: each lift's latest number, its gain over the range, and your best in the range × your bodyweight (from your latest weigh-in). **Table** lists the same numbers. Your choices are saved.
+- **Estimates are rounded to a weight you can load:** the nearest 2.5 lb (or 1.25 kg), everywhere a one-rep max or a weight for some reps is estimated. Logged weights are shown as you typed them.
+- **Export (CSV)** at the top downloads every finished set, one row each, for a spreadsheet or another lifting app.
+- **lb or kg:** the switch at the top changes how weights are shown and typed. They're kept in pounds, so switching back and forth loses nothing. A blank weight is a bodyweight set (BW).
 
 ## Anki tab
 
@@ -145,7 +160,7 @@ Your notes are only as private as the scripts that handle them, and those come f
 
 | Script | Hash |
 |---|---|
-| `app.js` | `sha384-qinJNCVNarn0NpHIXcpQgWaR9UF5XyC7gDNjX0g9l48qGUR+FzgzXmJqLcH5A3Pn` |
+| `app.js` | `sha384-JnctrkvlZGdxCnBCEGJ0/B983nJBDl/YhS/5Pw5MaBcNP2ds3+FkYlaqvzAPCQoo` |
 | `keys.js` | `sha384-nwe1d2+ABaJt3Q/12zr1QRW8BolKLItadMXGeqOorCsyP4qfCfXFCb1JdeSaVU2g` |
 | `notes.js` | `sha384-iW4AiXCfNgQnKveb3A39gXIDQGefd5rlBvVGT5CeA8cMmPOz2/eGusX9YGt9ctl+` |
 | `assistant.js` | `sha384-+r7/On77t7mkhnGpoWTsHr6SGo0E5H94Y7IkbCP++hpS5S2NVh8MuMUoKYHSKZYJ` |
@@ -156,9 +171,11 @@ Your notes are only as private as the scripts that handle them, and those come f
 
 ## Your data
 
+**Download it:** Account → **Privacy** → **Download everything (.zip)**. You get your plan, checklist history, weigh-ins (JSON and CSV), `lifting.json` and `lifting-sets.csv` (every set, one row each: date, workout, exercise, weight in lb and kg, reps, estimated 1RM, notes, skips and why), your Anki review history, and every Taskwarrior task (`task import tasks.json` loads them back) and Timewarrior entry, with a README saying what each file is. Notes, AI chat and keys are encrypted in your browser, so they aren't in it; nor are logins, or your food diary (MyFitnessPal has its own export). The Lifting tab's **Export (CSV)** downloads just the sets.
+
 None of this is tracked by git:
 
-- `site/data/users/<id>/`: one folder per person: `plan.json`, `docs/` (their notes, from `docs/templates/` on first use), checklist history, weigh-ins, the MyFitnessPal cache and login, Anki connection, chat, sealed keys, and their Taskwarrior and Timewarrior (except the host's, which use the computer's own)
+- `site/data/users/<id>/`: one folder per person: `plan.json`, `docs/` (their notes, from `docs/templates/` on first use), checklist history, weigh-ins, routines and workouts (`lifting.json`), the MyFitnessPal cache and login, Anki connection, chat, sealed keys, and their Taskwarrior and Timewarrior (except the host's, which use the computer's own)
 - `site/data/vaults/<id>/`: everyone else's folder, encrypted (see above); `site/data/users/<id>/` holds only the host's, and older accounts' until they're encrypted
 - `site/data/`: accounts and sessions (hashes only), invites, the server's key, the installed MCP programs
 - `site/.env`: local settings (see `site/.env.example`)
@@ -166,5 +183,5 @@ None of this is tracked by git:
 
 ## Code
 
-- `site/cmd/dashboard`: the Go server's entry point; `site/internal/` holds one package per area: `auth` (accounts, sessions, invites, policy), `workspace` (each user's folder and services), `taskwarrior`, `timewarrior`, `myfitnesspal`, `anki` (and its gateway), `assistant` (what the server gives the AI in the browser, and the AI CLIs it runs for people who turn that on), `mcp` (starting MCP tools and talking to them), `sandbox` and `egress` (the tools' sandbox and its proxy), `vault` (encrypting each person's data), `web` and `api` (the HTTP handlers). Two dependencies: goldmark (Markdown) and golang.org/x/net/html (reading MyFitnessPal's pages). `nix run` builds it.
-- `site/web/`: the pages. `templates/` has the HTML (one file per tab), rendered on the server and updated in place with [HTMX](https://htmx.org); styles are in `css/` (one file per area) and `js/app.js` does the few things HTMX can't (toasts, shortcuts, dragging cards, timed refreshes); `js/keys.js`, `notes.js` and `assistant.js` handle what the server must never see (passwords, notes, the AI chat). No build step: edit a file and reload the page.
+- `site/cmd/dashboard`: the Go server's entry point; `site/internal/` holds one package per area: `auth` (accounts, sessions, invites, policy), `workspace` (each user's folder and services), `taskwarrior`, `timewarrior`, `myfitnesspal`, `anki` (and its gateway), `lifting` (routines and workouts), `assistant` (what the server gives the AI in the browser, and the AI CLIs it runs for people who turn that on), `mcp` (starting MCP tools and talking to them), `sandbox` and `egress` (the tools' sandbox and its proxy), `vault` (encrypting each person's data), `web` and `api` (the HTTP handlers). Two dependencies: goldmark (Markdown) and golang.org/x/net/html (reading MyFitnessPal's pages). `nix run` builds it.
+- `site/web/`: the pages. `templates/` has the HTML (one file per tab), rendered on the server and updated in place with [HTMX](https://htmx.org); styles are in `css/` (one file per area) and `js/app.js` does the few things HTMX can't (toasts, shortcuts, dragging cards, timed refreshes, the workout clocks); `js/keys.js`, `notes.js` and `assistant.js` handle what the server must never see (passwords, notes, the AI chat). No build step: edit a file and reload the page.

@@ -36,6 +36,15 @@ func (s *Service) All() ([]taskwarrior.Task, error) { return s.list() }
 // Deleted is every deleted task (skipped and dismissed ones keep their reason as a note).
 func (s *Service) Deleted() ([]taskwarrior.Task, error) { return s.list("status:deleted") }
 
+// Export is `task export` of every task, as Taskwarrior writes it (`task import` reads it back).
+func (s *Service) Export() ([]byte, error) {
+	result := s.tasks.Export()
+	if !result.OK() {
+		return nil, commandError(result, "task export failed")
+	}
+	return []byte(result.Stdout), nil
+}
+
 func (s *Service) Find(uuid string) (taskwarrior.Task, error) {
 	if !taskwarrior.IsUUID(uuid) {
 		return nil, problem.Invalidf("bad uuid")
