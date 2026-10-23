@@ -1,8 +1,8 @@
 package assistant
 
 import (
+	"dashboard/internal/problem"
 	"encoding/json"
-	"errors"
 	"strings"
 )
 
@@ -24,7 +24,7 @@ func newCodex() *codex {
 func (c *codex) Invocation(req Request) (Invocation, error) {
 	program := c.command()
 	if program == nil {
-		return Invocation{}, errors.New("Codex isn't installed")
+		return Invocation{}, problem.Unavailablef("Codex isn't installed")
 	}
 	// -c values are TOML; JSON strings and string arrays are valid TOML too.
 	toml := func(v any) string { b, _ := json.Marshal(v); return string(b) }

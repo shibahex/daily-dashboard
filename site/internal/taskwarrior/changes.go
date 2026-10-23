@@ -1,7 +1,7 @@
 package taskwarrior
 
 import (
-	"fmt"
+	"dashboard/internal/problem"
 	"regexp"
 	"strings"
 )
@@ -36,14 +36,14 @@ func (c Changes) Args() (seriesArgs, dateArgs []string, err error) {
 	if c.Project != nil {
 		project := strings.TrimSpace(*c.Project)
 		if project != "" && !projectPattern.MatchString(project) {
-			return nil, nil, fmt.Errorf("bad project")
+			return nil, nil, problem.Invalidf("bad project")
 		}
 		seriesArgs = append(seriesArgs, "project:"+project)
 	}
 	if c.Priority != nil {
 		priority := strings.ToUpper(strings.TrimSpace(*c.Priority))
 		if priority != "" && priority != "H" && priority != "M" && priority != "L" {
-			return nil, nil, fmt.Errorf("bad priority")
+			return nil, nil, problem.Invalidf("bad priority")
 		}
 		seriesArgs = append(seriesArgs, "priority:"+priority)
 	}
@@ -56,26 +56,26 @@ func (c Changes) Args() (seriesArgs, dateArgs []string, err error) {
 		}
 		value := strings.TrimSpace(*date.value)
 		if value != "" && !datePattern.MatchString(value) {
-			return nil, nil, fmt.Errorf("bad %s", date.name)
+			return nil, nil, problem.Invalidf("bad " + date.name)
 		}
 		dateArgs = append(dateArgs, date.name+":"+value)
 	}
 	if c.Recur != "" {
 		recur := strings.TrimSpace(c.Recur)
 		if !recurPattern.MatchString(recur) {
-			return nil, nil, fmt.Errorf("bad recur")
+			return nil, nil, problem.Invalidf("bad recur")
 		}
 		seriesArgs = append(seriesArgs, "recur:"+recur)
 	}
 	for _, tag := range c.AddTags {
 		if !tagPattern.MatchString(tag) {
-			return nil, nil, fmt.Errorf("bad tag")
+			return nil, nil, problem.Invalidf("bad tag")
 		}
 		seriesArgs = append(seriesArgs, "+"+tag)
 	}
 	for _, tag := range c.RemoveTags {
 		if !tagPattern.MatchString(tag) {
-			return nil, nil, fmt.Errorf("bad tag")
+			return nil, nil, problem.Invalidf("bad tag")
 		}
 		seriesArgs = append(seriesArgs, "-"+tag)
 	}

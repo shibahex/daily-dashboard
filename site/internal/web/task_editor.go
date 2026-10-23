@@ -264,7 +264,7 @@ func (ui *UI) repeatForm(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	if rule, err := form.Rule(data.Now); err != nil {
-		view.Problem = err.Error()
+		view.Problem = problem.Public(err)
 	} else if view.Preview = rule.Upcoming(data.Now, 5); view.Preview == nil {
 		view.Problem = "Pick at least one day"
 	}
@@ -322,7 +322,7 @@ func (ui *UI) saveSchedule(w http.ResponseWriter, r *http.Request) {
 	}
 	rule, err := repeatFormFrom(r).Rule(data.Now)
 	if err != nil {
-		fail(w, problem.Invalidf(err.Error()))
+		fail(w, err)
 		return
 	}
 	made, err := ui.ws(r).Tasks.ReplaceSchedule(task.UUID(), data.seriesOf(task).UUIDs(), rule)

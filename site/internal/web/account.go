@@ -2,6 +2,7 @@ package web
 
 import (
 	"errors"
+	"log"
 	"net/http"
 	"net/url"
 	"strings"
@@ -72,7 +73,7 @@ func (ui *UI) createAccount(w http.ResponseWriter, r *http.Request) {
 		session, err = ui.Auth.Setup(formText(r, "code"), username, keys.proof, keys.proof)
 	}
 	if err != nil {
-		ui.renderSignIn(w, problem.Status(err), signInView{Setup: true, Code: formText(r, "code"), Username: username, Error: err.Error()})
+		ui.renderSignIn(w, problem.Status(err), signInView{Setup: true, Code: formText(r, "code"), Username: username, Error: problem.Public(err)})
 		return
 	}
 	ui.signedInWith(w, r, session, func(user auth.User) (bool, error) { return ui.useKeys(user, keys, session) })
@@ -104,11 +105,11 @@ func (ui *UI) login(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case errors.As(err, &tooMany):
 		w.Header().Set("Retry-After", "60")
-		ui.renderSignIn(w, http.StatusTooManyRequests, signInView{Username: username, Error: err.Error()})
+		ui.renderSignIn(w, http.StatusTooManyRequests, signInView{Username: username, Error: problem.Public(err)})
 	case err == auth.ErrUpgrade:
-		ui.renderSignIn(w, http.StatusOK, signInView{Username: username, Upgrade: true, Error: err.Error()})
+		ui.renderSignIn(w, http.StatusOK, signInView{Username: username, Upgrade: true, Error: problem.Public(err)})
 	case err != nil:
-		ui.renderSignIn(w, http.StatusUnauthorized, signInView{Username: username, Error: err.Error()})
+		ui.renderSignIn(w, http.StatusUnauthorized, signInView{Username: username, Error: problem.Public(err)})
 	default:
 		ui.signedInWith(w, r, session, func(user auth.User) (bool, error) { return ui.useKeys(user, keys, session) })
 	}
@@ -139,7 +140,7 @@ func (ui *UI) signedInWith(w http.ResponseWriter, r *http.Request, session strin
 	newCode, err := open(user)
 	if err != nil {
 		ui.Auth.Logout(session)
-		ui.renderSignIn(w, problem.Status(err), signInView{Username: user.Username, Error: err.Error()})
+		ui.renderSignIn(w, problem.Status(err), signInView{Username: user.Username, Error: problem.Public(err)})
 		return
 	}
 	auth.SetSessionCookie(w, session)
@@ -198,7 +199,7 @@ func (ui *UI) acceptInvite(w http.ResponseWriter, r *http.Request) {
 	code := formText(r, "code")
 	keys, err := offeredKeys(r)
 	if err != nil {
-		ui.renderSignIn(w, problem.Status(err), ui.inviteView(code, err.Error()))
+		ui.renderSignIn(w, problem.Status(err), ui.inviteView(code, problem.Public(err)))
 		return
 	}
 	oldRecovery := r.FormValue("old_recovery") // the proof of the recovery code they typed
@@ -210,7 +211,7 @@ func (ui *UI) acceptInvite(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case oldRecovery != "":
 			if err := ui.Workspaces.CheckRecovery(resetting, oldRecovery); err != nil {
-				ui.renderSignIn(w, problem.Status(err), ui.inviteView(code, err.Error()))
+				ui.renderSignIn(w, problem.Status(err), ui.inviteView(code, problem.Public(err)))
 				return
 			}
 			keeping = true
@@ -222,7 +223,7 @@ func (ui *UI) acceptInvite(w http.ResponseWriter, r *http.Request) {
 	}
 	session, err := ui.Auth.AcceptInvite(code, keys.proof, keys.proof)
 	if err != nil {
-		ui.renderSignIn(w, problem.Status(err), ui.inviteView(code, err.Error()))
+		ui.renderSignIn(w, problem.Status(err), ui.inviteView(code, problem.Public(err)))
 		return
 	}
 	ui.signedInWith(w, r, session, func(user auth.User) (bool, error) {
@@ -246,7 +247,8 @@ func (ui *UI) acceptInvite(w http.ResponseWriter, r *http.Request) {
 func (ui *UI) renderSignIn(w http.ResponseWriter, status int, view signInView) {
 	html, err := ui.renderToHTML("sign-in", view)
 	if err != nil {
-		http.Error(w, "couldn't show this page: "+err.Error(), http.StatusInternalServerError)
+		log.Printf("rendering sign-in: %v", err)
+		http.Error(w, "couldn't show this page", http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -337,7 +339,7 @@ func accountTab(r *http.Request) string {
 func (ui *UI) renderConnections(w http.ResponseWriter, r *http.Request, saved string, err error) {
 	view := ui.connectionsView(r)
 	if err != nil {
-		view.Error = err.Error()
+		view.Error = problem.Public(err)
 	} else {
 		view.Saved = saved
 		announce(w, say(saved))
@@ -444,12 +446,12 @@ func (ui *UI) changePassword(w http.ResponseWriter, r *http.Request) {
 			err = ui.Auth.SetNotesKeyWrap(user.ID, "password", notesWrap)
 		}
 		if err != nil {
-			err = problem.Unavailablef("Your password changed, but your data still opens with the old one: " + err.Error() +
+			err = problem.Unavailablef("Your password changed, but your data still opens with the old one: " + problem.Public(err) +
 				". Change it again, or use your recovery code if a sign-in fails.")
 		}
 	}
 	if err != nil {
-		view.Error = err.Error()
+		view.Error = problem.Public(err)
 		ui.render(w, "account-card", view)
 		return
 	}

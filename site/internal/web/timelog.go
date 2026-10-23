@@ -183,7 +183,7 @@ func (ui *UI) timeLogView(r *http.Request, week int) timeLogView {
 	case problem.KindOf(err) == problem.Unavailable:
 		return view
 	case err != nil:
-		view.Available, view.Problem = true, err.Error()
+		view.Available, view.Problem = true, problem.Public(err)
 		return view
 	}
 	view.Available = true

@@ -2,6 +2,7 @@ package web
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -78,7 +79,7 @@ func (ui *UI) assistantRun(w http.ResponseWriter, r *http.Request) {
 		fail(w, problem.Forbiddenf("Your admin hasn't turned on that AI for you, or it can't run here"))
 		return
 	case ui.SandboxErr != nil:
-		fail(w, problem.Unavailablef("The AI's sandbox isn't available: "+ui.SandboxErr.Error()))
+		fail(w, fmt.Errorf("%w: %v", problem.Unavailablef("The AI's sandbox isn't available here (the server's log says why)"), ui.SandboxErr))
 		return
 	}
 	message := strings.TrimSpace(r.FormValue("message"))
@@ -119,7 +120,7 @@ func (ui *UI) assistantRun(w http.ResponseWriter, r *http.Request) {
 	defer run.box.cleanUp()
 	req, err := run.prepare(provider, message, session, model, r.FormValue("history"), r.FormValue("key"), notes)
 	if err != nil {
-		send(map[string]any{"type": "error", "text": err.Error()})
+		send(map[string]any{"type": "error", "text": problem.Public(err)})
 		send(map[string]any{"type": "done"})
 		return
 	}
@@ -140,7 +141,7 @@ func (ui *UI) assistantRun(w http.ResponseWriter, r *http.Request) {
 		}
 	})
 	if err != nil {
-		send(map[string]any{"type": "error", "text": err.Error()})
+		send(map[string]any{"type": "error", "text": problem.Public(err)})
 	}
 	if changed := run.changedNotes(); len(changed) > 0 {
 		send(map[string]any{"type": "notes", "notes": changed})
@@ -390,7 +391,7 @@ func (ui *UI) assistantModels(w http.ResponseWriter, r *http.Request) {
 	if key != "" && len(key) < 500 {
 		found, err := assistant.ListModels(r.Context(), provider.ID(), key)
 		if err != nil {
-			answer["error"] = err.Error()
+			answer["error"] = problem.Public(err)
 		}
 		for _, m := range found {
 			if !slices.ContainsFunc(models, func(have assistant.Model) bool { return have.ID == m.ID }) {

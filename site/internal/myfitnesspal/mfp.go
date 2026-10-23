@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"dashboard/internal/problem"
 	"dashboard/internal/store"
 )
 
@@ -246,7 +247,7 @@ func (s *session) goals(ctx context.Context, date string) (Nutrients, error) {
 		return Nutrients{}, err
 	}
 	if len(answer.Items) == 0 {
-		return Nutrients{}, errors.New("MyFitnessPal returned no nutrient goals")
+		return Nutrients{}, problem.Failedf("MyFitnessPal returned no nutrient goals")
 	}
 	return answer.Items[0].DefaultGoal.nutrients(), nil
 }
@@ -466,7 +467,7 @@ func accepted(status int, what string, ok ...int) error {
 	if slices.Contains(ok, status) {
 		return nil
 	}
-	return fmt.Errorf("MyFitnessPal %s returned HTTP %d", what, status)
+	return problem.Failedf(fmt.Sprintf("MyFitnessPal %s returned HTTP %d", what, status))
 }
 
 func legacyFormHeaders(referer string) map[string]string {

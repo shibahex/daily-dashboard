@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -13,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"dashboard/internal/problem"
 	"dashboard/internal/text"
 )
 
@@ -27,7 +27,7 @@ type Outcome struct {
 // should see (not signed in, a crash) comes as an EventError.
 func Run(ctx context.Context, provider Provider, req Request, emit func(Event)) (Outcome, error) {
 	if req.Wrap == nil {
-		return Outcome{}, errors.New("the AI sandbox isn't set up, so the AI can't run")
+		return Outcome{}, problem.Unavailablef("The AI sandbox isn't set up, so the AI can't run")
 	}
 	invocation, err := provider.Invocation(req)
 	if err == nil {
@@ -48,7 +48,7 @@ func Run(ctx context.Context, provider Provider, req Request, emit func(Event)) 
 		return Outcome{}, err
 	}
 	if err := cmd.Start(); err != nil {
-		return Outcome{}, fmt.Errorf("couldn't start %s: %w", provider.Label(), err)
+		return Outcome{}, fmt.Errorf("%w: %w", problem.Failedf("Couldn't start "+provider.Label()), err)
 	}
 	// Stopping: SIGTERM, then SIGKILL if it lingers.
 	stopped := make(chan struct{})

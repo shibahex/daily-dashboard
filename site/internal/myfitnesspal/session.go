@@ -3,7 +3,6 @@ package myfitnesspal
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -15,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"dashboard/internal/problem"
 	"dashboard/internal/text"
 )
 
@@ -29,7 +29,7 @@ const (
 var loginCookies = []string{"__Secure-next-auth.session-token", "remember_me", "_mfp_session"}
 
 // errSignedOut means MyFitnessPal no longer accepts the saved login.
-var errSignedOut = errors.New("MyFitnessPal login expired: reconnect it on the Account page")
+var errSignedOut error = problem.Error{Kind: problem.Unavailable, Message: "MyFitnessPal login expired: reconnect it on the Account page"}
 
 // session is one signed-in MyFitnessPal login, kept between requests so a sync is only the
 // requests it needs: the login cookies, the API token and the last diary page's form token.
@@ -92,7 +92,7 @@ func (s *session) load() error {
 		}
 		if s.envCookie == "" {
 			s.forget()
-			return errors.New("MyFitnessPal isn't connected yet. Connect it on the Account page.")
+			return problem.Unavailablef("MyFitnessPal isn't connected yet. Connect it on the Account page.")
 		}
 		return nil
 	}
@@ -106,7 +106,7 @@ func (s *session) load() error {
 	}
 	if err != nil || len(saved.Cookies) == 0 {
 		s.forget()
-		return errors.New("MyFitnessPal's saved login is unreadable. Connect it again on the Account page.")
+		return problem.Unavailablef("MyFitnessPal's saved login is unreadable. Connect it again on the Account page.")
 	}
 	s.forget()
 	s.cookies, s.username, s.loadedAt = saved.Cookies, saved.Username, info.ModTime()
@@ -264,9 +264,9 @@ func (s *session) send(ctx context.Context, r request) (response, error) {
 	resp, err := s.http.Do(req)
 	if err != nil {
 		if ctx.Err() != nil {
-			return response{}, errors.New("MyFitnessPal took too long to answer")
+			return response{}, problem.Unavailablef("MyFitnessPal took too long to answer")
 		}
-		return response{}, fmt.Errorf("couldn't reach MyFitnessPal: %w", err)
+		return response{}, fmt.Errorf("%w: %v", problem.Unavailablef("Couldn't reach MyFitnessPal"), err)
 	}
 	defer resp.Body.Close()
 	data, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
@@ -331,7 +331,7 @@ func (s *session) getJSON(ctx context.Context, path string, out any) error {
 		return err
 	}
 	if resp.status != http.StatusOK {
-		return fmt.Errorf("MyFitnessPal %s returned HTTP %d", endpoint(path), resp.status)
+		return problem.Failedf(fmt.Sprintf("MyFitnessPal %s returned HTTP %d", endpoint(path), resp.status))
 	}
 	return json.Unmarshal(resp.body, out)
 }
@@ -356,7 +356,7 @@ func (s *session) getPage(ctx context.Context, path string) ([]byte, error) {
 		return nil, err
 	}
 	if resp.status != http.StatusOK {
-		return nil, fmt.Errorf("MyFitnessPal /%s returned HTTP %d", endpoint(path), resp.status)
+		return nil, problem.Failedf(fmt.Sprintf("MyFitnessPal /%s returned HTTP %d", endpoint(path), resp.status))
 	}
 	return resp.body, nil
 }

@@ -72,7 +72,7 @@ func (ui *UI) saveSealedData(kind string) http.HandlerFunc {
 		if err != nil {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(problem.Status(err))
-			json.NewEncoder(w).Encode(map[string]any{"error": err.Error(), "version": saved})
+			json.NewEncoder(w).Encode(map[string]any{"error": problem.Public(err), "version": saved})
 			return
 		}
 		switch sealed := r.FormValue("sealed"); {

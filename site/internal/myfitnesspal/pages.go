@@ -9,6 +9,7 @@ import (
 
 	"golang.org/x/net/html"
 
+	"dashboard/internal/problem"
 	"dashboard/internal/text"
 )
 
@@ -149,7 +150,7 @@ func parseDiary(page []byte) (diaryPage, error) {
 		return diary, errSignedOut
 	}
 	if diary.csrf == "" {
-		return diary, fmt.Errorf("couldn't read the MyFitnessPal diary's form token")
+		return diary, problem.Failedf("Couldn't read the MyFitnessPal diary's form token")
 	}
 	return diary, nil
 }
@@ -195,7 +196,7 @@ func (d diaryPage) mealID(meal string) (string, error) {
 			return strconv.Itoa(position), nil
 		}
 	}
-	return "", fmt.Errorf("no MyFitnessPal meal named %q. Your meals: %s", meal, strings.Join(d.meals, ", "))
+	return "", problem.Invalidf(fmt.Sprintf("No MyFitnessPal meal named %q. Your meals: %s", meal, strings.Join(d.meals, ", ")))
 }
 
 // ---------- food search ----------
@@ -261,7 +262,7 @@ func parseEntryForm(page []byte, entryID string) (EntryForm, string, error) {
 	}
 	quantity := find(doc, named("input", "food_entry[quantity]"))
 	if len(quantity) == 0 {
-		return EntryForm{}, "", fmt.Errorf("couldn't open that entry in MyFitnessPal")
+		return EntryForm{}, "", problem.Failedf("Couldn't open that entry in MyFitnessPal")
 	}
 	form := EntryForm{EntryID: entryID}
 	value, _ := attr(quantity[0], "value")

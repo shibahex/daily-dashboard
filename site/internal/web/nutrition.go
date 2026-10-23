@@ -218,7 +218,7 @@ func (ui *UI) searchFood(w http.ResponseWriter, r *http.Request) {
 	view := foodSearchView{Meal: r.FormValue("meal"), Query: formText(r, "query")}
 	foods, err := ui.ws(r).MyFitnessPal.Client().Search(view.Query)
 	if err != nil {
-		view.Error = err.Error()
+		view.Error = problem.Public(err)
 	}
 	view.Results = []foodResult{}
 	for _, food := range foods {
@@ -321,7 +321,7 @@ func (ui *UI) editFoodForm(w http.ResponseWriter, r *http.Request) {
 	form, err := ui.ws(r).MyFitnessPal.Client().EntryForm(r.PathValue("entry"))
 	view := foodEditView{Form: form}
 	if err != nil {
-		view.Error = err.Error()
+		view.Error = problem.Public(err)
 	}
 	ui.render(w, "food-edit", view)
 }

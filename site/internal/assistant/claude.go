@@ -1,8 +1,8 @@
 package assistant
 
 import (
+	"dashboard/internal/problem"
 	"encoding/json"
-	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -24,7 +24,7 @@ func newClaude() *claude {
 func (c *claude) Invocation(req Request) (Invocation, error) {
 	program := c.command()
 	if program == nil {
-		return Invocation{}, errors.New("Claude Code isn't installed")
+		return Invocation{}, problem.Unavailablef("Claude Code isn't installed")
 	}
 	if err := os.MkdirAll(req.WorkDir, 0o700); err != nil {
 		return Invocation{}, err

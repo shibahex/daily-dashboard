@@ -60,7 +60,7 @@ func (ui *UI) adminPage(w http.ResponseWriter, r *http.Request) {
 func (ui *UI) renderAdmin(w http.ResponseWriter, r *http.Request, saved string, err error, edit func(*adminView)) {
 	view := ui.adminView(r)
 	if err != nil {
-		view.Error = err.Error()
+		view.Error = problem.Public(err)
 	} else {
 		view.Saved = saved
 		if saved != "" {

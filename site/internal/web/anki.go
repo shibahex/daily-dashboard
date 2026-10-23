@@ -1,6 +1,7 @@
 package web
 
 import (
+	"fmt"
 	"html"
 	"html/template"
 	"net/http"
@@ -53,7 +54,7 @@ func (ui *UI) ankiBody(r *http.Request) ankiBodyView {
 	}
 	overview, err := ui.ws(r).Anki().Overview()
 	if err != nil {
-		body.Problem = err.Error()
+		body.Problem = problem.Public(err)
 		return body
 	}
 	body.Decks = decksView(overview)
@@ -120,7 +121,7 @@ func (ui *UI) openAnki(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := anki.OpenApp(); err != nil {
-		fail(w, problem.Failedf(err.Error()))
+		fail(w, fmt.Errorf("%w: %v", problem.Failedf("Couldn't open Anki"), err))
 		return
 	}
 	announce(w, say("Opening Anki…"))
@@ -315,7 +316,7 @@ func (ui *UI) ankiNotesFor(r *http.Request, query string) ankiNotesView {
 	}
 	notes, total, err := ui.ws(r).Anki().SearchNotes(search, notesShown)
 	if err != nil {
-		view.Problem = err.Error()
+		view.Problem = problem.Public(err)
 		return view
 	}
 	view.Total = total

@@ -27,13 +27,14 @@ import (
 	"sync"
 
 	"dashboard/internal/jsonfile"
+	"dashboard/internal/problem"
 )
 
 // passwordIterations is PBKDF2-SHA256's count for the password's key, as for login (auth).
 const passwordIterations = 600_000
 
 // ErrWrongSecret is returned when nothing stored opens with the secret given.
-var ErrWrongSecret = errors.New("that doesn't unlock this account's data")
+var ErrWrongSecret error = problem.Error{Kind: problem.Invalid, Message: "That doesn't unlock this account's data"}
 
 // Kinds of secret that can unlock the data key.
 const (
@@ -84,7 +85,7 @@ func (k *Keys) Exists() bool {
 // already there, whose data can then never be opened.
 func (k *Keys) Create(password, recovery string) (*Key, error) {
 	if password == "" || recovery == "" {
-		return nil, errors.New("a new keyring needs a password and a recovery code")
+		return nil, problem.Invalidf("A new keyring needs a password and a recovery code")
 	}
 	data := make([]byte, 32)
 	rand.Read(data)
@@ -188,7 +189,7 @@ func (k *Keys) update(change func(*keyring)) error {
 	defer k.mu.Unlock()
 	var ring keyring
 	if !jsonfile.Read(k.file, &ring) || ring.Slots == nil {
-		return errors.New("this account has no encrypted data")
+		return problem.NotFoundf("This account has no encrypted data")
 	}
 	change(&ring)
 	return jsonfile.Write(k.file, ring)

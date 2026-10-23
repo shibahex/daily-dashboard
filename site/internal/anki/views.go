@@ -181,4 +181,6 @@ func (c Client) History(savePath string) History {
 }
 
 // IsUnreachable reports whether err means Anki didn't answer at all.
-func IsUnreachable(err error) bool { return errors.Is(err, ErrUnreachable) }
+func IsUnreachable(err error) bool {
+	return errors.Is(err, ErrUnreachable) || errors.Is(err, ErrNotSetUp)
+}

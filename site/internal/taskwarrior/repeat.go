@@ -1,7 +1,7 @@
 package taskwarrior
 
 import (
-	"errors"
+	"dashboard/internal/problem"
 	"fmt"
 	"sort"
 	"strconv"
@@ -37,26 +37,26 @@ type RepeatForm struct {
 func (f RepeatForm) Rule(today time.Time) (RepeatRule, error) {
 	rule := RepeatRule{Type: f.Type, Every: 1, Start: midnight(today)}
 	if f.Type != "days" && f.Type != "weekly" && f.Type != "monthly" {
-		return RepeatRule{}, errors.New("bad rule type")
+		return RepeatRule{}, problem.Invalidf("bad rule type")
 	}
 	if f.Every != "" {
 		every, err := strconv.Atoi(f.Every)
 		if err != nil || every < 1 || every > 60 {
-			return RepeatRule{}, errors.New("bad interval")
+			return RepeatRule{}, problem.Invalidf("bad interval")
 		}
 		rule.Every = every
 	}
 	if f.Start != "" {
 		start, err := time.ParseInLocation(dateLayout, f.Start, time.Local)
 		if err != nil {
-			return RepeatRule{}, errors.New("bad start date")
+			return RepeatRule{}, problem.Invalidf("bad start date")
 		}
 		rule.Start = start
 	}
 	for _, text := range f.Days {
 		day, err := strconv.Atoi(text)
 		if err != nil || day < 0 || day > 6 {
-			return RepeatRule{}, errors.New("bad weekday")
+			return RepeatRule{}, problem.Invalidf("bad weekday")
 		}
 		rule.Days = append(rule.Days, day)
 	}
@@ -81,7 +81,7 @@ func (r RepeatRule) Series(today time.Time) ([]Series, error) {
 
 	case "weekly":
 		if len(r.Days) == 0 || r.Every > 8 {
-			return nil, errors.New("pick at least one weekday")
+			return nil, problem.Invalidf("pick at least one weekday")
 		}
 		recur := "weekly"
 		if r.Every > 1 {
@@ -106,7 +106,7 @@ func (r RepeatRule) Series(today time.Time) ([]Series, error) {
 		}
 		return []Series{{FirstDue: month.Format(dateLayout), Recur: "monthly"}}, nil
 	}
-	return nil, errors.New("bad rule type")
+	return nil, problem.Invalidf("bad rule type")
 }
 
 func midnight(t time.Time) time.Time {

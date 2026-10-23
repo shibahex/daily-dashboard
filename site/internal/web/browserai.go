@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"path/filepath"
 	"slices"
@@ -183,7 +184,7 @@ func modelsFor(provider string) []assistant.Model {
 func (ui *UI) assistantTools(w http.ResponseWriter, r *http.Request) {
 	session, err := ui.tools().open(ui, ui.user(r), ui.ws(r))
 	if err != nil {
-		fail(w, problem.Unavailablef("Couldn't start the tools: "+err.Error()))
+		fail(w, fmt.Errorf("%w: %v", problem.Unavailablef("Couldn't start the tools"), err))
 		return
 	}
 	type tool struct {
@@ -206,7 +207,7 @@ func (ui *UI) assistantTool(w http.ResponseWriter, r *http.Request) {
 	server, tool, found := strings.Cut(r.FormValue("name"), toolSep)
 	session, err := ui.tools().open(ui, user, ws)
 	if err != nil {
-		fail(w, problem.Unavailablef("Couldn't start the tools: "+err.Error()))
+		fail(w, fmt.Errorf("%w: %v", problem.Unavailablef("Couldn't start the tools"), err))
 		return
 	}
 	client := session.clients[server]
@@ -219,7 +220,7 @@ func (ui *UI) assistantTool(w http.ResponseWriter, r *http.Request) {
 	result, err := client.Call(ctx, tool, json.RawMessage(r.FormValue("input")))
 	if err != nil {
 		ui.tools().close(user.ID) // a server that failed is started again next time
-		result = mcp.Result{Text: err.Error(), IsError: true}
+		result = mcp.Result{Text: problem.Public(err), IsError: true}
 	}
 	if assistant.ChangesDiary(server + toolSep + tool) {
 		go ws.MyFitnessPal.Sync() // so the Today tab shows the change

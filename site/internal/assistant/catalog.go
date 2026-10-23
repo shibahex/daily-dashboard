@@ -3,6 +3,7 @@ package assistant
 import (
 	"cmp"
 	"context"
+	"dashboard/internal/problem"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -26,7 +27,7 @@ func ListModels(ctx context.Context, provider, key string) ([]Model, error) {
 	case "gemini":
 		return geminiModels(ctx, key)
 	}
-	return nil, fmt.Errorf("unknown AI %q", provider)
+	return nil, problem.Invalidf(fmt.Sprintf("unknown AI %q", provider))
 }
 
 var catalogClient = &http.Client{Timeout: 20 * time.Second}
@@ -48,15 +49,15 @@ func getJSON(ctx context.Context, url string, headers map[string]string, out any
 	}
 	resp, err := catalogClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("couldn't reach %s", req.URL.Host)
+		return problem.Unavailablef("Couldn't reach " + req.URL.Host)
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
 	if resp.StatusCode != http.StatusOK {
 		if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
-			return fmt.Errorf("%s didn't accept the key", req.URL.Host)
+			return problem.Invalidf(req.URL.Host + " didn't accept the key")
 		}
-		return fmt.Errorf("%s answered %d", req.URL.Host, resp.StatusCode)
+		return problem.Failedf(fmt.Sprintf("%s answered %d", req.URL.Host, resp.StatusCode))
 	}
 	return json.Unmarshal(body, out)
 }

@@ -2,7 +2,6 @@ package anki
 
 import (
 	"context"
-	"errors"
 	"net"
 	"net/netip"
 	"net/url"
@@ -35,7 +34,7 @@ func CheckConnection(rawURL, apiKey string, host bool) (string, error) {
 	}
 	if _, err := NewClient(cleaned, "").Call("version", nil); err == nil {
 		return "", problem.Invalidf("That AnkiConnect answers without an API key, so anyone could use it. Set \"apiKey\" in its config first")
-	} else if errors.Is(err, ErrUnreachable) {
+	} else if IsUnreachable(err) {
 		return "", problem.Unavailablef("Couldn't reach AnkiConnect at " + cleaned + ". Is Anki open, and does AnkiConnect listen on the network (\"webBindAddress\": \"0.0.0.0\")?")
 	}
 	if _, err := NewClient(cleaned, apiKey).Call("version", nil); err != nil {

@@ -4,7 +4,6 @@ package anki
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -12,6 +11,7 @@ import (
 	"time"
 
 	"dashboard/internal/mcp"
+	"dashboard/internal/problem"
 )
 
 const (
@@ -21,15 +21,16 @@ const (
 )
 
 // ErrUnreachable means AnkiConnect didn't answer (Anki closed, or the add-on missing).
-var ErrUnreachable = errors.New("Anki isn't reachable")
+var ErrUnreachable error = problem.Error{Kind: problem.Unavailable, Message: "Anki isn't reachable"}
 
 // ErrNotSetUp means the user hasn't told the dashboard where their AnkiConnect is.
-var ErrNotSetUp = fmt.Errorf("%w: set up your Anki on the Account page", ErrUnreachable)
+var ErrNotSetUp error = problem.Error{Kind: problem.Unavailable, Message: "Anki isn't reachable: set up your Anki on the Account page"}
 
-// ActionError is an error AnkiConnect returned for an action.
+// ActionError is an error AnkiConnect returned for an action. People see it (problem.Public).
 type ActionError struct{ Message string }
 
 func (e ActionError) Error() string { return e.Message }
+func (e ActionError) Unwrap() error { return problem.Failedf(e.Message) }
 
 type Client struct {
 	URL    string

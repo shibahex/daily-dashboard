@@ -97,7 +97,7 @@ func (ui *UI) render(w http.ResponseWriter, name string, data any) {
 	html, err := ui.renderToHTML(name, data)
 	if err != nil {
 		log.Printf("rendering %s: %v", name, err)
-		http.Error(w, "couldn't show this: "+err.Error(), http.StatusInternalServerError)
+		http.Error(w, "couldn't show this", http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -135,7 +135,7 @@ func (ui *UI) renderPage(r *http.Request, w http.ResponseWriter, tab, title, con
 	content, err := ui.renderToHTML(contentTemplate, data)
 	if err != nil {
 		log.Printf("rendering %s: %v", contentTemplate, err)
-		http.Error(w, "couldn't show this page: "+err.Error(), http.StatusInternalServerError)
+		http.Error(w, "couldn't show this page", http.StatusInternalServerError)
 		return
 	}
 	view := pageView{Tab: tab, Title: title, Today: time.Now(), Content: content, Fill: tab == "mcps",
@@ -221,12 +221,13 @@ func asciiJSON(encoded []byte) string {
 func say(message string) *notice         { return &notice{Message: message} }
 func sayUndoable(message string) *notice { return &notice{Message: message, Undo: true} }
 
-// fail answers with the error's status and message; the page shows it as a toast.
+// fail answers with the error's status and its public message; the page shows it as a toast.
 func fail(w http.ResponseWriter, err error) {
-	if problem.KindOf(err) == problem.Failed {
+	message := problem.Public(err)
+	if problem.KindOf(err) == problem.Failed && message != problem.Hidden {
 		log.Printf("failed: %v", err)
 	}
-	http.Error(w, err.Error(), problem.Status(err))
+	http.Error(w, message, problem.Status(err))
 }
 
 // nothing answers with no content (the target is emptied, e.g. a closed panel).

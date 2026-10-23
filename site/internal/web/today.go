@@ -8,6 +8,7 @@ import (
 	"slices"
 	"time"
 
+	"dashboard/internal/problem"
 	"dashboard/internal/store"
 )
 
@@ -60,7 +61,7 @@ func (ui *UI) todayPage(w http.ResponseWriter, r *http.Request) {
 			html, err := card.render(ui, r)
 			if err != nil {
 				html = template.HTML(`<div class="card" id="` + template.HTMLEscapeString(card.ID) + `"><p class="err">` +
-					template.HTMLEscapeString(err.Error()) + `</p></div>`)
+					template.HTMLEscapeString(problem.Public(err)) + `</p></div>`)
 			}
 			view.Columns[column] = append(view.Columns[column], placedCard{ID: card.ID, PhoneOrder: card.PhoneOrder, HTML: html})
 		}

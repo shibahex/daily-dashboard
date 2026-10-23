@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"dashboard/internal/lifting"
+	"dashboard/internal/problem"
 )
 
 // The Privacy tab's "Download your data": one zip with everything the dashboard keeps for the
@@ -81,7 +82,7 @@ func (ui *UI) exportData(w http.ResponseWriter, r *http.Request) {
 	if tasks, err := ws.Tasks.Export(); err == nil {
 		add("tasks.json", tasks)
 	} else {
-		missing = append(missing, "tasks.json ("+err.Error()+")")
+		missing = append(missing, "tasks.json ("+problem.Public(err)+")")
 	}
 	if intervals, result := ws.Time.Export(); result.OK() {
 		add("time.json", intervals)

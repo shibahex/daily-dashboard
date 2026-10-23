@@ -1,7 +1,6 @@
 package workspace
 
 import (
-	"errors"
 	"log"
 	"os"
 	"path/filepath"
@@ -26,7 +25,7 @@ import (
 
 // ErrSignInAgain is Unlock's answer when the credential can't open the data: a session from
 // before the data was encrypted, or a plain folder waiting for its password.
-var ErrSignInAgain = errors.New("sign in again to unlock your data")
+var ErrSignInAgain error = problem.Error{Kind: problem.Forbidden, Message: "Sign in again to unlock your data"}
 
 // saveEvery is how often unlocked folders are saved back to disk.
 const saveEvery = 5 * time.Second

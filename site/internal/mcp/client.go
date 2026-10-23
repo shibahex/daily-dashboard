@@ -3,6 +3,7 @@ package mcp
 import (
 	"bufio"
 	"context"
+	"dashboard/internal/problem"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -193,7 +194,7 @@ func (c *Client) request(ctx context.Context, method string, params any) (json.R
 				continue
 			}
 			if message.Error != nil {
-				got <- answer{err: errors.New(message.Error.Message)}
+				got <- answer{err: problem.Failedf(message.Error.Message)}
 			} else {
 				got <- answer{result: message.Result}
 			}
@@ -205,7 +206,7 @@ func (c *Client) request(ctx context.Context, method string, params any) (json.R
 		return a.result, a.err
 	case <-ctx.Done():
 		c.Close() // the reader can't be left waiting on a server that may answer later
-		return nil, fmt.Errorf("%s took too long", method)
+		return nil, problem.Unavailablef(method + " took too long")
 	}
 }
 

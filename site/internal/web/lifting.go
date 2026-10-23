@@ -453,7 +453,7 @@ func (ui *UI) finishWorkout(w http.ResponseWriter, r *http.Request) {
 	}
 	if due {
 		if warning, err = ws.Tasks.CompleteAt(uuid, end, minutes); err != nil {
-			warning = "Saved, but the task wasn't ticked: " + err.Error()
+			warning = "Saved, but the task wasn't ticked: " + problem.Public(err)
 		} else {
 			message += " · task ticked"
 		}
@@ -461,7 +461,7 @@ func (ui *UI) finishWorkout(w http.ResponseWriter, r *http.Request) {
 		start := end.Add(-time.Duration(minutes) * time.Minute)
 		if err := ws.Time.Track(start.Format(localMinuteLayout), end.Format(localMinuteLayout),
 			timewarrior.TaskTags([]string{"Lifting", finished.Title})); err != nil {
-			warning = "Saved, but the time wasn't logged: " + err.Error()
+			warning = "Saved, but the time wasn't logged: " + problem.Public(err)
 		}
 	}
 	if minutes > 0 && warning == "" {

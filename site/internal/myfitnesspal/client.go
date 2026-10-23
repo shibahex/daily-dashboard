@@ -137,7 +137,7 @@ func (c Client) MCPServer() mcp.Server {
 // browser renews it (when set up) and op runs once more: an auth failure means nothing was done.
 func (c Client) call(timeout time.Duration, op func(ctx context.Context) error) error {
 	if !c.Setup().SignedIn {
-		return errors.New("MyFitnessPal isn't connected yet. Connect it on the Account page.")
+		return problem.Unavailablef("MyFitnessPal isn't connected yet. Connect it on the Account page.")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()

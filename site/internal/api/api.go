@@ -46,7 +46,7 @@ func (a *API) Routes(mux *http.ServeMux) {
 func (a *API) plan(w http.ResponseWriter, r *http.Request) {
 	plan, err := a.ws(r).Store.PlanJSON()
 	if err != nil {
-		httpx.WriteError(w, http.StatusInternalServerError, err.Error())
+		httpx.WriteError(w, http.StatusInternalServerError, problem.Public(err))
 		return
 	}
 	httpx.WriteBytes(w, http.StatusOK, plan, "application/json")
@@ -73,7 +73,7 @@ func (a *API) saveChecklistDay(w http.ResponseWriter, r *http.Request, body requ
 func (a *API) pendingTasks(w http.ResponseWriter, r *http.Request) {
 	pending, err := a.ws(r).Tasks.Pending()
 	if err != nil {
-		httpx.WriteError(w, problem.Status(err), err.Error())
+		httpx.WriteError(w, problem.Status(err), problem.Public(err))
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, pending)
@@ -85,7 +85,7 @@ func (a *API) thisWeeksTime(w http.ResponseWriter, r *http.Request) {
 	case problem.KindOf(err) == problem.Unavailable:
 		httpx.WriteJSON(w, http.StatusOK, map[string]any{"available": false, "intervals": []any{}})
 	case err != nil:
-		httpx.WriteError(w, http.StatusInternalServerError, err.Error())
+		httpx.WriteError(w, http.StatusInternalServerError, problem.Public(err))
 	default:
 		if intervals == nil {
 			intervals = []timewarrior.Interval{}
@@ -131,7 +131,7 @@ func (a *API) skip(w http.ResponseWriter, r *http.Request, body request) {
 // respond sends {"ok": true} or the error as {"ok": false, "error"} with its status.
 func respond(w http.ResponseWriter, err error) {
 	if err != nil {
-		httpx.WriteJSON(w, problem.Status(err), map[string]any{"ok": false, "error": err.Error()})
+		httpx.WriteJSON(w, problem.Status(err), map[string]any{"ok": false, "error": problem.Public(err)})
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{"ok": true})

@@ -449,7 +449,7 @@ func (ui *UI) logWeight(w http.ResponseWriter, r *http.Request) {
 	ui.ws(r).Store.TickWeighIn(day)
 	message := say("Weight logged · sent to MyFitnessPal")
 	if err := ui.ws(r).MyFitnessPal.LogWeight(day, lb); err != nil {
-		message = &notice{Message: "Saved here, but not in MyFitnessPal: " + err.Error(), Bad: true}
+		message = &notice{Message: "Saved here, but not in MyFitnessPal: " + problem.Public(err), Bad: true}
 	}
 	announce(w, message, checklistChanged)
 	ui.renderWeightAfterChange(r, w)

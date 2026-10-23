@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"dashboard/internal/jsonfile"
+	"dashboard/internal/problem"
 )
 
 // Mirror keeps a plain folder (in memory, while the user is signed in) and its encrypted copy
@@ -73,7 +74,7 @@ func (m *Mirror) readManifest() (map[string]entry, error) {
 	}
 	plain, err := open(m.key.data, sealed, m.label("manifest"))
 	if err != nil {
-		return nil, errors.New("the encrypted data doesn't open with this key")
+		return nil, problem.Invalidf("The encrypted data doesn't open with this key")
 	}
 	files := map[string]entry{}
 	return files, json.Unmarshal(plain, &files)
@@ -126,7 +127,7 @@ func (m *Mirror) Restore() error {
 			}
 			data, err := open(m.key.data, sealed, m.label("blob/"+e.Blob))
 			if err != nil {
-				return errors.New("a file in the encrypted data is damaged")
+				return problem.Failedf("A file in the encrypted data is damaged")
 			}
 			os.MkdirAll(filepath.Dir(target), 0o700)
 			if err := os.WriteFile(target, data, e.Mode.Perm()|0o600); err != nil {

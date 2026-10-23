@@ -263,12 +263,12 @@ func (ui *UI) UnlockData(next http.Handler) http.Handler {
 			auth.ClearSessionCookie(w)
 			if r.Header.Get("HX-Request") == "true" {
 				w.Header().Set("HX-Redirect", "/login?locked=1")
-				http.Error(w, err.Error(), http.StatusUnauthorized)
+				http.Error(w, problem.Public(err), http.StatusUnauthorized)
 				return
 			}
 			http.Redirect(w, r, "/login?locked=1", http.StatusSeeOther)
 		default:
-			http.Error(w, "Your data couldn't be opened: "+err.Error(), problem.Status(err))
+			http.Error(w, "Your data couldn't be opened: "+problem.Public(err), problem.Status(err))
 		}
 	})
 }

@@ -1,8 +1,8 @@
 package assistant
 
 import (
+	"dashboard/internal/problem"
 	"encoding/json"
-	"errors"
 	"os"
 	"path/filepath"
 	"slices"
@@ -28,7 +28,7 @@ func newGemini() *gemini {
 func (g *gemini) Invocation(req Request) (Invocation, error) {
 	program := g.command()
 	if program == nil {
-		return Invocation{}, errors.New("Gemini CLI isn't installed")
+		return Invocation{}, problem.Unavailablef("Gemini CLI isn't installed")
 	}
 	if err := os.MkdirAll(req.WorkDir, 0o700); err != nil {
 		return Invocation{}, err
