@@ -63,3 +63,18 @@ a.sign-in-btn { display: block; text-align: center; text-decoration: none; borde
 .subtabs a.on { color: var(--ink); border-color: var(--accent); font-weight: 600; }
 .notice.warn { margin: 0 0 8px; padding: 10px 14px; border-radius: 10px; background: var(--warn-soft); color: var(--warn); font-size: 14px; line-height: 1.5; }
 .notice.warn .link { color: inherit; font-weight: 600; text-decoration: underline; }
+
+/* The Privacy tab's download and import, split by a line. */
+.backup section { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
+.backup p, .backup h2 { margin: 0; }
+.backup p { line-height: 1.55; }
+.backup .backup-import { margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--line); }
+.account label.check { flex-direction: row; align-items: flex-start; gap: 9px; font-weight: 500; cursor: pointer; }
+.account label.check input { accent-color: var(--accent); width: 16px; height: 16px; margin: 2px 0 0; flex: none; }
+.account label.check small { display: block; font-weight: 400; }
+.backup form { gap: 10px; width: 100%; }
+.backup .file-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.backup input[type=file] { font: inherit; font-size: 13px; color: var(--muted); min-width: 0; max-width: 100%; }
+.backup input[type=file]::file-selector-button { font: inherit; font-size: 13px; margin-right: 10px; padding: 4px 10px; border-radius: 6px;
+  border: 1px solid var(--line); background: var(--chip); color: var(--ink); cursor: pointer; }
+.backup input[type=file]::file-selector-button:hover { border-color: var(--accent); }

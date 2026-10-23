@@ -187,20 +187,26 @@
 {{define "account-card"}}
 <div class="account" id="account-card">
   {{if eq .Tab "privacy"}}
-  <div class="card" data-backup>
-    <h2>Download your data</h2>
-    <p class="muted">One .zip with everything the dashboard keeps for you, in open formats: your plan, checklist, weigh-ins, lifting (also as a spreadsheet, one row per set), Anki history, all your Taskwarrior tasks and Timewarrior time, and your notes (as Markdown files) and AI chat. A README inside says what each file is.</p>
-    <p class="muted small">Your browser adds the notes and chat, decrypted, so the file works on any dashboard: keep it somewhere safe. Logins aren't in it, and your food diary lives in MyFitnessPal.</p>
-    <label class="check"><input type="checkbox" data-backup-keys> Include my AI keys and local model (readable by anyone with the file)</label>
-    <div class="row"><a class="sm-button primary" href="/account/export" download hx-boost="false" data-backup-download>Download everything (.zip)</a></div>
-
-    <h3>Import data</h3>
-    <p class="muted">Moving to a new server? Pick the .zip you downloaded from the old one. Your plan is replaced by its plan; everything else (days, weigh-ins, workouts, tasks, time, notes, the chat) is added to what's here, and nothing is deleted. Importing the same file twice adds nothing new.</p>
-    <form class="row" data-import>
-      <input type="file" name="file" accept=".zip,application/zip" required>
-      <button class="sm primary">Import</button>
-    </form>
-    <p data-import-result hidden></p>
+  <div class="card backup" data-backup>
+    <section>
+      <h2>Download your data</h2>
+      <p class="muted">One .zip with everything the dashboard keeps for you, in open formats: your plan, checklist, weigh-ins, lifting (also as a spreadsheet, one row per set), Anki history, all your Taskwarrior tasks and Timewarrior time, and your notes (as Markdown files) and AI chat. A README inside says what each file is.</p>
+      <p class="muted small">Your browser adds the notes and chat, decrypted, so the file works on any dashboard: keep it somewhere safe. Logins aren't in it, and your food diary lives in MyFitnessPal.</p>
+      <label class="check"><input type="checkbox" data-backup-keys>
+        <span>Include my AI keys and local model <small class="muted">Anyone with the file can read them.</small></span></label>
+      <a class="sm-button primary" href="/account/export" download hx-boost="false" data-backup-download>Download everything (.zip)</a>
+    </section>
+    <section class="backup-import">
+      <h2>Import data</h2>
+      <p class="muted">Moving to a new server? Pick the .zip you downloaded from the old one. Your plan is replaced by its plan; everything else (days, weigh-ins, workouts, tasks, time, notes, the chat) is added to what's here, and nothing is deleted. Importing the same file twice adds nothing new.</p>
+      <form data-import>
+        <div class="file-row">
+          <input type="file" name="file" accept=".zip,application/zip" required aria-label="Backup .zip">
+          <button class="sm primary">Import</button>
+        </div>
+        <p data-import-result hidden></p>
+      </form>
+    </section>
   </div>
   <form class="card" hx-post="/account/recovery" hx-target="#account-card" hx-swap="outerHTML" data-keys="recovery" data-sealed>
     <h2>Your notes and recovery code</h2>
