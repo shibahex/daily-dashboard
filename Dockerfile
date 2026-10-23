@@ -10,7 +10,7 @@ RUN nix --extra-experimental-features "nix-command flakes" build ./site#containe
  && cp -a $(nix-store -qR /result /result-1) /rootfs/nix/store/ \
  && ln -s "$(readlink /result)/bin/health-dashboard-container" /rootfs/entrypoint \
  && ln -s "$(readlink /result-1)" /rootfs/app/site/.timew-hook \
- && cp -a site/web /rootfs/app/site/web \
+ && cp -a site/web site/plan.example.json /rootfs/app/site/ \
  && chown -R 1000:1000 /rootfs/app/site/data && chmod 1777 /rootfs/tmp
 COPY docs/README.md docs/dashboard.md docs/noctalia-plugin.md /rootfs/app/docs/
 COPY docs/templates /rootfs/app/docs/templates
