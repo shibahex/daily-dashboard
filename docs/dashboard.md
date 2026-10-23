@@ -215,7 +215,7 @@ Everyone's notes, AI chat and AI keys are encrypted **end to end**: only their b
 
 ## Checking the page's code
 
-Your notes are only as private as the scripts that handle them, and those come from the server. So the dashboard tells your browser the exact hash of each script it loads (Subresource Integrity), and a changed script won't run. To check that the server is running the published code, open the page's source (Ctrl+U) and compare each script's `integrity` value with this list from the repository (a test keeps it up to date):
+Your notes are only as private as the scripts that handle them, and those come from the server. So the dashboard tells your browser the exact hash of each script it loads (Subresource Integrity), and a changed script won't run. To check that the server is running the published code, open the page's source (Ctrl+U) and compare each script's `integrity` value with this list from the repository (updated automatically on every push):
 
 | Script | Hash |
 |---|---|

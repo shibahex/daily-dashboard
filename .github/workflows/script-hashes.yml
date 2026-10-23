@@ -1,0 +1,35 @@
+# Keeps the script hash table in docs/dashboard.md in step with site/web/js: after a push to main
+# that changes a script, it rewrites the table (site/cmd/scripthashes) and commits it.
+name: Script hashes
+
+on:
+  push:
+    branches: [main]
+    paths: ['site/web/js/**', 'docs/dashboard.md', 'site/cmd/scripthashes/**']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: script-hashes
+  cancel-in-progress: true
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: site/go.mod
+          cache: false
+      - run: go run ./cmd/scripthashes
+        working-directory: site
+      - name: Commit the new hashes
+        run: |
+          git diff --quiet docs/dashboard.md && exit 0
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "docs: update script hashes" docs/dashboard.md
+          git push

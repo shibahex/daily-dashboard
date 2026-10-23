@@ -45,7 +45,7 @@ func newTemplateSet(webDir string) *templateSet {
 
 // sri is the integrity value of one of the dashboard's scripts (web/js/name): the browser runs it
 // only if it's exactly that file. The same values are listed in the guide (docs/dashboard.md,
-// checked by a test), so anyone can compare what their browser loaded with the published code.
+// written by cmd/scripthashes), so anyone can compare what their browser loaded with the published code.
 func (t *templateSet) sri(name string) (string, error) {
 	path := filepath.Join(t.js, filepath.Base(name))
 	info, err := os.Stat(path)
