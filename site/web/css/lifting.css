@@ -89,6 +89,18 @@ button.tick.on { background: var(--accent); border-color: var(--accent); color: 
 .lift-table tr:last-child td { border-bottom: 0; }
 .lift-table td:first-child { white-space: nowrap; }
 .lift-table td.num { text-align: right; white-space: nowrap; }
+.lift-log { font-variant-numeric: tabular-nums; }
+.lift-log th { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); text-align: left; padding: 0 4px 6px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.lift-log th .muted { text-transform: none; letter-spacing: 0; font-weight: 400; }
+.lift-log th.num { text-align: right; }
+.lift-log td { vertical-align: middle; padding: 7px 4px; }
+.lift-log td:first-child { font-size: 13px; width: 1%; padding-right: 12px; }
+.lift-log td:nth-child(3) { width: 1%; }
+.lift-log td.num { font-size: 13px; color: var(--muted); width: 1%; padding-left: 10px; }
+.lift-log tr.pr td.num { color: var(--ink); font-weight: 600; }
+.lift-group { display: inline-block; white-space: nowrap; margin-right: 12px; }
+.lift-group:last-child { margin-right: 0; }
+.lift-group .muted { font-size: 13px; }
 .lift-past { border-bottom: 1px solid var(--line); }
 .lift-past:last-of-type { border-bottom: 0; }
 .lift-past summary { display: flex; justify-content: space-between; align-items: baseline; gap: 4px 10px; flex-wrap: wrap; padding: 8px 0; cursor: pointer; list-style: none; }

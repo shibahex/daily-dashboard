@@ -640,9 +640,38 @@ type progressView struct {
 type progressSession struct {
 	Day    time.Time
 	Title  string
-	Sets   string
+	Groups []setGroup
 	Best   string
 	Record bool
+}
+
+// setGroup is a run of sets at one weight: Reps is "4 × 5" when every set had the same reps, else "5/5/5/4".
+type setGroup struct{ Weight, Reps string }
+
+// groupSets folds back-to-back sets at the same weight into one group.
+func groupSets(sets []lifting.Set, unit string) []setGroup {
+	var groups []setGroup
+	for i := 0; i < len(sets); {
+		j := i + 1
+		for j < len(sets) && sets[j].LB == sets[i].LB {
+			j++
+		}
+		weight, reps, same := "BW", make([]string, 0, j-i), true
+		if sets[i].LB > 0 {
+			weight = lifting.FormatShown(sets[i].LB, unit)
+		}
+		for _, set := range sets[i:j] {
+			reps = append(reps, strconv.Itoa(set.Reps))
+			same = same && set.Reps == sets[i].Reps
+		}
+		group := setGroup{Weight: weight, Reps: strings.Join(reps, "/")}
+		if same && len(reps) > 1 {
+			group.Reps = fmt.Sprintf("%d × %d", len(reps), sets[i].Reps)
+		}
+		groups = append(groups, group)
+		i = j
+	}
+	return groups
 }
 
 func progressViewOf(data lifting.Data, name string) progressView {
@@ -667,7 +696,7 @@ func progressViewOf(data lifting.Data, name string) progressView {
 	view.Trend = trendLine(trend)
 	for i := len(history) - 1; i >= 0 && len(view.Sessions) < 12; i-- {
 		session := history[i]
-		shown := progressSession{Day: session.Day, Title: session.Title, Sets: setsText(session.Sets, data.Unit), Record: session.Record}
+		shown := progressSession{Day: session.Day, Title: session.Title, Groups: groupSets(session.Sets, data.Unit), Record: session.Record}
 		if session.Best > 0 {
 			shown.Best = lifting.FormatPlate(session.Best, data.Unit)
 		}

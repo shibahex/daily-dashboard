@@ -179,3 +179,16 @@ func TestEstimateNotesAndSkips(t *testing.T) {
 		t.Errorf("history line %q", got)
 	}
 }
+
+func TestGroupSets(t *testing.T) {
+	got := groupSets([]lifting.Set{{LB: 200, Reps: 5}, {LB: 200, Reps: 5}, {LB: 200, Reps: 5}, {LB: 200, Reps: 4}, {LB: 225, Reps: 3}, {LB: 225, Reps: 3}, {Reps: 10}}, "lb")
+	want := []setGroup{{"200", "5/5/5/4"}, {"225", "2 × 3"}, {"BW", "10"}}
+	if len(got) != len(want) {
+		t.Fatalf("groups %+v", got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("group %d: %+v, want %+v", i, got[i], want[i])
+		}
+	}
+}

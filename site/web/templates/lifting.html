@@ -208,8 +208,11 @@
   </div>
   <div class="small muted spread"><span>{{monthDay .From}}</span><span>est. 1RM per session</span><span>{{monthDay .To}}</span></div>
   {{end}}
-  <table class="lift-table">
-    {{range .Sessions}}<tr><td class="small muted">{{shortDay .Day}}</td><td>{{.Sets}}{{if .Record}} <span class="badge lift-pr">PR</span>{{end}}</td><td class="small muted num">{{with .Best}}~{{.}}{{end}}</td></tr>{{end}}
+  <table class="lift-table lift-log">
+    <thead><tr><th>Day</th><th>Sets <span class="muted">({{.Unit}})</span></th><th></th><th class="num">Est. 1RM</th></tr></thead>
+    {{range .Sessions}}<tr{{if .Record}} class="pr"{{end}}><td class="muted">{{shortDay .Day}}</td>
+      <td>{{range .Groups}}<span class="lift-group"><b>{{.Weight}}</b> <span class="muted">{{.Reps}}</span></span>{{end}}</td>
+      <td>{{if .Record}}<span class="badge lift-pr">PR</span>{{end}}</td><td class="num">{{with .Best}}~{{.}}{{end}}</td></tr>{{end}}
   </table>
   {{else}}<p class="muted">Finish a workout to see each exercise's progress here: the best estimated one-rep max, the heaviest set and every session.</p>{{end}}
 </div>
