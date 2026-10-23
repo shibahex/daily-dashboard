@@ -60,7 +60,7 @@ With [Tailscale](https://tailscale.com), `tailscale serve --bg 1628` gives it an
 
 ## Docker
 
-GitHub builds an image from `main` (`ghcr.io/shibahex/daily-dashboard`), and `docker-compose.yml` runs it. Everything people save lives on one volume, mounted at `/app/site/data`.
+GitHub builds an image from `main` (`ghcr.io/shibahex/daily-dashboard`, tagged `latest`), and `docker-compose.yml` runs it. Each release (a `v1.2.0` tag) is also published as `:1.2.0` and `:1.2`; to stay on one, set `DASHBOARD_IMAGE=ghcr.io/shibahex/daily-dashboard:1.2.0` in `.env`. Everything people save lives on one volume, mounted at `/app/site/data`.
 
 ```sh
 git clone https://github.com/shibahex/daily-dashboard.git

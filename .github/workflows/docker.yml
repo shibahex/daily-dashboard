@@ -1,14 +1,17 @@
-# Builds the container image from main and publishes it as ghcr.io/<owner>/<repo>, tagged
-# latest and with the commit (e.g. sha-336abb5), for docker-compose.yml to pull.
+# Builds the container image and publishes it as ghcr.io/<owner>/<repo>, for docker-compose.yml
+# to pull. From main it's tagged latest and with the commit (e.g. sha-336abb5). A version tag
+# (git tag v1.2.0 && git push origin v1.2.0) also tags it 1.2.0 and 1.2 and makes a GitHub
+# Release with notes from the commits since the last one.
 name: Docker image
 
 on:
   push:
     branches: [main]
+    tags: ['v*']
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write # for the release
   packages: write
 
 jobs:
@@ -27,7 +30,9 @@ jobs:
         with:
           images: ghcr.io/${{ github.repository }}
           tags: |
-            type=raw,value=latest
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
             type=sha
       - uses: docker/build-push-action@v6
         with:
@@ -37,3 +42,7 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      - if: startsWith(github.ref, 'refs/tags/v')
+        run: gh release create "$GITHUB_REF_NAME" --generate-notes --verify-tag
+        env:
+          GH_TOKEN: ${{ github.token }}
