@@ -24,6 +24,10 @@ type Conversation struct {
 	// NoInstructions leaves out the dashboard's guidance ("Attach prompt" off). The agent still
 	// gets the user's notes and data.
 	NoInstructions bool `json:"no_instructions,omitempty"`
+
+	// Web is the chat's Web search switch: the AI may search the web and read pages (if the
+	// user's policy allows it, auth.Policy.NoWeb).
+	Web bool `json:"web,omitempty"`
 }
 
 // Message is one chat bubble.

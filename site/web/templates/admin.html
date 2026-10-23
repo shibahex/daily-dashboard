@@ -79,6 +79,16 @@
   </div>
 
   <div class="card">
+    <h2>Web search</h2>
+    <p class="muted">With <b>Web search</b> on in the chat, Claude searches with Anthropic's own search (Anthropic charges the person's API key per search) and the AIs on the server with their own. A local model has none, so the server searches for it with a <a class="link" href="https://docs.searxng.org">SearXNG</a> you run, and reads the pages it picks (public web pages only). Its searches go through this server.</p>
+    <p class="small muted">SearXNG must allow its JSON format: <code>search.formats: [html, json]</code> in its <code>settings.yml</code>. Leave the address empty to give local models only page reading.</p>
+    <form hx-post="/admin/search" hx-target="#admin-card" hx-swap="outerHTML">
+      <input class="txt" name="search_url" autocomplete="off" spellcheck="false" placeholder="http://searxng:8080" value="{{.SearchURL}}">
+      <div><button class="sm primary">Save</button></div>
+    </form>
+  </div>
+
+  <div class="card">
     <h2>Model servers on your network</h2>
     <p class="muted">Besides a model on their own computer, people's browsers may talk to these (Ollama, LM Studio, llama.cpp or another OpenAI-style server) for the <b>Local model</b> AI. Their chats and notes go straight there, never through this server. One address per line, like <code>https://models.example.lan</code>; nothing else on your network is reachable.</p>
     <p class="small muted">Browsers check HTTPS certificates themselves and no page can skip that: with a self-signed or expired one, each person opens the address once and accepts the warning, or adds your certificate authority to their browser.</p>
@@ -110,5 +120,8 @@
 </fieldset>
 <fieldset><legend>Notes</legend>
   <label class="check"><input type="checkbox" name="edit_files"{{if $policy.EditFiles}} checked{{end}}> Their AI may save notes (it asks them first; it always reads them)</label>
+</fieldset>
+<fieldset><legend>Web</legend>
+  <label class="check"><input type="checkbox" name="web"{{if not $policy.NoWeb}} checked{{end}}> Their AI may search the web and read pages (when they turn on Web search in the chat)</label>
 </fieldset>
 {{end}}

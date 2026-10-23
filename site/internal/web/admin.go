@@ -22,6 +22,7 @@ type adminView struct {
 	Default        auth.Policy
 	ModelServers   []string // origins the browser AI may reach besides each person's own computer
 	SkipModelCerts bool     // the model relay is on (modelrelay.go)
+	SearchURL      string   // the SearXNG local models search with (webtools.go)
 	Providers      []choice
 	MCPs           []choice
 	Link           string // an invite or reset link, shown once
@@ -32,7 +33,7 @@ type adminView struct {
 
 func (ui *UI) adminView(r *http.Request) adminView {
 	view := adminView{Me: ui.user(r).ID, Users: ui.Auth.Users(), Invites: ui.Auth.Invites(), Default: ui.Auth.DefaultPolicy(),
-		ModelServers: ui.Auth.ModelServers(), SkipModelCerts: ui.Auth.SkipModelCerts()}
+		ModelServers: ui.Auth.ModelServers(), SkipModelCerts: ui.Auth.SkipModelCerts(), SearchURL: ui.Auth.SearchURL()}
 	view.Encrypted = map[string]bool{}
 	for _, user := range view.Users {
 		view.Encrypted[user.ID] = ui.Workspaces.Encrypted(user)
@@ -160,6 +161,7 @@ func policyFrom(r *http.Request) auth.Policy {
 	return auth.Policy{
 		Providers: r.Form["providers"], MCPs: r.Form["mcps"],
 		EditFiles: r.FormValue("edit_files") == "on",
+		NoWeb:     r.FormValue("web") != "on",
 	}.Clean()
 }
 
@@ -191,6 +193,11 @@ func expiresIn(t time.Time) string {
 func (ui *UI) setModelServers(w http.ResponseWriter, r *http.Request) {
 	err := ui.Auth.SetModelServers(strings.Split(r.FormValue("model_servers"), "\n"))
 	ui.renderAdmin(w, r, "Saved the model servers", err, nil)
+}
+
+// setSearch saves the SearXNG that local models search with ("" = none).
+func (ui *UI) setSearch(w http.ResponseWriter, r *http.Request) {
+	ui.renderAdmin(w, r, "Saved the web search", ui.Auth.SetSearchURL(r.FormValue("search_url")), nil)
 }
 
 // setSkipModelCerts turns the model relay on or off (modelrelay.go).

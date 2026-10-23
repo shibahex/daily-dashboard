@@ -214,3 +214,21 @@ func (p *Proxy) forward(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(resp.StatusCode)
 	io.Copy(w, resp.Body)
 }
+
+// Client is an HTTP client for the server itself with the proxy's rules: it only reaches
+// public addresses on the web ports, and checks every connection, so a redirect can't lead it
+// into the local network either.
+func (p *Proxy) Client(timeout time.Duration) *http.Client {
+	transport := &http.Transport{
+		DialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
+			target, err := p.target(ctx, address)
+			if err != nil {
+				return nil, err
+			}
+			return p.dialer.DialContext(ctx, network, target)
+		},
+		TLSHandshakeTimeout:   10 * time.Second,
+		ResponseHeaderTimeout: 20 * time.Second,
+	}
+	return &http.Client{Transport: transport, Timeout: timeout}
+}

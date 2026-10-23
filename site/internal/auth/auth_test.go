@@ -600,3 +600,22 @@ func TestLoginWaitSurvivesARestart(t *testing.T) {
 		t.Fatal("a restart shouldn't reset the wait")
 	}
 }
+
+func TestSearchURL(t *testing.T) {
+	a, _ := newTestAuth(t)
+	for typed, want := range map[string]string{
+		"searxng:8080":                  "http://searxng:8080",
+		" https://search.example.lan/ ": "https://search.example.lan",
+		"http://searxng:8080/search":    "http://searxng:8080",
+		"":                              "",
+	} {
+		if err := a.SetSearchURL(typed); err != nil || a.SearchURL() != want {
+			t.Errorf("SetSearchURL(%q) = %q, %v; want %q", typed, a.SearchURL(), err, want)
+		}
+	}
+	for _, bad := range []string{"ftp://x", "http://user:pw@x", "http://x/?q=1", "http://"} {
+		if err := a.SetSearchURL(bad); err == nil {
+			t.Errorf("SetSearchURL(%q) worked", bad)
+		}
+	}
+}

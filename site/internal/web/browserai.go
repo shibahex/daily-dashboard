@@ -72,6 +72,9 @@ func (ui *UI) assistantSetup(w http.ResponseWriter, r *http.Request) {
 		"instructions": !conversation.NoInstructions,
 		"edit":         user.Policy.EditFiles,
 		"relayed":      ui.Auth.RelayedModelServers(), // local model servers reached through the server (modelrelay.go)
+		"webAllowed":   !user.Policy.NoWeb,
+		"web":          webOn(user, conversation), // Claude searches with Anthropic's tool, the others with web__* (websearch.go)
+		"webSearch":    ui.Auth.SearchURL() != "", // the web__search tool is there (an admin set a SearXNG)
 	}
 	// Keys the server kept from before keys moved into the browser: handed over once, for the
 	// browser to seal; they're deleted when it saves its settings (sealed=1).
@@ -101,7 +104,7 @@ func (ui *UI) assistantSetup(w http.ResponseWriter, r *http.Request) {
 	}
 	answer["mcps"] = mcps
 	answer["system"] = assistant.Instructions(time.Now(), assistant.Context(ws.Paths.Plan(), ws.Paths.Data),
-		ready, !conversation.NoInstructions)
+		ready, !conversation.NoInstructions, webOn(user, conversation))
 	writeNoStoreJSON(w, answer)
 }
 
@@ -130,6 +133,12 @@ func (ui *UI) assistantSettings(w http.ResponseWriter, r *http.Request) {
 		conversation.MCPs = &enabled
 	case r.FormValue("instructions") != "":
 		conversation.NoInstructions = !conversation.NoInstructions
+	case r.FormValue("web") != "":
+		if user.Policy.NoWeb {
+			fail(w, problem.Forbiddenf("Your admin hasn't allowed web search for you"))
+			return
+		}
+		conversation.Web = !conversation.Web
 	case r.FormValue("provider") != "":
 		provider := r.FormValue("provider")
 		if !slices.Contains(allowedAIs(user), provider) {
@@ -198,6 +207,11 @@ func (ui *UI) assistantTools(w http.ResponseWriter, r *http.Request) {
 			tools = append(tools, tool{Name: name + toolSep + t.Name, Description: t.Description, InputSchema: t.InputSchema})
 		}
 	}
+	if user := ui.user(r); webOn(user, ui.ws(r).Conversations.Load()) {
+		for _, t := range ui.webTools() {
+			tools = append(tools, tool{Name: webServer + toolSep + t.Name, Description: t.Description, InputSchema: t.InputSchema})
+		}
+	}
 	writeNoStoreJSON(w, tools)
 }
 
@@ -205,6 +219,10 @@ func (ui *UI) assistantTools(w http.ResponseWriter, r *http.Request) {
 func (ui *UI) assistantTool(w http.ResponseWriter, r *http.Request) {
 	user, ws := ui.user(r), ui.ws(r)
 	server, tool, found := strings.Cut(r.FormValue("name"), toolSep)
+	if server == webServer {
+		ui.webTool(w, r, user, ws, tool)
+		return
+	}
 	session, err := ui.tools().open(ui, user, ws)
 	if err != nil {
 		fail(w, fmt.Errorf("%w: %v", problem.Unavailablef("Couldn't start the tools"), err))

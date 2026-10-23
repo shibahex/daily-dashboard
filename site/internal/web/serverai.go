@@ -194,7 +194,8 @@ func (run *serverRun) prepare(provider assistant.Provider, message, session, mod
 			return assistant.Request{}, err
 		}
 	}
-	instructions := assistant.Instructions(time.Now(), assistant.Context(ws.Paths.Plan(), ws.Paths.Data), ready, !conversation.NoInstructions) +
+	web := webOn(user, conversation)
+	instructions := assistant.Instructions(time.Now(), assistant.Context(ws.Paths.Plan(), ws.Paths.Data), ready, !conversation.NoInstructions, web) +
 		notesForPrompt(notes, edit)
 	if session == "" && strings.TrimSpace(history) != "" {
 		// A new conversation for this AI in a chat that already had some: what was said, so it
@@ -211,7 +212,7 @@ func (run *serverRun) prepare(provider assistant.Provider, message, session, mod
 		Model:        model,
 		Servers:      servers,
 		Instructions: instructions,
-		Caps:         assistant.Capabilities{Read: edit, Edit: edit},
+		Caps:         assistant.Capabilities{Read: edit, Edit: edit, Web: web}, // each CLI searches the web its own way
 		WorkDir:      configDir,
 		InnerWorkDir: sandbox.HomeDir + "/run-config",
 		Workspace:    sandbox.WorkspaceDir,

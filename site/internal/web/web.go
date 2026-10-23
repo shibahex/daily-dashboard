@@ -76,6 +76,7 @@ func (ui *UI) Routes(mux *http.ServeMux) {
 	admin("/admin/invites/cancel", ui.cancelInvite)
 	admin("/admin/default-policy", ui.setDefaultPolicy)
 	admin("/admin/model-servers", ui.setModelServers)
+	admin("/admin/search", ui.setSearch)
 	admin("/admin/model-servers/skip-certs", ui.setSkipModelCerts)
 	admin("/admin/users/{id}/reset", ui.resetUserPassword)
 	admin("/admin/users/{id}/disable", ui.setUserDisabled(true))

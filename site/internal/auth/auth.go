@@ -79,9 +79,10 @@ func (u User) IsAdmin() bool { return u.Role == Admin }
 // Policy is what a user's AI agent may use. Admins set it, and the server checks it again for
 // every message, whatever the page sent.
 type Policy struct {
-	Providers []string `json:"providers"`  // the AIs they may use: in the browser ("claude", "local"), or on the server (ServerProviders)
-	MCPs      []string `json:"mcps"`       // "myfitnesspal", "anki"
-	EditFiles bool     `json:"edit_files"` // the AI may save the user's notes (it always reads them)
+	Providers []string `json:"providers"`        // the AIs they may use: in the browser ("claude", "local"), or on the server (ServerProviders)
+	MCPs      []string `json:"mcps"`             // "myfitnesspal", "anki"
+	EditFiles bool     `json:"edit_files"`       // the AI may save the user's notes (it always reads them)
+	NoWeb     bool     `json:"no_web,omitempty"` // the AI may not search the web or read pages (allowed unless an admin says)
 
 	// Kept only to read old files: the server-side AI's web access and file reading.
 	Web       bool `json:"web,omitempty"`
@@ -161,6 +162,7 @@ type state struct {
 	DefaultPolicy  Policy            `json:"default_policy"`
 	ModelServers   []string          `json:"model_servers,omitempty"`    // origins the browser AI may reach (modelservers.go)
 	SkipModelCerts bool              `json:"skip_model_certs,omitempty"` // relay to them without checking certificates (testing)
+	SearchURL      string            `json:"search_url,omitempty"`       // the SearXNG the AI's web search asks (websearch.go)
 }
 
 // failures are wrong passwords in a row, kept in a file so a restart doesn't reset them.

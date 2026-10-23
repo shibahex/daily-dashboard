@@ -89,7 +89,7 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_buffering off;     # the AI chat streams its replies
         proxy_read_timeout 1h;
-    }
+        }
 }
 ```
 
@@ -157,9 +157,19 @@ The AI runs **in your browser** (`web/js/assistant.js`): your browser talks to t
 - **Saving notes:** if your admin allows it, the AI can save a note when you ask. It asks you before replacing one, and the old text stays in the note's history.
 - The chat is encrypted in your browser like your notes, until **New chat**.
 
+### Web search
+
+**Web search** above the chat lets the AI search the web and read pages (off until you turn it on; an admin can turn it off for someone on the Admin page):
+
+- **Claude** uses Anthropic's own web search and page reading, which run at Anthropic: your server never sees them. Anthropic charges your API key for each search (and your organization may need web search allowed in the Anthropic Console). Answers list the pages they cite.
+- **A local model** has no search of its own, so the server searches for it with a [SearXNG](https://docs.searxng.org) the admin runs (Admin page → Web search) and reads the pages it picks, only public web pages, through the same rules as the tools' proxy below. Those searches and pages go through the server; your notes and the chat still don't. Without a SearXNG the model can still read pages you name.
+- **The AIs on the server** use their own search (Claude Code's, Codex's, Gemini CLI's), through the proxy below.
+
+For SearXNG, turn on its JSON format (`search.formats: [html, json]` in its `settings.yml`). With Docker, run it next to the dashboard and set the address to `http://searxng:8080`.
+
 ### What the tools can reach
 
-The AI itself runs in your browser and has no web search. The MCP tools it calls run on the server, each in a sandbox ([bubblewrap](https://github.com/containers/bubblewrap)):
+The AI itself runs in your browser. The MCP tools it calls run on the server, each in a sandbox ([bubblewrap](https://github.com/containers/bubblewrap)):
 
 - It sees an empty home folder and an empty workspace: none of your files, not the dashboard's, not other people's, not the server account's logins.
 - It has **no network of its own**. Its only way out is the dashboard's proxy, which reaches public internet addresses on the web ports (80/443) and never the server itself, the local network or cloud metadata.
@@ -209,7 +219,7 @@ Your notes are only as private as the scripts that handle them, and those come f
 | `app.js` | `sha384-JnctrkvlZGdxCnBCEGJ0/B983nJBDl/YhS/5Pw5MaBcNP2ds3+FkYlaqvzAPCQoo` |
 | `keys.js` | `sha384-nwe1d2+ABaJt3Q/12zr1QRW8BolKLItadMXGeqOorCsyP4qfCfXFCb1JdeSaVU2g` |
 | `notes.js` | `sha384-iW4AiXCfNgQnKveb3A39gXIDQGefd5rlBvVGT5CeA8cMmPOz2/eGusX9YGt9ctl+` |
-| `assistant.js` | `sha384-+r7/On77t7mkhnGpoWTsHr6SGo0E5H94Y7IkbCP++hpS5S2NVh8MuMUoKYHSKZYJ` |
+| `assistant.js` | `sha384-nBTyKfoOV8/ZXFY5wlssTjFnjWtyf9WkWiIoo8QD9sjnHF1zhf2IQe8hNOw+F8if` |
 | `htmx.js` | `sha384-HGfztofotfshcF7+8n44JQL2oJmowVChPTg48S+jvZoztPfvwD79OC/LTtG6dMp+` |
 | `htmx-sse.js` | `sha384-fw+eTlCc7suMV/1w/7fr2/PmwElUIt5i82bi+qTiLXvjRXZ2/FkiTNA/w0MhXnGI` |
 | `marked.js` | `sha384-IvVdUXkhyoD0shbjhiiOnuiTbervTaB0VJcnEcg3shUAMVOOF6lKj4ozJrCwvz6s` |
