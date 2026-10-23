@@ -30,7 +30,7 @@ func (ui *UI) importData(w http.ResponseWriter, r *http.Request) {
 	}
 	defer r.MultipartForm.RemoveAll()
 	ws := ui.ws(r)
-	var done, problems []string
+	done, problems := []string{}, []string{} // never null in the JSON: the browser spreads them
 	note := func(err error, format string, args ...any) {
 		if err != nil {
 			problems = append(problems, problem.Public(err))
