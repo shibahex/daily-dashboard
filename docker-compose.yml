@@ -26,7 +26,7 @@ services:
     # On Ubuntu 23.10 and later set DASHBOARD_APPARMOR=podman (see .env.example).
     security_opt:
       - seccomp=unconfined
-      - apparmor=${DASHBOARD_APPARMOR:-unconfined}
+      - apparmor=${DASHBOARD_APPARMOR:-podman}
       - systempaths=unconfined
 
 volumes:
