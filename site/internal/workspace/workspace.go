@@ -29,7 +29,6 @@ import (
 	"dashboard/internal/jsonfile"
 	"dashboard/internal/lifting"
 	"dashboard/internal/myfitnesspal"
-	"dashboard/internal/problem"
 	"dashboard/internal/secrets"
 	"dashboard/internal/store"
 	"dashboard/internal/tasks"
