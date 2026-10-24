@@ -182,9 +182,6 @@ func (m *Manager) Remove(userID string) error {
 // ConnectAnki checks the user's AnkiConnect (see anki.CheckConnection), saves it and points
 // their Anki and their agent's Anki MCP at it. The host keeps this computer's Anki.
 func (m *Manager) ConnectAnki(user auth.User, url, apiKey string) error {
-	if user.Host {
-		return problem.Invalidf("This account uses the Anki on the server's computer")
-	}
 	cleaned, err := anki.CheckConnection(url, apiKey, false)
 	if err != nil {
 		return err
@@ -199,9 +196,6 @@ func (m *Manager) ConnectAnki(user auth.User, url, apiKey string) error {
 
 // DisconnectAnki forgets the user's AnkiConnect.
 func (m *Manager) DisconnectAnki(user auth.User) error {
-	if user.Host {
-		return problem.Invalidf("This account uses the Anki on the server's computer")
-	}
 	ws := m.For(user)
 	if err := os.Remove(filepath.Join(filepath.Dir(ws.Paths.Plan()), "anki.json")); err != nil && !os.IsNotExist(err) {
 		return err
@@ -245,6 +239,9 @@ func (m *Manager) openWorkspace(user auth.User, dir string) *Workspace {
 	ankiClient := m.hostAnki
 	if user.Host {
 		taskClient, ws.Time = taskwarrior.NewClient(), timewarrior.NewClient()
+		if saved := loadAnki(dir); saved.URL != "" {
+			ankiClient = saved
+		}
 	} else {
 		env := prepareTaskwarrior(dir, filepath.Join(m.paths.Site, ".timew-hook"))
 		taskClient, ws.Time = taskwarrior.NewClientWithEnv(env), timewarrior.NewClientWithEnv(env)
