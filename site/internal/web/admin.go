@@ -47,7 +47,7 @@ func (ui *UI) adminView(r *http.Request) adminView {
 	return view
 }
 
-var mcpLabels = map[string]string{"myfitnesspal": "MyFitnessPal", "anki": "Anki"}
+var mcpLabels = map[string]string{"myfitnesspal": "MyFitnessPal", "anki": "Anki", "taskwarrior": "Taskwarrior"}
 
 // providerLabels name the AIs: the browser runs the first two, the server the rest.
 var providerLabels = map[string]string{"claude": "Claude", "local": "Local model (on their computer, or a model server below)",

@@ -8,7 +8,7 @@ The web dashboard in `site/`: a self-hosted page for daily habits: today's worko
 - **History:** GitHub-style activity heatmap (tasks done, hours tracked, checklist), activity feed, time log editor, skip reasons
 - **Docs:** your own Markdown notes, encrypted in your browser (see **Encrypted data**), plus these guides. **Edit** a note, add one with the box under the list, move the open one with ↑ ↓, or delete it. Each note keeps its last 10 versions (**Earlier versions**, under it) and deleted notes stay in **Recently deleted** until 20 newer ones push them out.
 - **Anki:** your decks and due cards, add cards, search and edit notes (below)
-- **MCPs:** chat with an AI about your notes, MyFitnessPal diary and Anki cards. It runs in your browser (below)
+- **MCPs:** chat with an AI about your notes, MyFitnessPal diary, Anki cards and tasks. It runs in your browser (below)
 
 ## Run
 
@@ -146,7 +146,9 @@ Works through the [AnkiConnect](https://ankiweb.net/shared/info/2055492159) add-
 
 ## MCPs tab
 
-A chat with an AI that knows your notes, plan and data and can use your MyFitnessPal diary and Anki cards: ask about your food and plan, say what you ate and it logs it, or have it make flashcards. It uses the [MyFitnessPal MCP](https://github.com/Mason-Levyy/myfitnesspal-mcp) and the [Anki MCP](https://github.com/ankimcp/anki-mcp-server).
+A chat with an AI that knows your notes, plan and data and can use your MyFitnessPal diary, Anki cards and Taskwarrior tasks: ask about your food and plan, say what you ate and it logs it, have it make flashcards, or tell it to add, reschedule, finish or skip a task. It uses the [MyFitnessPal MCP](https://github.com/Mason-Levyy/myfitnesspal-mcp) and the [Anki MCP](https://github.com/ankimcp/anki-mcp-server), and the dashboard's own Taskwarrior MCP (`dashboard task-mcp`).
+
+**Tasks:** the Taskwarrior tools (`tasks_list`, `tasks_add`, `tasks_modify`, `tasks_done`, `tasks_reopen`, `tasks_start`, `tasks_stop`, `tasks_annotate`, `tasks_delete`) work on **your** tasks, the ones on the Tasks tab, with the same checks on every value as the tab. They never run an arbitrary `task` command, and there is no undo or import for the AI. Repeating schedules can only be changed on the Tasks tab; the AI can change or skip single copies. Deleting a task keeps why, as a note, so History shows it. Existing accounts get this tool when an admin ticks **Taskwarrior** under the account's MCPs on the Admin page (new accounts and the first admin have it from the start); each person can turn it off in the chat.
 
 The AI runs **in your browser** (`web/js/assistant.js`): your browser talks to the AI directly, with your notes in its prompt, so they never pass through the dashboard's server. The exception is the AIs **on the server**, which you have to turn on (below).
 
@@ -177,6 +179,7 @@ The AI itself runs in your browser. The MCP tools it calls run on the server, ea
 - It sees an empty home folder and an empty workspace: none of your files, not the dashboard's, not other people's, not the server account's logins.
 - It has **no network of its own**. Its only way out is the dashboard's proxy, which reaches public internet addresses on the web ports (80/443) and never the server itself, the local network or cloud metadata.
 - The MyFitnessPal MCP uses **your** MyFitnessPal login; the Anki MCP reaches **your** Anki through the dashboard's Anki gateway, which refuses media from URLs or files and links, scripts or remote content in cards. So planted text in a shared deck or food entry can't use Anki to fetch or leak anything. Foods it creates in MyFitnessPal are private.
+- The Taskwarrior MCP is the dashboard's own program, started in the sandbox with nothing but a unix socket to **your** tasks: your Taskwarrior data, taskrc and the `task` program are not inside the sandbox, and the socket only offers the tools above.
 - The MCP programs are installed once by the server (`site/data/tools/`, pinned versions) and mounted read-only: nothing is downloaded inside a sandbox. The tools stop after 10 idle minutes, and when your data locks.
 - The server sees what goes to and from these tools (food searches and entries, cards), not your notes or the rest of the chat.
 
@@ -222,7 +225,7 @@ Your notes are only as private as the scripts that handle them, and those come f
 | `app.js` | `sha384-JnctrkvlZGdxCnBCEGJ0/B983nJBDl/YhS/5Pw5MaBcNP2ds3+FkYlaqvzAPCQoo` |
 | `keys.js` | `sha384-nwe1d2+ABaJt3Q/12zr1QRW8BolKLItadMXGeqOorCsyP4qfCfXFCb1JdeSaVU2g` |
 | `notes.js` | `sha384-AfMYqfyrh1ctxfqOKdVHMa363w7VG3KevRVtPk4h/8s2lM91Imr4obUH9Apa8X8o` |
-| `backup.js` | `sha384-Y/pu3exPYWdYgVyNW/qbSljWfBE5nxJTGCj/X/XM4YXwnnbu3HvijZaMlMKshMIJ` |
+| `backup.js` | `sha384-+eJ3xoNA73/NQzsBvUaKsl/LOmHLN3oP4Qvy5Ll9yE35LgxOKDXT5xEGx1yb+7sb` |
 | `assistant.js` | `sha384-Dwr2k9PR7xp2mkld69ILXxm5MaHtvib91nYPFYBEob39fdCLRoYcV/JzKJFyYr6b` |
 | `htmx.js` | `sha384-HGfztofotfshcF7+8n44JQL2oJmowVChPTg48S+jvZoztPfvwD79OC/LTtG6dMp+` |
 | `htmx-sse.js` | `sha384-fw+eTlCc7suMV/1w/7fr2/PmwElUIt5i82bi+qTiLXvjRXZ2/FkiTNA/w0MhXnGI` |
@@ -245,5 +248,5 @@ None of this is tracked by git:
 
 ## Code
 
-- `site/cmd/dashboard`: the Go server's entry point; `site/internal/` holds one package per area: `auth` (accounts, sessions, invites, policy), `workspace` (each user's folder and services), `taskwarrior`, `timewarrior`, `myfitnesspal`, `anki` (and its gateway), `lifting` (routines and workouts), `assistant` (what the server gives the AI in the browser, and the AI CLIs it runs for people who turn that on), `mcp` (starting MCP tools and talking to them), `sandbox` and `egress` (the tools' sandbox and its proxy), `vault` (encrypting each person's data), `web` and `api` (the HTTP handlers). Two dependencies: goldmark (Markdown) and golang.org/x/net/html (reading MyFitnessPal's pages). `nix run` builds it.
+- `site/cmd/dashboard`: the Go server's entry point; `site/internal/` holds one package per area: `auth` (accounts, sessions, invites, policy), `workspace` (each user's folder and services), `taskwarrior`, `taskmcp` (the AI's Taskwarrior tools), `timewarrior`, `myfitnesspal`, `anki` (and its gateway), `lifting` (routines and workouts), `assistant` (what the server gives the AI in the browser, and the AI CLIs it runs for people who turn that on), `mcp` (starting MCP tools and talking to them), `sandbox` and `egress` (the tools' sandbox and its proxy), `vault` (encrypting each person's data), `web` and `api` (the HTTP handlers). Two dependencies: goldmark (Markdown) and golang.org/x/net/html (reading MyFitnessPal's pages). `nix run` builds it.
 - `site/web/`: the pages. `templates/` has the HTML (one file per tab), rendered on the server and updated in place with [HTMX](https://htmx.org); styles are in `css/` (one file per area) and `js/app.js` does the few things HTMX can't (toasts, shortcuts, dragging cards, timed refreshes, the workout clocks); `js/keys.js`, `notes.js` and `assistant.js` handle what the server must never see (passwords, notes, the AI chat). No build step: edit a file and reload the page.

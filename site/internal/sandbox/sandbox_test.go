@@ -97,3 +97,36 @@ func TestTheSandboxHasNoNetworkButTheProxy(t *testing.T) {
 		t.Errorf("network leak:\n%s", out)
 	}
 }
+
+func TestTheTasksSocketIsOnlyBoundWhenGiven(t *testing.T) {
+	dir := t.TempDir()
+	tools := Tools{Bwrap: "bwrap", Socat: "socat", Shell: "/bin/sh", Env: "/usr/bin/env", Coreutils: "/bin",
+		CACerts: "/etc/ssl/certs/ca-certificates.crt"}
+	spec := Spec{RunDir: dir, Home: dir, Workspace: dir, Egress: filepath.Join(dir, "egress.sock")}
+	without, err := tools.Command(spec, []string{"true"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	spec.Tasks = filepath.Join(dir, "tasks.sock")
+	with, err := tools.Command(spec, []string{"true"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(strings.Join(without, " "), TasksSocket) {
+		t.Error("the Taskwarrior socket is in the sandbox without being asked for")
+	}
+	if !strings.Contains(" "+strings.Join(with, " ")+" ", " --ro-bind "+spec.Tasks+" "+TasksSocket+" ") {
+		t.Errorf("the Taskwarrior socket isn't bound: %v", with)
+	}
+}
+
+func TestTheDashboardCanRunItselfAsAnMCPServer(t *testing.T) {
+	program, err := (&Programs{}).Self()
+	if err != nil || program.Command == "" {
+		t.Fatalf("Self() = %+v, %v", program, err)
+	}
+	// Outside /nix/store the sandbox can only run it if it's shown there.
+	if !strings.HasPrefix(program.Command, "/nix/store/") && (program.Mount.Source != program.Command || program.Mount.Target != program.Command) {
+		t.Errorf("%s isn't visible in the sandbox: %+v", program.Command, program.Mount)
+	}
+}

@@ -11,12 +11,13 @@ import (
 	"dashboard/internal/mcp"
 	"dashboard/internal/problem"
 	"dashboard/internal/sandbox"
+	"dashboard/internal/taskmcp"
 	"dashboard/internal/workspace"
 )
 
 // toolSandbox is where a user's MCP tools run for the AI in their browser (browserai.go): a
 // bubblewrap sandbox with an empty home and workspace, the network only through the egress
-// proxy, and only that user's own MyFitnessPal login or Anki gateway key.
+// proxy, and only that user's own MyFitnessPal login, Anki gateway key or Taskwarrior gateway.
 type toolSandbox struct {
 	ui        *UI
 	ws        *workspace.Workspace
@@ -101,6 +102,28 @@ func (sb *toolSandbox) mcpServer(name string, spec *sandbox.Spec) (mcp.Server, e
 		spec.Path = append(spec.Path, program.Path)
 		return mcp.Server{Command: program.Command, Args: program.Args,
 			Env: map[string]string{"ANKI_CONNECT_URL": sandbox.AnkiURL, "ANKI_CONNECT_API_KEY": sb.ws.Anki().GatewayKey}}, nil
+	case "taskwarrior":
+		// The MCP is the dashboard's own program: it only passes the AI's calls through a socket
+		// to the gateway here, which works on this user's tasks. No Taskwarrior data, taskrc or
+		// `task` program is inside the sandbox.
+		program, err := sb.ui.Programs.Self()
+		if err != nil {
+			return mcp.Server{}, err
+		}
+		socket := filepath.Join(sb.sockets, "tasks.sock")
+		listener, err := net.Listen("unix", socket)
+		if err != nil {
+			return mcp.Server{}, err
+		}
+		sb.listeners = append(sb.listeners, listener)
+		go taskmcp.NewGateway(sb.ws.Tasks).Serve(listener)
+		spec.Tasks = socket
+		if program.Mount.Source != "" {
+			spec.Mounts = append(spec.Mounts, program.Mount)
+		}
+		spec.Path = append(spec.Path, program.Path)
+		return mcp.Server{Command: program.Command, Args: []string{taskmcp.Command},
+			Env: map[string]string{taskmcp.SocketEnv: sandbox.TasksSocket}}, nil
 	}
 	return mcp.Server{}, problem.Invalidf("unknown MCP " + name)
 }

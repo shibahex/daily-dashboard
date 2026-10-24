@@ -68,28 +68,41 @@ func (s *Service) list(filter ...string) ([]taskwarrior.Task, error) {
 
 // NewTask is a task to add. Empty fields are left out.
 type NewTask struct {
-	Description, Project, Priority, Due, Recur string
-	Tags                                       []string
+	Description, Project, Priority, Due, Scheduled, Wait, Recur string
+	Tags                                                        []string
 }
 
 func (s *Service) Add(task NewTask) error {
+	_, err := s.AddTask(task)
+	return err
+}
+
+// AddTask adds the task and returns its uuid (for a repeating task, the new series'), so the
+// caller can show or change it.
+func (s *Service) AddTask(task NewTask) (string, error) {
 	description := strings.TrimSpace(task.Description)
 	if description == "" || len([]rune(description)) > 300 {
-		return problem.Invalidf("description required")
+		return "", problem.Invalidf("description required")
 	}
 	changes := taskwarrior.Changes{Recur: strings.TrimSpace(task.Recur), AddTags: task.Tags}
 	changes.Project = nonEmpty(task.Project)
 	changes.Priority = nonEmpty(task.Priority)
 	changes.Due = nonEmpty(task.Due)
+	changes.Scheduled = nonEmpty(task.Scheduled)
+	changes.Wait = nonEmpty(task.Wait)
 	if changes.Recur != "" && changes.Due == nil {
-		return problem.Invalidf("a repeating task needs a due date")
+		return "", problem.Invalidf("a repeating task needs a due date")
 	}
 	seriesArgs, dateArgs, err := changes.Args()
 	if err != nil {
-		return problem.Invalidf(err.Error())
+		return "", problem.Invalidf(err.Error())
 	}
-	args := append(append(append([]string{"add"}, seriesArgs...), dateArgs...), "--", description)
-	return s.run(args...)
+	args := append(append(append([]string{"rc.verbose=new-uuid", "add"}, seriesArgs...), dateArgs...), "--", description)
+	result := s.tasks.Run(args...)
+	if !result.OK() {
+		return "", commandError(result, "couldn't add the task")
+	}
+	return newUUID.FindString(result.Stdout), nil
 }
 
 // Edit is a change to an existing task. Nil fields stay as they are.

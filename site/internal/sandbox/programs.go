@@ -94,6 +94,24 @@ func (p *Programs) Anki() (Program, error) {
 	return Program{Command: node, Args: []string{script, "--stdio"}, Mount: Mount{Source: dir, Target: dir}, Path: filepath.Dir(node)}, nil
 }
 
+// Self is the dashboard program itself, for the MCP servers built into it (`dashboard task-mcp`).
+// Nothing is installed: under /nix/store the sandbox already sees it, and anywhere else (a build
+// from `go run`) it's shown read-only at its own path. Mount.Source is "" when none is needed.
+func (p *Programs) Self() (Program, error) {
+	exe, err := os.Executable()
+	if err != nil {
+		return Program{}, errors.New("couldn't find the dashboard's own program")
+	}
+	if real, err := filepath.EvalSymlinks(exe); err == nil {
+		exe = real
+	}
+	program := Program{Command: exe, Args: []string{}, Path: filepath.Dir(exe)}
+	if !strings.HasPrefix(exe, "/nix/store/") {
+		program.Mount = Mount{Source: exe, Target: exe}
+	}
+	return program, nil
+}
+
 // lastVersion is "0.27.0" for "@scope/name@0.27.0".
 func lastVersion(spec string) string {
 	if i := strings.LastIndex(spec, "@"); i > 0 {

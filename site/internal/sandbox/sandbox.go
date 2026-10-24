@@ -1,7 +1,7 @@
 // Package sandbox runs an AI agent's CLI in a bubblewrap sandbox: its own empty home, a
 // /workspace with only what the user's policy lets it see, the Nix store read-only, and no
-// network of its own. Its only way out is the dashboard's egress proxy (and, for the Anki MCP,
-// the user's Anki gateway), each reached through a unix socket the dashboard opens for the run
+// network of its own. Its only way out is the dashboard's egress proxy (and, for the Anki and
+// Taskwarrior MCPs, the user's own gateway), each reached through a unix socket the dashboard opens for the run
 // and a socat inside the sandbox that offers it on 127.0.0.1.
 //
 // Nothing of the host is visible: not the dashboard's files, not other users' folders, not the
@@ -24,6 +24,9 @@ const (
 	socketDir    = "/run/dashboard"
 	ProxyURL     = "http://127.0.0.1:3128"
 	AnkiURL      = "http://127.0.0.1:8765"
+	// TasksSocket is where the Taskwarrior MCP finds the dashboard (a unix socket it dials itself:
+	// it needs no socat).
+	TasksSocket = socketDir + "/tasks.sock"
 )
 
 // Tools are the programs the sandbox needs, as real paths (in the Nix store on NixOS).
@@ -85,6 +88,7 @@ type Spec struct {
 	Mounts    []Mount  // anything else: MCP programs (read-only), the MyFitnessPal login folder
 	Egress    string   // the egress proxy's socket
 	Anki      string   // the user's Anki gateway socket ("" = no Anki)
+	Tasks     string   // the user's Taskwarrior gateway socket ("" = no Taskwarrior tools)
 	Path      []string // extra folders for PATH (the CLI's and MCPs' programs)
 	Env       []string // KEY=value for inside, on top of the basics
 }
@@ -119,6 +123,9 @@ func (t Tools) Command(spec Spec, args []string) ([]string, error) {
 	}
 	if spec.Anki != "" {
 		cmd = append(cmd, "--ro-bind", spec.Anki, socketDir+"/anki.sock")
+	}
+	if spec.Tasks != "" {
+		cmd = append(cmd, "--ro-bind", spec.Tasks, TasksSocket)
 	}
 	for _, m := range spec.Mounts {
 		flag := "--ro-bind"

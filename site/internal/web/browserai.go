@@ -94,6 +94,7 @@ func (ui *UI) assistantSetup(w http.ResponseWriter, r *http.Request) {
 	for _, m := range []browserMCP{
 		{ID: "myfitnesspal", Label: "MyFitnessPal", Ready: ws.MyFitnessPal.Client().Setup().SignedIn},
 		{ID: "anki", Label: "Anki", Ready: ws.Anki().Status().Connected},
+		{ID: "taskwarrior", Label: "Taskwarrior", Ready: mcpReady(ws, "taskwarrior")},
 	} {
 		if user.Policy.AllowsMCP(m.ID) {
 			m.Enabled = slices.Contains(enabled, m.ID)
@@ -289,9 +290,7 @@ func (ui *UI) tools() *toolSessions {
 func (ts *toolSessions) open(ui *UI, user auth.User, ws *workspace.Workspace) (*toolSession, error) {
 	var names []string
 	for _, name := range allowedMCPs(user.Policy, ws.Conversations.Load()) {
-		ready := (name == "myfitnesspal" && ws.MyFitnessPal.Client().Setup().SignedIn) ||
-			(name == "anki" && ws.Anki().Status().Connected)
-		if ready {
+		if mcpReady(ws, name) {
 			names = append(names, name)
 		}
 	}

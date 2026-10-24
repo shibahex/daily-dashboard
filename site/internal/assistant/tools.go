@@ -26,7 +26,7 @@ func ToolDetail(input map[string]any) string {
 	if notes, ok := input["notes"].([]any); ok && len(notes) > 0 {
 		return fmt.Sprintf("%d notes", len(notes))
 	}
-	for _, key := range []string{"query", "deck", "deckName", "file_path", "absolute_path", "path", "pattern", "command", "name", "date"} {
+	for _, key := range []string{"query", "deck", "deckName", "file_path", "absolute_path", "path", "pattern", "command", "name", "date", "search", "description"} {
 		value, ok := input[key]
 		if !ok || value == nil || value == "" {
 			continue

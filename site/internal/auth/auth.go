@@ -80,7 +80,7 @@ func (u User) IsAdmin() bool { return u.Role == Admin }
 // every message, whatever the page sent.
 type Policy struct {
 	Providers []string `json:"providers"`        // the AIs they may use: in the browser ("claude", "local"), or on the server (ServerProviders)
-	MCPs      []string `json:"mcps"`             // "myfitnesspal", "anki"
+	MCPs      []string `json:"mcps"`             // "myfitnesspal", "anki", "taskwarrior"
 	EditFiles bool     `json:"edit_files"`       // the AI may save the user's notes (it always reads them)
 	NoWeb     bool     `json:"no_web,omitempty"` // the AI may not search the web or read pages (allowed unless an admin says)
 
@@ -93,7 +93,7 @@ var (
 	KnownProviders = []string{"claude", "local", "claude-code", "codex", "gemini"}
 	// ServerProviders are the AIs that run on the server, only for people who turn that on.
 	ServerProviders = []string{"claude-code", "codex", "gemini"}
-	KnownMCPs       = []string{"myfitnesspal", "anki"}
+	KnownMCPs       = []string{"myfitnesspal", "anki", "taskwarrior"}
 	// FullPolicy is everything: the first admin's.
 	FullPolicy = Policy{Providers: KnownProviders, MCPs: KnownMCPs, EditFiles: true}
 	// NewUserPolicy is the default for new users until an admin changes it: everything but the

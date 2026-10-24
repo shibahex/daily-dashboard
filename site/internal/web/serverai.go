@@ -17,6 +17,7 @@ import (
 	"dashboard/internal/auth"
 	"dashboard/internal/problem"
 	"dashboard/internal/sandbox"
+	"dashboard/internal/taskwarrior"
 	"dashboard/internal/workspace"
 )
 
@@ -227,10 +228,12 @@ func (run *serverRun) prepare(provider assistant.Provider, message, session, mod
 	}, nil
 }
 
-// mcpReady reports whether the MCP is set up for the user.
+// mcpReady reports whether the MCP is set up for the user. Taskwarrior needs nothing but the
+// `task` program: every account has its own tasks.
 func mcpReady(ws *workspace.Workspace, name string) bool {
 	return (name == "myfitnesspal" && ws.MyFitnessPal.Client().Setup().SignedIn) ||
-		(name == "anki" && ws.Anki().Status().Connected)
+		(name == "anki" && ws.Anki().Status().Connected) ||
+		(name == "taskwarrior" && taskwarrior.Installed())
 }
 
 const maxPromptNotes = 192 << 10

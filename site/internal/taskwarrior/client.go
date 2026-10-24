@@ -39,6 +39,12 @@ type Client struct {
 
 func NewClient() *Client { return &Client{} }
 
+// Installed reports whether the `task` program can be found.
+func Installed() bool {
+	_, err := exec.LookPath("task")
+	return err == nil
+}
+
 // NewClientWithEnv runs `task` with these extra environment variables: a user's own taskrc,
 // task data and Timewarrior database.
 func NewClientWithEnv(env []string) *Client { return &Client{env: env} }

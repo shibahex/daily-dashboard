@@ -27,6 +27,7 @@ import (
 	"dashboard/internal/myfitnesspal"
 	"dashboard/internal/sandbox"
 	"dashboard/internal/secrets"
+	"dashboard/internal/taskmcp"
 	"dashboard/internal/web"
 	"dashboard/internal/workspace"
 )
@@ -34,6 +35,14 @@ import (
 const defaultPort = 1628
 
 func main() {
+	if len(os.Args) == 2 && os.Args[1] == taskmcp.Command {
+		// The Taskwarrior MCP server, started by the AI inside its sandbox (see taskmcp).
+		if err := taskmcp.RunStdio(); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
 	if len(os.Args) == 3 && os.Args[1] == "reset-password" {
 		resetPassword(os.Args[2])
 		return
@@ -68,7 +77,7 @@ func main() {
 	workspaces.Credentials = account.Credentials
 	tools, sandboxErr := sandbox.Find()
 	if sandboxErr != nil {
-		log.Printf("The AI's MyFitnessPal and Anki tools won't run: %v", sandboxErr)
+		log.Printf("The AI's MyFitnessPal, Anki and Taskwarrior tools won't run: %v", sandboxErr)
 	}
 	workspaces.OpenAll(account.Users())
 	stopSaving := make(chan struct{})
