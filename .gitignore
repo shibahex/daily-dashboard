@@ -25,3 +25,5 @@ updates
 
 # Docker settings (copy .env.example)
 /.env
+
+*.xml
