@@ -8,14 +8,42 @@
 /* The workout */
 .lift-clock { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--accent); font-size: 18px; }
 .lift-form { display: flex; flex-direction: column; gap: 14px; margin-top: 12px; }
-.lift-rest { position: sticky; top: 8px; z-index: 2; display: flex; align-items: center; justify-content: space-between; gap: 8px 12px; flex-wrap: wrap;
-  padding: 10px 12px 12px; border-radius: 8px; background: var(--accent-soft); color: var(--accent); overflow: hidden; }
+/* The rest and hold timers: a banner that stays in view while you scroll the sets */
+.lift-timer { position: sticky; top: 8px; z-index: 2; display: flex; align-items: center; justify-content: space-between; gap: 8px 12px; flex-wrap: wrap;
+  padding: 10px 12px 12px; border-radius: 10px; background: var(--accent-soft); color: var(--accent); overflow: hidden;
+  box-shadow: 0 4px 14px rgb(0 0 0 / .08); }
+.lift-timer.hold { background: var(--accent); color: var(--on-accent); }
+.lift-timer.hold .lift-rest-bar span { background: var(--on-accent); }
+.lift-timer.hold .sm:not(.primary) { background: transparent; color: inherit; border-color: currentColor; }
+.lift-timer.hold .sm.primary { background: var(--on-accent); color: var(--accent); border-color: var(--on-accent); }
+.lift-timer .rest-left { display: inline-block; transition: transform .15s; }
+.lift-timer.bumped .rest-left { transform: scale(1.18); }
 .lift-rest-text { font-size: 15px; } .lift-rest-text b { font-size: 20px; font-variant-numeric: tabular-nums; }
 .lift-rest-bar { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: transparent; }
 .lift-rest-bar span { display: block; height: 100%; width: calc(var(--left, 1) * 100%); background: var(--accent); transition: width 1s linear; }
-.lift-rest.over { background: var(--skip-soft); color: var(--skip); }
-.lift-rest.over .lift-rest-bar span { background: var(--skip); }
-.lift-ex { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+.lift-timer.over { background: var(--skip-soft); color: var(--skip); }
+.lift-timer.over .lift-rest-bar span { background: var(--skip); }
+.lift-ex { position: relative; border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; background: var(--panel); transition: border-color .15s; }
+.lift-ex:has(.lift-set.next) { border-color: var(--accent); }
+.lift-ex.finished:not(.skipped) .lift-ex-title b::after { content: " ✓"; color: var(--accent); }
+.lift-ex-info { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.lift-ex-title .badge { font-size: 11px; padding: 1px 7px; }
+.lift-swapped { color: var(--accent); overflow-wrap: anywhere; }
+/* A superset: its exercises joined into one block with a bar down the left */
+.lift-ex.ss-first, .lift-ex.ss-mid, .lift-ex.ss-last { border-left: 3px solid var(--accent); }
+.lift-ex.ss-first, .lift-ex.ss-mid { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+.lift-ex.ss-mid, .lift-ex.ss-last { margin-top: -15px; border-top: 1px dashed var(--line); border-top-left-radius: 0; border-top-right-radius: 0; }
+.ss-label { position: absolute; top: -9px; left: 10px; padding: 0 6px; font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
+  color: var(--accent); background: var(--panel); border-radius: 4px; }
+.ss-btn { font-size: 13px; }
+.ss-btn.on { color: var(--accent); border-color: var(--accent); }
+/* Folded optional exercises open with "Do it" */
+.lift-opt-open input { display: none; }
+.lift-ex.closed .lift-ex-body { display: none; }
+.lift-ex.closed:has(.lift-opt-open input:checked) .lift-ex-body { display: block; }
+.lift-ex.closed:has(.lift-opt-open input:checked) .lift-opt-open { display: none; }
+.lift-ex.closed:not(:has(.lift-opt-open input:checked)) { opacity: .8; border-style: dashed; }
+.lift-ex.closed .lift-ex-head { margin-bottom: 6px; }
 .lift-ex-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; margin-bottom: 8px; }
 .lift-ex-head b { overflow-wrap: anywhere; }
 .lift-sets { display: flex; flex-direction: column; gap: 4px; margin-bottom: 6px; }
@@ -27,12 +55,18 @@
 .ex-1rm-now { color: var(--accent); }
 .ex-1rm:has(.ex-1rm-now:empty) { display: none; } /* bodyweight, or nothing typed yet */
 .ex-1rm.pr .ex-1rm-label { color: var(--skip); }
-.note-btn, .skip-btn { display: grid; place-items: center; }
-.note-btn input, .skip-btn input { display: none; }
-.note-btn:has(input:checked), .skip-btn:has(input:checked) { color: var(--accent); border-color: var(--accent); }
-.lift-ex-skip { display: none; gap: 6px; margin: 0 0 8px; }
-.lift-ex-skip input { flex: 1; min-width: 0; font-size: 14px; }
-.lift-ex:has(.skip-btn input:checked) .lift-ex-skip { display: flex; }
+.note-btn, .toggle-btn { display: grid; place-items: center; }
+.note-btn input, .toggle-btn input { display: none; }
+.note-btn:has(input:checked), .toggle-btn:has(input:checked) { color: var(--accent); border-color: var(--accent); }
+.swap-btn.has-options { color: var(--accent); }
+/* The swap and skip panels under an exercise's name, opened by its ⇄ and ⤼ buttons */
+.lift-panel { display: none; flex-direction: column; gap: 6px; margin: 0 0 10px; padding: 10px; border-radius: 8px; background: var(--bg); }
+.lift-panel-row { display: flex; gap: 6px; }
+.lift-panel input { flex: 1; min-width: 0; font-size: 14px; }
+.lift-ex:has(.swap-btn input:checked) .lift-ex-swap, .lift-ex:has(.skip-btn input:checked) .lift-ex-skip { display: flex; }
+.lift-choices { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { font: inherit; font-size: 13px; padding: 5px 11px; border-radius: 999px; border: 1px solid var(--accent); background: var(--accent-soft); color: var(--accent); cursor: pointer; }
+.chip:hover { background: var(--accent); color: var(--on-accent); }
 .lift-ex.skipped { opacity: .75; border-style: dashed; }
 .lift-ex.skipped .lift-ex-head { margin-bottom: 0; }
 .lift-set.skipped { grid-template-columns: 28px minmax(0, 1fr) auto; color: var(--muted); font-size: 14px; }
@@ -48,6 +82,12 @@
 button.tick { font: inherit; width: 40px; height: 32px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--muted); cursor: pointer; }
 button.tick:hover { border-color: var(--accent); color: var(--accent); }
 button.tick.on { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+button.tick.timing { background: var(--accent); border-color: var(--accent); color: var(--on-accent); animation: tick-pulse 1.2s ease-in-out infinite; }
+@keyframes tick-pulse { 50% { opacity: .65; } }
+/* The next set to do */
+.lift-set.next button.tick:not(.on) { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.lift-set.next .lift-n { color: var(--accent); font-weight: 700; }
+@media (prefers-reduced-motion: reduce) { button.tick.timing { animation: none; } .lift-timer .rest-left { transition: none; } }
 .badge.lift-pr { background: var(--skip-soft); color: var(--skip); font-weight: 600; }
 .lift-add { display: flex; gap: 6px; }
 .lift-add input { flex: 1; }
@@ -68,6 +108,11 @@ button.tick.on { background: var(--accent); border-color: var(--accent); color: 
 .lift-edit-ex { display: grid; grid-template-columns: minmax(0, 1fr) 52px 64px 64px auto; gap: 6px; align-items: center; }
 .lift-edit-ex.head { font-size: 12px; color: var(--muted); }
 .lift-edit-ex .txt.num { width: 100%; }
+.lift-edit-more { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; padding: 0 0 8px; border-bottom: 1px dashed var(--line); }
+.lift-edit-more .txt { flex: 1 1 220px; min-width: 0; font-size: 13px; }
+.lift-edit-more label.check { padding: 0; gap: 5px; font-size: 13px; color: var(--muted); cursor: pointer; }
+.lift-edit-more label.check input { width: 15px; height: 15px; }
+.lift-edit-ex:last-of-type .lift-edit-more { border-bottom: 0; }
 .lift-edit-day > button.sm, .lift-editor > button.sm { align-self: flex-start; }
 .lift-editor .foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
 @media (max-width: 560px) {

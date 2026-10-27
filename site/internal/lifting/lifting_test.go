@@ -314,9 +314,9 @@ func TestWriteCSV(t *testing.T) {
 	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
 	want := []string{
 		strings.Join(CSVHeader, ","),
-		d.Workouts[0].ID + `,2026-10-19,18:00,Push,45,Bench press,1,done,225,102.06,5,262.5,"easy, fast",,`,
-		d.Workouts[0].ID + `,2026-10-19,18:00,Push,45,Bench press,2,skipped,,,,,,elbow,`,
-		d.Workouts[0].ID + `,2026-10-19,18:00,Push,45,Dips,,skipped,,,,,,no bars,`,
+		d.Workouts[0].ID + `,2026-10-19,18:00,Push,45,Bench press,1,done,225,102.06,5,262.5,"easy, fast",,,,,`,
+		d.Workouts[0].ID + `,2026-10-19,18:00,Push,45,Bench press,2,skipped,,,,,,elbow,,,,`,
+		d.Workouts[0].ID + `,2026-10-19,18:00,Push,45,Dips,,skipped,,,,,,no bars,,,,`,
 	}
 	if len(lines) != len(want) {
 		t.Fatalf("got\n%s", out.String())
@@ -324,6 +324,147 @@ func TestWriteCSV(t *testing.T) {
 	for i := range want {
 		if lines[i] != want[i] {
 			t.Errorf("line %d:\n got %s\nwant %s", i, lines[i], want[i])
+		}
+	}
+}
+
+func TestSeconds(t *testing.T) {
+	for typed, want := range map[string]int{"45": 45, "45 s": 45, "45s": 45, "60 sec": 60, "1:30": 90} {
+		if got, ok := Seconds(typed); !ok || got != want {
+			t.Errorf("%q: %d %v, want %d", typed, got, ok, want)
+		}
+	}
+	for _, typed := range []string{"", "max", "8-12", "1:75"} {
+		if _, ok := Seconds(typed); ok {
+			t.Errorf("%q shouldn't read as seconds", typed)
+		}
+	}
+	if p := ParsePlanned("Plank", "3 × 45 s"); !p.Hold || p.Reps != "45" || p.Sets != 3 {
+		t.Errorf("a plan's hold: %+v", p)
+	}
+}
+
+func holdData() Data {
+	d := Data{Unit: "lb"}
+	d.SaveRoutine(Routine{Name: "Core", Days: []Day{{Name: "Core", Exercises: []Planned{
+		{Name: "Plank", Sets: 2, Reps: "1:00", Hold: true, Rest: 60},
+		{Name: "Curl", Sets: 2, Reps: "10", Rest: 60, Superset: true, Options: []string{"Hammer curl", "curl", " "}},
+		{Name: "Pushdown", Sets: 2, Reps: "12", Rest: 90, Optional: true, Superset: true},
+	}}}})
+	return d
+}
+
+func TestRoutineFeaturesAreCleaned(t *testing.T) {
+	d := holdData()
+	ex := d.Routines[0].Days[0].Exercises
+	if !ex[0].Hold || ex[0].Reps != "60" {
+		t.Errorf("hold: %+v", ex[0])
+	}
+	if len(ex[1].Options) != 1 || ex[1].Options[0] != "Hammer curl" {
+		t.Errorf("options should drop blanks and the exercise itself: %q", ex[1].Options)
+	}
+	if ex[2].Superset {
+		t.Error("the last exercise has nothing to superset with")
+	}
+	if got := d.Routines[0].Days[0].Summary(); got != "Plank 60 s · Curl + Pushdown (optional)" {
+		t.Errorf("summary: %q", got)
+	}
+}
+
+func TestHoldTimer(t *testing.T) {
+	d := holdData()
+	start(t, &d, monday)
+	if set := d.Active.Exercises[0].Sets[0]; set.Secs != 60 || set.Reps != 0 {
+		t.Fatalf("a hold starts at its planned seconds: %+v", set)
+	}
+	if err := d.Apply(Change{Op: "hold", Exercise: 0, Set: 0}, monday); err != nil || d.Active.Hold == nil {
+		t.Fatalf("hold: %v", err)
+	}
+	d.Apply(Change{Op: "hold-time", Seconds: 15}, monday.Add(time.Second))
+	if d.Active.Hold.For != 75 {
+		t.Errorf("adding time: %d s, want 75", d.Active.Hold.For)
+	}
+	// Stopped after 40 seconds: 40 are logged, the next set starts from it, and the rest starts.
+	d.Apply(Change{Op: "done", Exercise: 0, Set: 0}, monday.Add(40*time.Second))
+	ex := d.Active.Exercises[0]
+	if !ex.Sets[0].Done || ex.Sets[0].Secs != 40 || d.Active.Hold != nil || d.Active.RestUntil.IsZero() {
+		t.Errorf("stopping early: %+v, hold %+v", ex.Sets[0], d.Active.Hold)
+	}
+	// Running out logs the full time, however late Done comes.
+	d.Apply(Change{Op: "hold", Exercise: 0, Set: 1}, monday.Add(time.Minute))
+	d.Apply(Change{Op: "done", Exercise: 0, Set: 1}, monday.Add(5*time.Minute))
+	if got := d.Active.Exercises[0].Sets[1].Secs; got != 40 {
+		t.Errorf("ran out: %d s, want the 40 it started from", got)
+	}
+	finished, err := d.Finish(monday.Add(10*time.Minute), 10, "")
+	if err != nil || finished.DoneSets() != 2 {
+		t.Fatalf("finish: %v", err)
+	}
+	cleaned, err := CleanWorkout(finished)
+	if err != nil || cleaned.Exercises[0].Sets[0].Secs != 40 {
+		t.Errorf("editing keeps the seconds: %+v %v", cleaned.Exercises, err)
+	}
+	start(t, &d, monday.AddDate(0, 0, 1))
+	if got := d.Active.Exercises[0].Sets[0].Secs; got != 40 {
+		t.Errorf("next time starts from last time's hold: %d", got)
+	}
+}
+
+func TestSupersetRests(t *testing.T) {
+	d := holdData()
+	start(t, &d, monday)
+	d.Apply(Change{Op: "done", Exercise: 1, Set: 0}, monday)
+	if !d.Active.RestUntil.IsZero() {
+		t.Error("the first exercise of a superset goes straight on to the next")
+	}
+	d.Apply(Change{Op: "done", Exercise: 2, Set: 0}, monday)
+	if d.Active.RestUntil.IsZero() {
+		t.Error("the rest comes after the superset's last exercise")
+	}
+	d.Apply(Change{Op: "superset", Exercise: 1}, monday)
+	d.Apply(Change{Op: "done", Exercise: 1, Set: 1}, monday)
+	if d.Active.RestUntil.IsZero() {
+		t.Error("unpaired, it rests as usual")
+	}
+}
+
+func TestSwap(t *testing.T) {
+	d := holdData()
+	start(t, &d, monday)
+	if err := d.Apply(Change{Op: "swap-to", Exercise: 1, Set: 0, Why: "bar taken"}, monday); err != nil {
+		t.Fatal(err)
+	}
+	ex := d.Active.Exercises[1]
+	if ex.Name != "Hammer curl" || ex.Instead != "Curl" || ex.SwapWhy != "bar taken" || !ex.Superset || len(ex.Sets) != 2 {
+		t.Fatalf("swapped: %+v", ex)
+	}
+	if len(ex.Options) != 1 || ex.Options[0] != "Curl" {
+		t.Errorf("the planned one should be a choice back: %q", ex.Options)
+	}
+	d.Apply(Change{Op: "swap", Exercise: 1, Name: "curl"}, monday)
+	if ex := d.Active.Exercises[1]; ex.Name != "Curl" || ex.Instead != "" || ex.SwapWhy != "" {
+		t.Errorf("swapping back undoes it: %+v", ex)
+	}
+	// With a set done, the done set stays and the new exercise follows with what's left.
+	d.Apply(Change{Op: "done", Exercise: 1, Set: 0}, monday)
+	d.Apply(Change{Op: "swap", Exercise: 1, Name: "Cable curl", Why: "elbow"}, monday)
+	if len(d.Active.Exercises) != 4 || len(d.Active.Exercises[1].Sets) != 1 || d.Active.Exercises[2].Name != "Cable curl" ||
+		len(d.Active.Exercises[2].Sets) != 1 || d.Active.Exercises[1].Superset || !d.Active.Exercises[2].Superset {
+		t.Errorf("split: %+v", d.Active.Exercises)
+	}
+}
+
+func TestOptionalCarriesOver(t *testing.T) {
+	d := holdData()
+	start(t, &d, monday)
+	if !d.Active.Exercises[2].Optional {
+		t.Error("the workout should know the exercise is optional")
+	}
+	d.Apply(Change{Op: "done", Exercise: 1, Set: 0}, monday)
+	finished, _ := d.Finish(monday.Add(time.Hour), 60, "")
+	for _, ex := range finished.Exercises {
+		if ex.Name == "Pushdown" {
+			t.Error("an optional exercise left untouched isn't saved")
 		}
 	}
 }

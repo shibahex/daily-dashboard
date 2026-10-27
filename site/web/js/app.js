@@ -93,6 +93,18 @@ document.body.addEventListener("htmx:confirm", event => {
   }
 });
 
+// A card redrawn in place keeps the page where it was. Phones otherwise jump: htmx puts the new
+// card in before taking the old one out, and the browser's scroll anchoring follows the old one
+// down the page. Following a link (boosted) still goes to the new page's top.
+let scrollBefore = null;
+document.body.addEventListener("htmx:beforeSwap", event => {
+  scrollBefore = event.detail.boosted ? null : window.scrollY;
+});
+document.body.addEventListener("htmx:afterSwap", () => {
+  if (scrollBefore !== null && Math.abs(window.scrollY - scrollBefore) > 1) window.scrollTo({ top: scrollBefore, behavior: "instant" });
+  scrollBefore = null;
+});
+
 // The heatmap starts at this week and the chat at the newest message.
 // A freshly swapped log jumps to the end at once (the CSS smooth scroll would visibly run up from
 // the top); new text in a log that is already there glides.
@@ -105,44 +117,104 @@ htmx.onLoad(root => scrollToEnd(root));
 document.body.addEventListener("htmx:sseMessage", () => scrollToEnd(document, "smooth"));
 
 // ---------- workout clocks ----------
-// The Lifting tab's clocks: how long the workout has gone (data-since) and the rest left
+// The Lifting tab's clocks: how long the workout has gone (data-since) and the rest or hold left
 // (data-rest-until, out of data-rest-for seconds). The server keeps the times; this only counts,
-// and beeps (or buzzes, on a phone) when a rest is over.
+// chimes (and buzzes, on a phone) when one is over, and for a hold (data-auto-done) presses its
+// Done button, which logs the time held.
 
 function clock(seconds) {
   const s = Math.max(0, Math.round(seconds));
   const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), rest = String(s % 60).padStart(2, "0");
   return h ? `${h}:${String(m).padStart(2, "0")}:${rest}` : `${m}:${rest}`;
 }
+
+// Browsers only let a page play sound once it's been tapped: the sound is readied on the end of
+// a tap or click or on a key (a touch's pointerdown doesn't count), with a silent sound played
+// then, as iPhones need, and woken again on each (a phone suspends it in the background).
 let sound;
-function restOver() {
-  try { navigator.vibrate?.([200, 100, 200]); } catch {}
+function readySound() {
   try {
-    sound ??= new AudioContext();
-    const tone = sound.createOscillator(), volume = sound.createGain(), now = sound.currentTime;
-    tone.frequency.value = 880;
-    volume.gain.setValueAtTime(0.2, now);
-    volume.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
-    tone.connect(volume).connect(sound.destination);
-    tone.start(now);
-    tone.stop(now + 0.5);
+    if (!sound) {
+      sound = new AudioContext();
+      const silence = sound.createBufferSource();
+      silence.buffer = sound.createBuffer(1, 1, 22050);
+      silence.connect(sound.destination);
+      silence.start();
+    }
+    if (sound.state !== "running") sound.resume();
   } catch {}
 }
+for (const type of ["click", "touchend", "keydown"]) document.addEventListener(type, readySound, { capture: true, passive: true });
+
+// chime plays a soft two-note bell at an audio-clock time (now by default) and answers its
+// tones, so a chime planned ahead can be called off. Planned on the audio clock, it rings on
+// time even while the page's timers are slowed (another tab, a dimmed screen).
+function chime(at) {
+  if (!sound || sound.state !== "running") return [];
+  const start = Math.max(at ?? 0, sound.currentTime);
+  return [[659.25, 0], [987.77, 0.2]].map(([pitch, delay]) => {
+    const tone = sound.createOscillator(), volume = sound.createGain(), when = start + delay;
+    tone.type = "sine";
+    tone.frequency.value = pitch;
+    volume.gain.setValueAtTime(0.0001, when);
+    volume.gain.exponentialRampToValueAtTime(0.3, when + 0.02);
+    volume.gain.exponentialRampToValueAtTime(0.0001, when + 1.4);
+    tone.connect(volume).connect(sound.destination);
+    tone.start(when);
+    tone.stop(when + 1.45);
+    return tone;
+  });
+}
+
+// The chime planned for the timer showing: which end it's for and its tones.
+let planned = { until: null, tones: [] };
+function planChime(until, left) {
+  if (planned.until === until) return;
+  planned.tones.forEach(tone => { try { tone.stop(); } catch {} });
+  planned = { until, tones: [] };
+  if (left > 0) planned.tones = chime(sound ? sound.currentTime + left : 0);
+  if (!planned.tones.length) planned.until = null; // no sound yet: try again on the next tick
+}
+
 function tickClocks() {
   const now = Date.now();
   document.querySelectorAll("[data-since]").forEach(el => { el.textContent = clock((now - Date.parse(el.dataset.since)) / 1000); });
-  document.querySelectorAll("[data-rest-until]").forEach(box => {
+  const boxes = document.querySelectorAll("[data-rest-until]");
+  if (!boxes.length) planChime(null, 0);
+  boxes.forEach(box => {
     const left = (Date.parse(box.dataset.restUntil) - now) / 1000, total = Number(box.dataset.restFor) || 1;
     box.querySelector(".rest-left").textContent = left > 0 ? clock(left) : "over";
     box.style.setProperty("--left", Math.max(0, Math.min(1, left / total)));
+    if (left > 0) planChime(box.dataset.restUntil, left);
     if (left <= 0 && !box.classList.contains("over")) {
       box.classList.add("over");
-      if (left > -3) restOver(); // not for a rest that ended while the page was away
+      try { navigator.vibrate?.([120, 80, 120]); } catch {}
+      // Rung now only if it wasn't planned (the sound wasn't ready) and it just ended.
+      if (planned.until !== box.dataset.restUntil && left > -10) chime();
+      planned = { until: box.dataset.restUntil, tones: [] };
+      if (box.hasAttribute("data-auto-done")) box.querySelector("[data-timer-done]")?.click();
     }
   });
 }
 setInterval(tickClocks, 1000);
 htmx.onLoad(tickClocks);
+
+// Adding or taking off time (data-bump, in seconds) shows on the timer at once; the server's
+// answer then redraws it.
+document.addEventListener("click", event => {
+  const button = event.target.closest("[data-bump]");
+  const box = button?.closest("[data-rest-until]");
+  if (!box) return;
+  const seconds = Number(button.dataset.bump), now = Date.now();
+  const until = Math.max(Date.parse(box.dataset.restUntil), now) + seconds * 1000;
+  const left = Math.max(0, (until - now) / 1000);
+  box.dataset.restUntil = new Date(until).toISOString();
+  box.dataset.restFor = String(Math.max(left, (Number(box.dataset.restFor) || 0) + seconds));
+  box.classList.remove("over");
+  box.classList.add("bumped");
+  setTimeout(() => box.classList.remove("bumped"), 180);
+  tickClocks();
+}, true);
 
 // An exercise's estimated one-rep max (in its heading), redrawn as its sets' weights and reps are
 // typed: the best set's, by Epley as lifting.go works it out (a single is itself), to the nearest

@@ -6,6 +6,7 @@
   --protein: #2f6f5e; --carbs: #c08a2b; --fat: #4f6fb0;
   --on-accent: #ffffff;
   --anki-new: #2f6fc9; --anki-learn: #c4442f; --anki-due: #2f8a4c;
+  --good: #23803f; --good-soft: #dff1e3;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
@@ -15,10 +16,12 @@
     --protein: #6fbfa4; --carbs: #d8b45a; --fat: #8aa6e0;
     --on-accent: #10201b;
     --anki-new: #7aa7f0; --anki-learn: #ef8a74; --anki-due: #74c98f;
+    --good: #74c98f; --good-soft: #1e3524;
   }
 }
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+/* No scroll anchoring: a card redrawn in place mustn't drag the page along (see app.js). */
+body { margin: 0; overflow-anchor: none; background: var(--bg); color: var(--ink); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
 header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 16px;
   max-width: 1180px; margin: 0 auto; padding: 24px 16px 8px; }
 header .left { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }

@@ -2,7 +2,8 @@
 // progress and the finished ones, kept in lifting.json in the user's folder.
 //
 // Weights are kept in pounds; Unit only says how they're shown and typed. A weight of 0 is a
-// bodyweight set (push-ups, pull-ups).
+// bodyweight set (push-ups, pull-ups). A hold exercise (plank, dead hang) counts seconds instead
+// of reps.
 package lifting
 
 import (
@@ -63,14 +64,19 @@ type Day struct {
 
 // Planned is an exercise as the routine plans it.
 type Planned struct {
-	Name string `json:"name"`
-	Sets int    `json:"sets"`
-	Reps string `json:"reps,omitempty"` // "10", "8-12", "max", "45 s"
-	Rest int    `json:"rest"`           // seconds between sets
+	Name     string   `json:"name"`
+	Sets     int      `json:"sets"`
+	Reps     string   `json:"reps,omitempty"` // "10", "8-12", "max"; a hold's seconds: "45"
+	Hold     bool     `json:"hold,omitempty"` // held for Reps seconds instead of done for reps
+	Rest     int      `json:"rest"`           // seconds between sets
+	Optional bool     `json:"optional,omitempty"`
+	Options  []string `json:"options,omitempty"`  // other exercises that can take its place
+	Superset bool     `json:"superset,omitempty"` // done back to back with the next exercise
 }
 
 // Workout is a training session: in progress (Data.Active) or finished.
 type Workout struct {
+	Hold      *HoldTimer `json:"holdTimer,omitempty"` // the hold being timed
 	ID        string     `json:"id"`
 	Routine   string     `json:"routine,omitempty"` // the routine and day it came from; empty for a free one
 	Day       string     `json:"day,omitempty"`
@@ -85,21 +91,37 @@ type Workout struct {
 	Note      string     `json:"note,omitempty"`
 }
 
+// HoldTimer is a hold set being timed: it counts down from For seconds.
+type HoldTimer struct {
+	Exercise int       `json:"exercise"`
+	Set      int       `json:"set"`
+	Started  time.Time `json:"started"`
+	Until    time.Time `json:"until"`
+	For      int       `json:"for"`
+}
+
 // Exercise is an exercise in a workout and its sets.
 type Exercise struct {
-	Name     string `json:"name"`
-	Target   string `json:"target,omitempty"` // the planned reps
-	Rest     int    `json:"rest"`
-	Sets     []Set  `json:"sets"`
-	FromLast bool   `json:"fromLast,omitempty"` // its sets were filled in from the last session
-	Skipped  bool   `json:"skipped,omitempty"`  // left out on purpose, maybe with a reason
-	Why      string `json:"why,omitempty"`
+	Name     string   `json:"name"`
+	Target   string   `json:"target,omitempty"` // the planned reps (a hold's seconds)
+	Hold     bool     `json:"hold,omitempty"`
+	Rest     int      `json:"rest"`
+	Sets     []Set    `json:"sets"`
+	FromLast bool     `json:"fromLast,omitempty"` // its sets were filled in from the last session
+	Skipped  bool     `json:"skipped,omitempty"`  // left out on purpose, maybe with a reason
+	Why      string   `json:"why,omitempty"`
+	Optional bool     `json:"optional,omitempty"`
+	Options  []string `json:"options,omitempty"`  // exercises it can be swapped for
+	Superset bool     `json:"superset,omitempty"` // done back to back with the next exercise
+	Instead  string   `json:"instead,omitempty"`  // the planned exercise it took the place of
+	SwapWhy  string   `json:"swapWhy,omitempty"`  // why it was swapped in
 }
 
 // Set is one set: done, or still a plan (pre-filled from last time, or as typed so far).
 type Set struct {
 	LB     float64 `json:"lb"`
 	Reps   int     `json:"reps"`
+	Secs   int     `json:"secs,omitempty"` // a hold's seconds (it has no reps)
 	Done   bool    `json:"done,omitempty"`
 	Edited bool    `json:"edited,omitempty"` // typed in during the workout: logging a set above leaves it
 	Note   string  `json:"note,omitempty"`
@@ -261,7 +283,11 @@ func CleanRoutine(routine Routine) Routine {
 			}
 			ex.Sets = clamp(ex.Sets, 1, maxSets)
 			ex.Reps = text.Truncate(text.Collapse(ex.Reps), 20)
+			if secs, ok := Seconds(ex.Reps); ok && (ex.Hold || secondsTarget.MatchString(ex.Reps)) {
+				ex.Hold, ex.Reps = true, strconv.Itoa(secs)
+			}
 			ex.Rest = clamp(ex.Rest, 0, 3600)
+			ex.Options = cleanOptions(ex.Options, ex.Name)
 			exercises = append(exercises, ex)
 		}
 		if day.Name == "" && len(exercises) == 0 {
@@ -274,6 +300,9 @@ func CleanRoutine(routine Routine) Routine {
 			day.ID = newID()
 		}
 		day.Exercises = exercises[:min(len(exercises), maxItems)]
+		if n := len(day.Exercises); n > 0 {
+			day.Exercises[n-1].Superset = false // nothing after it to pair with
+		}
 		days = append(days, day)
 	}
 	routine.Days = days[:min(len(days), maxItems)]
@@ -282,7 +311,67 @@ func CleanRoutine(routine Routine) Routine {
 
 func cleanName(name string) string { return text.Truncate(text.Collapse(name), 80) }
 
+// cleanOptions trims an exercise's alternatives: named, each once, not the exercise itself.
+func cleanOptions(options []string, name string) []string {
+	var kept []string
+	for _, option := range options {
+		option = cleanName(option)
+		if option != "" && !sameExercise(option, name) && !slices.ContainsFunc(kept, func(k string) bool { return sameExercise(k, option) }) {
+			kept = append(kept, option)
+		}
+	}
+	return kept[:min(len(kept), 8)]
+}
+
+// SplitOptions reads alternatives as typed: "Cable row, DB row" (commas, "|" or ";").
+func SplitOptions(typed string) []string {
+	return strings.FieldsFunc(typed, func(r rune) bool { return r == ',' || r == '|' || r == ';' })
+}
+
+var (
+	secondsTarget = regexp.MustCompile(`(?i)^\s*\d+\s*(s|sec|secs|seconds?)\s*$|^\s*\d+:\d\d\s*$`)
+	clockTarget   = regexp.MustCompile(`^\s*(\d+):(\d\d)\s*$`)
+)
+
+// Seconds reads a hold's length as typed: "45", "45 s", "1:30". ok is false for anything else.
+func Seconds(typed string) (int, bool) {
+	if m := clockTarget.FindStringSubmatch(typed); m != nil {
+		minutes, _ := strconv.Atoi(m[1])
+		secs, _ := strconv.Atoi(m[2])
+		return clamp(minutes*60+secs, 1, 3600), secs < 60
+	}
+	trimmed := strings.TrimSpace(typed)
+	n := leadingNumber(trimmed)
+	if n <= 0 || (strings.TrimLeft(trimmed, "0123456789") != "" && !secondsTarget.MatchString(trimmed)) {
+		return 0, false
+	}
+	return clamp(n, 1, 3600), true
+}
+
 func clamp(n, low, high int) int { return max(low, min(n, high)) }
+
+// Summary is a day's exercises in a line: supersets joined with "+", holds with their seconds,
+// optional ones marked: "Bench press · Row + Face pull · Plank 45 s · Curls (optional)".
+func (d Day) Summary() string {
+	var line strings.Builder
+	for i, ex := range d.Exercises {
+		if i > 0 {
+			if d.Exercises[i-1].Superset {
+				line.WriteString(" + ")
+			} else {
+				line.WriteString(" · ")
+			}
+		}
+		line.WriteString(ex.Name)
+		if ex.Hold && ex.Reps != "" {
+			line.WriteString(" " + ex.Reps + " s")
+		}
+		if ex.Optional {
+			line.WriteString(" (optional)")
+		}
+	}
+	return line.String()
+}
 
 // DayForTask is the routine day linked to a task, by its description.
 func (d Data) DayForTask(description string) (Routine, Day, bool) {
@@ -328,24 +417,44 @@ func (d *Data) StartEmpty(now time.Time) error {
 	return nil
 }
 
-// prefill makes a planned exercise's sets: last time's weights and reps, set by set, or the
-// planned reps.
+// prefill makes a planned exercise's sets: last time's weights and reps (or seconds), set by
+// set, or the planned ones. A target in seconds ("45 s") from before holds existed is a hold.
 func (d Data) prefill(planned Planned) Exercise {
 	last := d.LastSets(planned.Name)
-	exercise := Exercise{Name: planned.Name, Target: planned.Reps, Rest: planned.Rest, FromLast: len(last) > 0}
+	hold := planned.Hold || secondsTarget.MatchString(planned.Reps)
+	target := planned.Reps
+	if secs, ok := Seconds(planned.Reps); hold && ok {
+		target = strconv.Itoa(secs)
+	}
+	exercise := Exercise{Name: planned.Name, Target: target, Hold: hold, Rest: planned.Rest, FromLast: len(last) > 0,
+		Optional: planned.Optional, Options: planned.Options, Superset: planned.Superset}
 	count := planned.Sets
 	if count == 0 {
 		count = max(len(last), 3)
 	}
 	for i := range count {
-		set := Set{Reps: leadingNumber(planned.Reps)}
+		set := firstSet(exercise)
 		if len(last) > 0 {
 			previous := last[min(i, len(last)-1)]
-			set.LB, set.Reps = previous.LB, previous.Reps
+			set.LB = previous.LB
+			if hold && previous.Secs > 0 {
+				set.Secs = previous.Secs
+			} else if !hold && previous.Reps > 0 {
+				set.Reps = previous.Reps
+			}
 		}
 		exercise.Sets = append(exercise.Sets, set)
 	}
 	return exercise
+}
+
+// firstSet is a new set of an exercise with nothing to go by: its planned reps or seconds.
+func firstSet(ex Exercise) Set {
+	if ex.Hold {
+		secs, _ := Seconds(ex.Target)
+		return Set{Secs: secs}
+	}
+	return Set{Reps: leadingNumber(ex.Target)}
 }
 
 // leadingNumber is the number a target starts with ("8-12" → 8), or 0.
@@ -386,12 +495,15 @@ func doneSets(sets []Set) []Set {
 
 // Change is one thing done to the workout in progress.
 type Change struct {
-	Op       string // done, undo, add-set, remove-set, add-exercise, remove-exercise, up, down, rest, skip-rest, skip-set, unskip-set, skip-exercise, unskip-exercise
+	// done, undo, add-set, remove-set, add-exercise, remove-exercise, up, down, rest, skip-rest,
+	// skip-set, unskip-set, skip-exercise, unskip-exercise, hold (start timing a set), hold-time,
+	// stop-hold, swap (to Name), swap-to (Set is the option's index), superset (with the next one)
+	Op       string
 	Exercise int
 	Set      int
-	Name     string // for add-exercise
-	Seconds  int    // for rest
-	Why      string // for skip-set and skip-exercise
+	Name     string // for add-exercise and swap
+	Seconds  int    // for rest and hold-time
+	Why      string // for skip-set, skip-exercise and swap
 }
 
 // Apply makes a change to the workout in progress.
@@ -423,10 +535,28 @@ func (d *Data) Apply(change Change, now time.Time) error {
 			w.RestUntil, w.RestFor = now, 0
 		}
 		w.RestUntil = w.RestUntil.Add(time.Duration(change.Seconds) * time.Second)
-		w.RestFor += change.Seconds
+		left := int(w.RestUntil.Sub(now).Seconds())
+		// The bar fills back up by what was added (and never shows more than is left).
+		w.RestFor = max(left, w.RestFor+change.Seconds)
+		if left <= 0 {
+			w.RestUntil, w.RestFor = time.Time{}, 0
+		}
 		return nil
 	case "skip-rest":
 		w.RestUntil, w.RestFor = time.Time{}, 0
+		return nil
+	case "hold-time":
+		if w.Hold == nil {
+			return problem.Conflictf("no hold is being timed")
+		}
+		w.Hold.Until = w.Hold.Until.Add(time.Duration(change.Seconds) * time.Second)
+		if w.Hold.Until.Before(now) {
+			w.Hold.Until = now
+		}
+		w.Hold.For = max(1, int(w.Hold.Until.Sub(w.Hold.Started).Seconds()))
+		return nil
+	case "stop-hold":
+		w.Hold = nil
 		return nil
 	}
 	if change.Exercise < 0 || change.Exercise >= len(w.Exercises) {
@@ -434,14 +564,32 @@ func (d *Data) Apply(change Change, now time.Time) error {
 	}
 	ex := &w.Exercises[change.Exercise]
 	switch change.Op {
+	case "hold", "done", "undo", "skip-set", "unskip-set":
+	default:
+		w.Hold = nil // the sets may move: the hold's place would be wrong
+	}
+	switch change.Op {
+	case "swap":
+		return d.swap(change.Exercise, change.Name, change.Why)
+	case "swap-to":
+		if change.Set < 0 || change.Set >= len(ex.Options) {
+			return problem.Invalidf("that choice isn't there")
+		}
+		return d.swap(change.Exercise, ex.Options[change.Set], change.Why)
+	case "superset":
+		if change.Exercise == len(w.Exercises)-1 {
+			return problem.Invalidf("add the exercise to pair it with below it first")
+		}
+		ex.Superset = !ex.Superset
+		return nil
 	case "add-set":
 		if len(ex.Sets) >= maxSets {
 			return problem.Invalidf("that's a lot of sets")
 		}
-		set := Set{Reps: leadingNumber(ex.Target)}
+		set := firstSet(*ex)
 		if len(ex.Sets) > 0 {
 			last := ex.Sets[len(ex.Sets)-1]
-			set = Set{LB: last.LB, Reps: last.Reps}
+			set = Set{LB: last.LB, Reps: last.Reps, Secs: last.Secs}
 		}
 		ex.Sets = append(ex.Sets, set)
 		return nil
@@ -468,7 +616,22 @@ func (d *Data) Apply(change Change, now time.Time) error {
 		return problem.Invalidf("that set isn't in this workout")
 	}
 	set := &ex.Sets[change.Set]
+	holding := w.Hold != nil && w.Hold.Exercise == change.Exercise && w.Hold.Set == change.Set
 	switch change.Op {
+	case "hold":
+		if !ex.Hold {
+			return problem.Invalidf("that exercise is done for reps, not held")
+		}
+		secs := set.Secs
+		if secs <= 0 {
+			secs, _ = Seconds(ex.Target)
+		}
+		if secs <= 0 {
+			return problem.Invalidf("type how many seconds to hold")
+		}
+		w.Hold = &HoldTimer{Exercise: change.Exercise, Set: change.Set, Started: now, Until: now.Add(time.Duration(secs) * time.Second), For: secs}
+		w.RestUntil, w.RestFor = time.Time{}, 0
+		return nil
 	case "skip-set":
 		set.Skipped, set.Done = true, false
 		set.Why, set.Note = text.Truncate(text.Collapse(set.Note), maxSetNote), ""
@@ -477,17 +640,30 @@ func (d *Data) Apply(change Change, now time.Time) error {
 		set.Skipped, set.Note, set.Why = false, set.Why, ""
 		return nil
 	case "done":
-		if set.Reps <= 0 {
+		if holding { // stopped early, or the timer ran out: what was held counts
+			end := now
+			if w.Hold.Until.Before(now) {
+				end = w.Hold.Until
+			}
+			set.Secs, w.Hold = max(1, int(math.Round(end.Sub(w.Hold.Started).Seconds()))), nil
+		}
+		switch {
+		case ex.Hold && set.Secs <= 0:
+			return problem.Invalidf("type how many seconds you held it")
+		case !ex.Hold && set.Reps <= 0:
 			return problem.Invalidf("type how many reps you did")
 		}
 		set.Done, set.Skipped = true, false
 		// With no last session to go by, the sets after it start from this one (unless typed in).
 		for i := change.Set + 1; i < len(ex.Sets) && !ex.FromLast; i++ {
 			if next := &ex.Sets[i]; !next.Done && !next.Edited {
-				next.LB, next.Reps = set.LB, set.Reps
+				next.LB, next.Reps, next.Secs = set.LB, set.Reps, set.Secs
 			}
 		}
-		if ex.Rest > 0 {
+		// In a superset the next exercise comes straight after; the rest is after the last one.
+		if d.pairedWithNext(change.Exercise) {
+			w.RestUntil, w.RestFor = time.Time{}, 0
+		} else if ex.Rest > 0 {
 			w.RestUntil, w.RestFor = now.Add(time.Duration(ex.Rest)*time.Second), ex.Rest
 		}
 	case "undo":
@@ -497,6 +673,66 @@ func (d *Data) Apply(change Change, now time.Time) error {
 	default:
 		return problem.Invalidf("unknown change: " + change.Op)
 	}
+	return nil
+}
+
+// pairedWithNext says whether an exercise of the workout is supersetted with the one after it
+// (and that one isn't skipped).
+func (d Data) pairedWithNext(e int) bool {
+	w := d.Active
+	return w.Exercises[e].Superset && e+1 < len(w.Exercises) && !w.Exercises[e+1].Skipped
+}
+
+// swap puts another exercise in an exercise's place, maybe saying why. Its sets are filled in
+// from the new one's last session. Sets already done stay with the first exercise, and the new
+// one follows it with the sets that were left. Swapping back to the planned one undoes the swap.
+func (d *Data) swap(e int, name, why string) error {
+	w := d.Active
+	ex := w.Exercises[e]
+	if name = cleanName(name); name == "" {
+		return problem.Invalidf("pick or type the exercise to do instead")
+	}
+	for _, known := range d.ExerciseNames() {
+		if sameExercise(known, name) {
+			name = known
+			break
+		}
+	}
+	if sameExercise(name, ex.Name) {
+		return nil
+	}
+	planned := ex.Instead
+	if planned == "" {
+		planned = ex.Name
+	}
+	var done, left []Set
+	for _, set := range ex.Sets {
+		if set.Done {
+			done = append(done, set)
+		} else if !set.Skipped {
+			left = append(left, set)
+		}
+	}
+	count := max(len(left), 1)
+	if len(done) == 0 {
+		count = max(len(ex.Sets), 1)
+	}
+	swapped := d.prefill(Planned{Name: name, Sets: count, Reps: ex.Target, Hold: ex.Hold, Rest: ex.Rest,
+		Optional: ex.Optional, Superset: ex.Superset})
+	// The choices stay the same, with the one swapped out among them so it's one tap back.
+	swapped.Options = cleanOptions(append(append([]string{}, ex.Options...), ex.Name), name)
+	if !sameExercise(name, planned) {
+		swapped.Instead, swapped.SwapWhy = planned, text.Truncate(text.Collapse(why), maxSetNote)
+	}
+	if len(done) == 0 {
+		w.Exercises[e] = swapped
+		return nil
+	}
+	if len(w.Exercises) >= maxItems {
+		return problem.Invalidf("that's a lot of exercises: finish this workout first")
+	}
+	w.Exercises[e].Sets, w.Exercises[e].Superset = done, false
+	w.Exercises = slices.Insert(w.Exercises, e+1, swapped)
 	return nil
 }
 
@@ -518,13 +754,17 @@ func (d *Data) SetTyped(typed map[[2]int]Typed) {
 		if e < 0 || e >= len(d.Active.Exercises) || s < 0 || s >= len(d.Active.Exercises[e].Sets) {
 			continue
 		}
-		set := &d.Active.Exercises[e].Sets[s]
+		ex := &d.Active.Exercises[e]
+		set := &ex.Sets[s]
 		// The page sends every input each time, so only a value that changed counts as typed
 		// (weights within a quarter pound: kg shown to a tenth comes back a little off).
 		if value.LB != nil && *value.LB >= 0 && *value.LB < 5000 && math.Abs(*value.LB-set.LB) > 0.25 {
 			set.LB, set.Edited = math.Round(*value.LB*1000)/1000, true
 		}
-		if value.Reps != nil && *value.Reps >= 0 && *value.Reps < 1000 && *value.Reps != set.Reps {
+		// A hold's second box is its seconds.
+		if value.Reps != nil && ex.Hold && *value.Reps >= 0 && *value.Reps <= 3600 && *value.Reps != set.Secs {
+			set.Secs, set.Edited = *value.Reps, true
+		} else if value.Reps != nil && !ex.Hold && *value.Reps >= 0 && *value.Reps < 1000 && *value.Reps != set.Reps {
 			set.Reps, set.Edited = *value.Reps, true
 		}
 		if value.Note != nil {
@@ -568,7 +808,7 @@ func (d *Data) Finish(now time.Time, minutes int, note string) (Workout, error) 
 		return Workout{}, problem.Invalidf("tick at least one set first (or discard the workout)")
 	}
 	finished.Ended, finished.Minutes = now, minutes
-	finished.RestUntil, finished.RestFor = time.Time{}, 0
+	finished.RestUntil, finished.RestFor, finished.Hold = time.Time{}, 0, nil
 	finished.Note = text.Truncate(text.Collapse(note), 500)
 	d.Workouts = append(d.Workouts, finished)
 	if len(d.Workouts) > maxWorkouts {
@@ -579,6 +819,74 @@ func (d *Data) Finish(now time.Time, minutes int, note string) (Workout, error) 
 }
 
 func (d *Data) Discard() { d.Active = nil }
+
+// quickLogWindow is how soon after a finished workout a logged set still joins it.
+const quickLogWindow = 2 * time.Hour
+
+// LogSets logs sets of an exercise someone just did, as done: into the workout in progress
+// (filling its sets still to do first), else into a workout that finished in the last two hours,
+// else as a new finished workout of its own. It answers where they went.
+func (d *Data) LogSets(name string, sets []Set, hold bool, now time.Time) (string, error) {
+	if name = cleanName(name); name == "" {
+		return "", problem.Invalidf("name the exercise")
+	}
+	for _, known := range d.ExerciseNames() {
+		if sameExercise(known, name) {
+			name = known
+			break
+		}
+	}
+	if len(sets) == 0 || len(sets) > maxSets {
+		return "", problem.Invalidf("log 1 to 30 sets")
+	}
+	needs := "reps"
+	if hold {
+		needs = "seconds held"
+	}
+	for i, set := range sets {
+		if set.LB < 0 || set.LB >= 5000 || (hold && (set.Secs <= 0 || set.Secs > 3600)) || (!hold && (set.Reps <= 0 || set.Reps >= 1000)) {
+			return "", problem.Invalidf("each set needs a weight from 0 (bodyweight) and " + needs)
+		}
+		sets[i] = Set{LB: math.Round(set.LB*1000) / 1000, Reps: set.Reps, Secs: set.Secs, Done: true, Note: text.Truncate(text.Collapse(set.Note), maxSetNote)}
+		if hold {
+			sets[i].Reps = 0
+		} else {
+			sets[i].Secs = 0
+		}
+	}
+	if w := d.Active; w != nil {
+		e := slices.IndexFunc(w.Exercises, func(ex Exercise) bool { return sameExercise(ex.Name, name) && !ex.Skipped })
+		if e < 0 {
+			if len(w.Exercises) >= maxItems {
+				return "", problem.Invalidf("that's a lot of exercises: finish this workout first")
+			}
+			w.Exercises = append(w.Exercises, Exercise{Name: name, Hold: hold, Rest: DefaultRest})
+			e = len(w.Exercises) - 1
+		}
+		ex := &w.Exercises[e]
+		for _, set := range sets {
+			if i := slices.IndexFunc(ex.Sets, func(s Set) bool { return !s.Done && !s.Skipped }); i >= 0 {
+				ex.Sets[i] = set
+			} else if len(ex.Sets) < maxSets {
+				ex.Sets = append(ex.Sets, set)
+			}
+		}
+		return "the workout in progress (" + w.Title + ")", nil
+	}
+	if n := len(d.Workouts); n > 0 && !d.Workouts[n-1].Ended.After(now) && now.Sub(d.Workouts[n-1].Ended) < quickLogWindow {
+		w := &d.Workouts[n-1]
+		e := slices.IndexFunc(w.Exercises, func(ex Exercise) bool { return sameExercise(ex.Name, name) && !ex.Skipped })
+		if e < 0 {
+			w.Exercises = append(w.Exercises, Exercise{Name: name, Hold: hold, Rest: DefaultRest})
+			e = len(w.Exercises) - 1
+		}
+		w.Exercises[e].Sets = append(w.Exercises[e].Sets, sets...)
+		return "the workout “" + w.Title + "” that finished at " + w.Ended.Format("15:04"), nil
+	}
+	d.Workouts = append(d.Workouts, Workout{ID: newID(), Title: "Quick log", Started: now, Ended: now,
+		Exercises: []Exercise{{Name: name, Hold: hold, Rest: DefaultRest, Sets: sets}}})
+	return "a new workout, “Quick log”", nil
+}
 
 func (d *Data) DeleteWorkout(id string) {
 	d.Workouts = slices.DeleteFunc(d.Workouts, func(w Workout) bool { return w.ID == id })
@@ -755,6 +1063,9 @@ func ParsePlanned(name, target string) Planned {
 		planned.Sets, _ = strconv.Atoi(m[1])
 		planned.Reps = m[2]
 	}
+	if secs, ok := Seconds(planned.Reps); ok && secondsTarget.MatchString(planned.Reps) {
+		planned.Hold, planned.Reps = true, strconv.Itoa(secs)
+	}
 	return planned
 }
 
@@ -882,17 +1193,25 @@ func CleanWorkout(w Workout) (Workout, error) {
 	w.Note = text.Truncate(text.Collapse(w.Note), 500)
 	w.Minutes = clamp(w.Minutes, 0, 24*60)
 	w.Ended = w.Started.Add(time.Duration(w.Minutes) * time.Minute)
-	w.RestUntil, w.RestFor = time.Time{}, 0
+	w.RestUntil, w.RestFor, w.Hold = time.Time{}, 0, nil
 	var exercises []Exercise
 	for _, ex := range w.Exercises {
 		if ex.Name = cleanName(ex.Name); ex.Name == "" {
 			continue
 		}
+		ex.Instead, ex.SwapWhy = cleanName(ex.Instead), text.Truncate(text.Collapse(ex.SwapWhy), maxSetNote)
+		ex.Options = cleanOptions(ex.Options, ex.Name)
 		var sets []Set
 		for _, set := range ex.Sets {
-			if !set.Skipped && set.Reps > 0 && set.Reps < 1000 && set.LB >= 0 && set.LB < 5000 && len(sets) < maxSets {
-				sets = append(sets, Set{LB: math.Round(set.LB*1000) / 1000, Reps: set.Reps, Done: true,
-					Note: text.Truncate(text.Collapse(set.Note), maxSetNote)})
+			counted := (!ex.Hold && set.Reps > 0 && set.Reps < 1000) || (ex.Hold && set.Secs > 0 && set.Secs <= 3600)
+			if !set.Skipped && counted && set.LB >= 0 && set.LB < 5000 && len(sets) < maxSets {
+				kept := Set{LB: math.Round(set.LB*1000) / 1000, Done: true, Note: text.Truncate(text.Collapse(set.Note), maxSetNote)}
+				if ex.Hold {
+					kept.Secs = set.Secs
+				} else {
+					kept.Reps = set.Reps
+				}
+				sets = append(sets, kept)
 			}
 		}
 		for _, set := range ex.Sets { // skipped sets ride along as they were
@@ -913,7 +1232,7 @@ func CleanWorkout(w Workout) (Workout, error) {
 		}
 	}
 	if len(exercises) == 0 || (Workout{Exercises: exercises}).DoneSets() == 0 {
-		return Workout{}, problem.Invalidf("a workout needs at least one set with reps (or delete it)")
+		return Workout{}, problem.Invalidf("a workout needs at least one set with reps or seconds (or delete it)")
 	}
 	w.Exercises = exercises
 	return w, nil
@@ -1003,7 +1322,7 @@ func (d Data) Points(name string, since time.Time) []Point {
 // CSVHeader is the first row of WriteCSV: one row per set, like other lifting apps export, so
 // the history opens in a spreadsheet or moves to another app.
 var CSVHeader = []string{"workout_id", "date", "start", "workout", "duration_min", "exercise", "set", "status",
-	"weight_lb", "weight_kg", "reps", "est_1rm_lb", "set_note", "skip_reason", "workout_note"}
+	"weight_lb", "weight_kg", "reps", "est_1rm_lb", "set_note", "skip_reason", "workout_note", "hold_s", "instead_of", "swap_reason"}
 
 // WriteCSV writes every finished workout's sets, oldest first. A skipped exercise is one row
 // with no set number; weights are blank for bodyweight sets.
@@ -1021,16 +1340,22 @@ func (d Data) WriteCSV(out io.Writer) error {
 		start := []string{workout.ID, workout.Started.Format("2006-01-02"), workout.Started.Format("15:04"), workout.Title, minutes}
 		for _, ex := range workout.Exercises {
 			if ex.Skipped {
-				w.Write(append(append([]string{}, start...), ex.Name, "", "skipped", "", "", "", "", "", ex.Why, workout.Note))
+				w.Write(append(append([]string{}, start...), ex.Name, "", "skipped", "", "", "", "", "", ex.Why, workout.Note, "", ex.Instead, ex.SwapWhy))
 				continue
 			}
 			for i, set := range ex.Sets {
-				status, reps := "done", strconv.Itoa(set.Reps)
+				status, reps, secs := "done", "", ""
+				if set.Reps > 0 {
+					reps = strconv.Itoa(set.Reps)
+				}
+				if set.Secs > 0 {
+					secs = strconv.Itoa(set.Secs)
+				}
 				if set.Skipped {
-					status, reps = "skipped", ""
+					status, reps, secs = "skipped", "", ""
 				}
 				w.Write(append(append([]string{}, start...), ex.Name, strconv.Itoa(i+1), status,
-					number(set.LB), number(set.LB*kgPerLB), reps, number(E1RM(set)), set.Note, set.Why, workout.Note))
+					number(set.LB), number(set.LB*kgPerLB), reps, number(E1RM(set)), set.Note, set.Why, workout.Note, secs, ex.Instead, ex.SwapWhy))
 			}
 		}
 	}

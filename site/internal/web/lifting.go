@@ -133,6 +133,7 @@ type workoutView struct {
 	RestUntil time.Time
 	RestFor   int
 	RestLeft  string
+	Hold      *holdView // the hold being timed
 	Unit      string
 	Exercises []exerciseView
 	Names     []string // for the add-exercise box
@@ -140,6 +141,15 @@ type workoutView struct {
 	Volume    string
 	Plate     string // the rounding step of estimates, for app.js
 	Note      string
+}
+
+// holdView is the hold timer's banner: which set, and the time left out of For seconds.
+type holdView struct {
+	Exercise, Set int
+	Name          string
+	Until         time.Time
+	For           int
+	Left          string
 }
 
 type exerciseView struct {
@@ -154,26 +164,39 @@ type exerciseView struct {
 	Record      bool   // a set done today beat Best
 	Skipped     bool
 	Why         string
+	Hold        bool // held for seconds: the second box is seconds, and each set has a timer
+	Optional    bool
+	Open        bool     // an optional exercise is shown open once it's started
+	Options     []string // what it can be swapped for
+	Instead     string   // the planned exercise it replaced
+	SwapWhy     string
+	Superset    bool   // paired with the next exercise
+	Group       string // its place in a superset: "ss-first", "ss-mid", "ss-last" or ""
+	Done        bool   // every set is done or skipped
 }
 
 type setView struct {
 	Index   int
 	Weight  string
-	Reps    string
+	Reps    string // or a hold's seconds
 	Done    bool
 	Record  bool
 	Note    string
 	Skipped bool
 	Why     string
+	Next    bool // the first set still to do in the workout
+	Timing  bool // its hold is being timed
 }
 
-// setViewOf is a set as its row shows it.
-func setViewOf(s int, set lifting.Set, unit string) setView {
+// setViewOf is a set as its row shows it (a hold's seconds in the reps box).
+func setViewOf(s int, set lifting.Set, unit string, hold bool) setView {
 	shown := setView{Index: s, Done: set.Done, Note: set.Note, Skipped: set.Skipped, Why: set.Why}
 	if set.LB > 0 {
 		shown.Weight = lifting.FormatShown(set.LB, unit)
 	}
-	if set.Reps > 0 {
+	if hold && set.Secs > 0 {
+		shown.Reps = strconv.Itoa(set.Secs)
+	} else if !hold && set.Reps > 0 {
 		shown.Reps = strconv.Itoa(set.Reps)
 	}
 	return shown
@@ -191,21 +214,38 @@ func workoutViewOf(data lifting.Data, now time.Time) workoutView {
 	if w.RestUntil.After(now) {
 		view.RestUntil, view.RestFor, view.RestLeft = w.RestUntil, w.RestFor, clockText(w.RestUntil.Sub(now))
 	}
+	if h := w.Hold; h != nil && h.Exercise < len(w.Exercises) && h.Set < len(w.Exercises[h.Exercise].Sets) {
+		view.Hold = &holdView{Exercise: h.Exercise, Set: h.Set, Name: w.Exercises[h.Exercise].Name, Until: h.Until, For: h.For,
+			Left: clockText(h.Until.Sub(now))}
+	}
 	records := data.Records(*w)
+	nextFound := false
 	for e, ex := range w.Exercises {
-		exercise := exerciseView{Index: e, Name: ex.Name, Plan: planText(len(ex.Sets), ex.Target, ex.Rest),
+		exercise := exerciseView{Index: e, Name: ex.Name, Plan: planText(len(ex.Sets), ex.Target, ex.Rest, ex.Hold),
 			Last: setsText(data.LastSets(ex.Name), data.Unit), Top: e == 0, Bottom: e == len(w.Exercises)-1,
-			Skipped: ex.Skipped, Why: ex.Why}
-		if best := data.Best(ex.Name, time.Time{}); best > 0 {
+			Skipped: ex.Skipped, Why: ex.Why, Hold: ex.Hold, Optional: ex.Optional, Options: ex.Options,
+			Instead: ex.Instead, SwapWhy: ex.SwapWhy, Superset: ex.Superset && e < len(w.Exercises)-1, Done: true}
+		exercise.Group = supersetPlace(w.Exercises, e)
+		exercise.Open = !ex.Optional
+		if best := data.Best(ex.Name, time.Time{}); best > 0 && !ex.Hold {
 			exercise.Best = lifting.FormatPlate(best, data.Unit)
 		}
 		estimate := 0.0
 		for s, set := range ex.Sets {
-			shown := setViewOf(s, set, data.Unit)
+			shown := setViewOf(s, set, data.Unit, ex.Hold)
 			shown.Record = records[[2]int{e, s}]
+			shown.Timing = view.Hold != nil && view.Hold.Exercise == e && view.Hold.Set == s
 			exercise.Record = exercise.Record || shown.Record
+			exercise.Open = exercise.Open || set.Done || set.Edited || shown.Timing
 			if !set.Skipped {
 				estimate = math.Max(estimate, lifting.E1RM(set))
+			}
+			if !set.Done && !set.Skipped {
+				exercise.Done = false
+				// The next set to do: an optional exercise only once it's started.
+				if !nextFound && !ex.Skipped && (!ex.Optional || exercise.Open) {
+					shown.Next, nextFound = true, true
+				}
 			}
 			exercise.Sets = append(exercise.Sets, shown)
 		}
@@ -217,6 +257,22 @@ func workoutViewOf(data lifting.Data, now time.Time) workoutView {
 	return view
 }
 
+// supersetPlace is an exercise's place in a run of exercises done back to back: first, in the
+// middle, last, or "" when it isn't in one.
+func supersetPlace(exercises []lifting.Exercise, e int) string {
+	fromPrevious := e > 0 && exercises[e-1].Superset
+	toNext := exercises[e].Superset && e < len(exercises)-1
+	switch {
+	case fromPrevious && toNext:
+		return "ss-mid"
+	case toNext:
+		return "ss-first"
+	case fromPrevious:
+		return "ss-last"
+	}
+	return ""
+}
+
 // clockText is a duration as a clock: 4:05, 1:02:09.
 func clockText(d time.Duration) string {
 	s := max(0, int(math.Round(d.Seconds())))
@@ -226,7 +282,10 @@ func clockText(d time.Duration) string {
 	return fmt.Sprintf("%d:%02d", s/60, s%60)
 }
 
-func planText(sets int, target string, rest int) string {
+func planText(sets int, target string, rest int, hold bool) string {
+	if hold && target != "" {
+		target += " s hold"
+	}
 	text := strconv.Itoa(sets) + " × " + target
 	if target == "" {
 		text = strconv.Itoa(sets) + " " + plural(sets, "set", "sets")
@@ -237,7 +296,8 @@ func planText(sets int, target string, rest int) string {
 	return text
 }
 
-// setsText is sets as "135 × 8, 135 × 8, 145 × 6" (BW for bodyweight).
+// setsText is sets as "135 × 8, 135 × 8, 145 × 6" (BW for bodyweight; a hold is "45 s" or
+// "25 × 45 s").
 func setsText(sets []lifting.Set, unit string) string {
 	parts := make([]string, len(sets))
 	for i, set := range sets {
@@ -245,7 +305,14 @@ func setsText(sets []lifting.Set, unit string) string {
 		if set.LB > 0 {
 			weight = lifting.FormatShown(set.LB, unit)
 		}
-		parts[i] = fmt.Sprintf("%s × %d", weight, set.Reps)
+		switch {
+		case set.Secs > 0 && set.LB > 0:
+			parts[i] = fmt.Sprintf("%s × %d s", weight, set.Secs)
+		case set.Secs > 0:
+			parts[i] = fmt.Sprintf("%d s", set.Secs)
+		default:
+			parts[i] = fmt.Sprintf("%s × %d", weight, set.Reps)
+		}
 	}
 	return strings.Join(parts, ", ")
 }
@@ -292,6 +359,13 @@ func (ui *UI) startWorkout(w http.ResponseWriter, r *http.Request) {
 
 var setField = regexp.MustCompile(`^([wrn])(\d+)\.(\d+)$`)
 
+// workoutOps are the buttons the workout card has (op's first part): anything else is refused
+// before it reaches the data.
+var workoutOps = map[string]bool{"done": true, "undo": true, "add-set": true, "remove-set": true, "add-exercise": true,
+	"remove-exercise": true, "up": true, "down": true, "rest": true, "skip-rest": true, "skip-set": true, "unskip-set": true,
+	"skip-exercise": true, "unskip-exercise": true, "hold": true, "hold-time": true, "stop-hold": true, "swap": true,
+	"swap-to": true, "superset": true}
+
 // typedSets reads the sets' inputs (w0.1 is exercise 0, set 1's weight; r0.1 its reps; n0.1 its note).
 func typedSets(r *http.Request, unit string) map[[2]int]lifting.Typed {
 	r.ParseForm()
@@ -323,12 +397,19 @@ func typedSets(r *http.Request, unit string) map[[2]int]lifting.Typed {
 	return typed
 }
 
-// changeFrom reads the button that was pressed: "done:0:1", "add-set:0", "rest:30"...
+// changeFrom reads the button that was pressed: "done:0:1", "add-set:0", "rest:30",
+// "swap:0" (to the name in swap0, why in swapwhy0), "swap-to:0:1" (its second choice)...
 func changeFrom(r *http.Request) (lifting.Change, bool) {
 	parts := strings.Split(r.FormValue("op"), ":")
 	change := lifting.Change{Op: parts[0], Name: strings.TrimSpace(r.FormValue("new_exercise"))}
+	if change.Op != "" && !workoutOps[change.Op] {
+		return change, false
+	}
 	if len(parts) > 1 {
 		change.Why = r.FormValue("why" + parts[1]) // an exercise's skip reason: why0, why1...
+		if change.Op == "swap" || change.Op == "swap-to" {
+			change.Name, change.Why = strings.TrimSpace(r.FormValue("swap"+parts[1])), r.FormValue("swapwhy"+parts[1])
+		}
 	}
 	if change.Op == "" && change.Name != "" { // Enter in the add-exercise box
 		change.Op = "add-exercise"
@@ -344,8 +425,9 @@ func changeFrom(r *http.Request) (lifting.Change, bool) {
 		}
 		numbers = append(numbers, n)
 	}
-	if change.Op == "rest" && len(numbers) == 1 {
+	if (change.Op == "rest" || change.Op == "hold-time") && len(numbers) == 1 {
 		change.Seconds = clampInt(numbers[0], -600, 600)
+		return change, true
 	}
 	if len(numbers) > 0 {
 		change.Exercise = numbers[0]
@@ -527,7 +609,8 @@ func (ui *UI) routineEditor(w http.ResponseWriter, r *http.Request) {
 }
 
 // routineFromForm reads the editor: name, then d0.name, d0.task, d0.id and each exercise's
-// d0.e1.name, .sets, .reps and .rest.
+// d0.e1.name, .sets, .reps, .rest, .options (alternatives, comma-separated) and the .hold,
+// .optional and .superset boxes.
 func routineFromForm(r *http.Request) lifting.Routine {
 	r.ParseForm()
 	routine := lifting.Routine{Name: r.PostForm.Get("name")}
@@ -540,7 +623,9 @@ func routineFromForm(r *http.Request) lifting.Routine {
 			}
 			sets, _ := strconv.Atoi(field("sets"))
 			rest, _ := strconv.Atoi(field("rest"))
-			day.Exercises = append(day.Exercises, lifting.Planned{Name: field("name"), Sets: sets, Reps: field("reps"), Rest: rest})
+			day.Exercises = append(day.Exercises, lifting.Planned{Name: field("name"), Sets: sets, Reps: field("reps"), Rest: rest,
+				Hold: field("hold") != "", Optional: field("optional") != "", Superset: field("superset") != "",
+				Options: lifting.SplitOptions(field("options"))})
 		}
 		routine.Days = append(routine.Days, day)
 	}
@@ -660,13 +745,18 @@ func groupSets(sets []lifting.Set, unit string) []setGroup {
 		if sets[i].LB > 0 {
 			weight = lifting.FormatShown(sets[i].LB, unit)
 		}
-		for _, set := range sets[i:j] {
-			reps = append(reps, strconv.Itoa(set.Reps))
-			same = same && set.Reps == sets[i].Reps
+		count := func(set lifting.Set) int { return set.Reps + set.Secs } // a set has one or the other
+		suffix := ""
+		if sets[i].Secs > 0 {
+			suffix = " s"
 		}
-		group := setGroup{Weight: weight, Reps: strings.Join(reps, "/")}
+		for _, set := range sets[i:j] {
+			reps = append(reps, strconv.Itoa(count(set)))
+			same = same && count(set) == count(sets[i])
+		}
+		group := setGroup{Weight: weight, Reps: strings.Join(reps, "/") + suffix}
 		if same && len(reps) > 1 {
-			group.Reps = fmt.Sprintf("%d × %d", len(reps), sets[i].Reps)
+			group.Reps = fmt.Sprintf("%d × %d%s", len(reps), count(sets[i]), suffix)
 		}
 		groups = append(groups, group)
 		i = j
@@ -764,7 +854,7 @@ type liftingHistoryRow struct {
 	Exercises []liftingHistoryExercise
 }
 
-type liftingHistoryExercise struct{ Name, Sets string }
+type liftingHistoryExercise struct{ Name, Sets, Swap string }
 
 func liftingHistoryOf(data lifting.Data, limit int) liftingHistoryView {
 	if limit <= 0 {
@@ -784,7 +874,14 @@ func liftingHistoryOf(data lifting.Data, limit int) liftingHistoryView {
 					sets += " (" + ex.Why + ")"
 				}
 			}
-			row.Exercises = append(row.Exercises, liftingHistoryExercise{ex.Name, sets})
+			swap := ""
+			if ex.Instead != "" {
+				swap = "instead of " + ex.Instead
+				if ex.SwapWhy != "" {
+					swap += ": " + ex.SwapWhy
+				}
+			}
+			row.Exercises = append(row.Exercises, liftingHistoryExercise{Name: ex.Name, Sets: sets, Swap: swap})
 		}
 		view.Workouts = append(view.Workouts, row)
 	}
@@ -1151,6 +1248,7 @@ type workoutEditorView struct {
 
 type editedExercise struct {
 	Index       int
+	Hold        bool // its second box is seconds
 	Name        string
 	Top, Bottom bool
 	Sets        []setView // the ones done: skipped sets stay as they were
@@ -1165,10 +1263,10 @@ func workoutEditorOf(w lifting.Workout, data lifting.Data) workoutEditorView {
 		view.Took = minutesText(min(minutes, 24*60))
 	}
 	for e, ex := range w.Exercises {
-		edited := editedExercise{Index: e, Name: ex.Name, Top: e == 0, Bottom: e == len(w.Exercises)-1, Skipped: ex.Skipped, Why: ex.Why}
+		edited := editedExercise{Index: e, Name: ex.Name, Top: e == 0, Bottom: e == len(w.Exercises)-1, Skipped: ex.Skipped, Why: ex.Why, Hold: ex.Hold}
 		for _, set := range ex.Sets {
 			if !set.Skipped {
-				edited.Sets = append(edited.Sets, setViewOf(len(edited.Sets), set, data.Unit))
+				edited.Sets = append(edited.Sets, setViewOf(len(edited.Sets), set, data.Unit, ex.Hold))
 			}
 		}
 		view.Exercises = append(view.Exercises, edited)
@@ -1208,9 +1306,9 @@ func workoutFromForm(r *http.Request, base lifting.Workout, unit string) (liftin
 		ex := lifting.Exercise{Name: r.PostForm.Get(fmt.Sprintf("e%d.name", e)),
 			Skipped: r.PostForm.Get(fmt.Sprintf("e%d.skipped", e)) == "1", Why: r.PostForm.Get(fmt.Sprintf("e%d.why", e))}
 		var skippedSets []lifting.Set
-		for _, old := range base.Exercises { // keep the planned reps, rest and skipped sets of an exercise it had
+		for _, old := range base.Exercises { // keep the plan, the swap and the skipped sets of an exercise it had
 			if strings.EqualFold(old.Name, strings.TrimSpace(ex.Name)) {
-				ex.Target, ex.Rest = old.Target, old.Rest
+				ex.Target, ex.Rest, ex.Hold, ex.Instead, ex.SwapWhy, ex.Options = old.Target, old.Rest, old.Hold, old.Instead, old.SwapWhy, old.Options
 				for _, set := range old.Sets {
 					if set.Skipped {
 						skippedSets = append(skippedSets, set)
@@ -1227,7 +1325,12 @@ func workoutFromForm(r *http.Request, base lifting.Workout, unit string) (liftin
 					problemFound = problem.Invalidf("a weight isn't a number: " + typed)
 				}
 			}
-			set.Reps, _ = strconv.Atoi(formText(r, fmt.Sprintf("e%d.s%d.r", e, s)))
+			count, _ := strconv.Atoi(formText(r, fmt.Sprintf("e%d.s%d.r", e, s)))
+			if ex.Hold {
+				set.Secs = count
+			} else {
+				set.Reps = count
+			}
 			set.Note = r.PostForm.Get(fmt.Sprintf("e%d.s%d.n", e, s))
 			ex.Sets = append(ex.Sets, set)
 		}

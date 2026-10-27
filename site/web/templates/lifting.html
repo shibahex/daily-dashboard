@@ -23,40 +23,70 @@
   <form class="lift-form" hx-post="/lifting/workout" hx-target="closest .card" hx-swap="outerHTML" data-plate="{{.Plate}}">
     <input type="hidden" name="workout" value="{{.ID}}">
     <button class="default-submit" name="op" value="" tabindex="-1" aria-hidden="true"></button>
-    {{if not .RestUntil.IsZero}}
-    <div class="lift-rest" data-rest-until="{{.RestUntil.Format "2006-01-02T15:04:05Z07:00"}}" data-rest-for="{{.RestFor}}">
+    {{with .Hold}}
+    {{/* The hold being timed: app.js counts it down, chimes, and presses Done when it runs out. */}}
+    <div class="lift-timer hold" data-rest-until="{{.Until.Format "2006-01-02T15:04:05.000Z07:00"}}" data-rest-for="{{.For}}" data-auto-done>
+      <span class="lift-rest-bar"><span></span></span>
+      <span class="lift-rest-text">Hold · {{.Name}}, set {{add .Set 1}} <b class="rest-left">{{.Left}}</b></span>
+      <span class="lift-btns">
+        <button class="sm" name="op" value="hold-time:-15" data-bump="-15">−15s</button>
+        <button class="sm" name="op" value="hold-time:15" data-bump="15">+15s</button>
+        <button class="sm primary" name="op" value="done:{{.Exercise}}:{{.Set}}" data-timer-done title="Log the time held so far">Done</button>
+        <button class="sm ghost" name="op" value="stop-hold" title="Stop without logging">Cancel</button>
+      </span>
+    </div>
+    {{else}}{{if not .RestUntil.IsZero}}
+    <div class="lift-timer" data-rest-until="{{.RestUntil.Format "2006-01-02T15:04:05.000Z07:00"}}" data-rest-for="{{.RestFor}}">
       <span class="lift-rest-bar"><span></span></span>
       <span class="lift-rest-text">Rest <b class="rest-left">{{.RestLeft}}</b></span>
-      <span class="lift-btns"><button class="sm" name="op" value="rest:-15">−15s</button><button class="sm" name="op" value="rest:30">+30s</button><button class="sm ghost" name="op" value="skip-rest">Skip</button></span>
+      <span class="lift-btns"><button class="sm" name="op" value="rest:-15" data-bump="-15">−15s</button><button class="sm" name="op" value="rest:30" data-bump="30">+30s</button><button class="sm ghost" name="op" value="skip-rest">Skip</button></span>
     </div>
-    {{end}}
+    {{end}}{{end}}
     {{range $ex := .Exercises}}
-    <section class="lift-ex{{if .Skipped}} skipped{{end}}">
+    <section class="lift-ex {{.Group}}{{if .Skipped}} skipped{{end}}{{if and .Optional (not .Open)}} closed{{end}}{{if .Done}} finished{{end}}">
+      {{if eq .Group "ss-first"}}<span class="ss-label" title="Do one set of each, back to back, then rest">Superset</span>{{end}}
       <div class="lift-ex-head">
-        <div>
+        <div class="lift-ex-info">
           <div class="lift-ex-title"><b>{{.Name}}</b>
+            {{if .Optional}}<span class="badge">optional</span>{{end}}
+            {{if .Hold}}<span class="badge">hold</span>{{end}}
             {{if not .Skipped}}<span class="ex-1rm{{if .Record}} pr{{end}}" title="Estimated one-rep max (Epley) from the best set below, to the nearest {{$.Plate}} {{$.Unit}}{{with .Best}}. Your best so far: {{.}}{{end}}">
               <span class="ex-1rm-label">{{if .Record}}PR{{else}}1RM{{end}}</span> <b class="ex-1rm-now">{{.Est}}</b>{{with .Best}}<span class="muted"> / best {{.}}</span>{{end}}</span>{{end}}
           </div>
           <div class="small muted">{{if .Skipped}}Skipped{{with .Why}}: {{.}}{{end}}{{else}}{{.Plan}}{{with .Last}} · last time {{.}}{{end}}{{end}}</div>
+          {{with .Instead}}<div class="small lift-swapped">⇄ instead of {{.}}{{with $ex.SwapWhy}}: {{.}}{{end}}</div>{{end}}
         </div>
         <span class="lift-btns">
           {{if .Skipped}}<button class="sm" name="op" value="unskip-exercise:{{.Index}}">Undo skip</button>
           {{else}}
           <button class="icon" name="op" value="up:{{.Index}}" title="Move up"{{if .Top}} disabled{{end}}>↑</button>
           <button class="icon" name="op" value="down:{{.Index}}" title="Move down"{{if .Bottom}} disabled{{end}}>↓</button>
-          <label class="icon skip-btn" title="Skip this exercise"><input type="checkbox">⤼</label>
+          <label class="icon toggle-btn swap-btn{{if .Options}} has-options{{end}}" title="Swap for another exercise{{with .Options}} ({{len .}} {{plural (len .) "choice" "choices"}}){{end}}"><input type="checkbox">⇄</label>
+          {{if not .Bottom}}<button class="icon ss-btn{{if .Superset}} on{{end}}" name="op" value="superset:{{.Index}}" title="{{if .Superset}}Done back to back with the next exercise: click to unpair{{else}}Superset with the next exercise (back to back, then rest){{end}}">⛓︎</button>{{end}}
+          <label class="icon toggle-btn skip-btn" title="Skip this exercise"><input type="checkbox">⤼</label>
           {{end}}
           <button class="icon del" name="op" value="remove-exercise:{{.Index}}" title="Remove from this workout">✕</button>
         </span>
       </div>
       {{if not .Skipped}}
-      <div class="lift-ex-skip">
-        <input class="txt" name="why{{.Index}}" maxlength="200" placeholder="Why skip it? (optional): no bench free, sore shoulder…" autocomplete="off">
-        <button class="sm" name="op" value="skip-exercise:{{.Index}}">Skip exercise</button>
+      <div class="lift-panel lift-ex-swap">
+        {{with .Options}}<div class="lift-choices">{{range $k, $name := .}}<button class="chip" name="op" value="swap-to:{{$ex.Index}}:{{$k}}">{{$name}}</button>{{end}}</div>{{end}}
+        <div class="lift-panel-row">
+          <input class="txt" name="swap{{.Index}}" list="lift-names" maxlength="80" placeholder="{{if .Options}}Or type another exercise{{else}}Exercise to do instead{{end}}" autocomplete="off" data-enter-next>
+          <button class="sm" name="op" value="swap:{{.Index}}">Swap</button>
+        </div>
+        <input class="txt" name="swapwhy{{.Index}}" maxlength="200" placeholder="Why? (optional): bench taken, wrist sore…" autocomplete="off">
       </div>
+      <div class="lift-panel lift-ex-skip">
+        <div class="lift-panel-row">
+          <input class="txt" name="why{{.Index}}" maxlength="200" placeholder="Why skip it? (optional): no bench free, sore shoulder…" autocomplete="off" data-enter-next>
+          <button class="sm" name="op" value="skip-exercise:{{.Index}}">Skip exercise</button>
+        </div>
+      </div>
+      {{if and .Optional (not .Open)}}<label class="sm-button ghost lift-opt-open">Do it <input type="checkbox"></label>{{end}}
+      <div class="lift-ex-body">
       <div class="lift-sets">
-        <div class="lift-set head"><span>Set</span><span>{{$.Unit}}</span><span>Reps</span><span></span><span></span></div>
+        <div class="lift-set head"><span>Set</span><span>{{$.Unit}}</span><span>{{if .Hold}}Secs{{else}}Reps{{end}}</span><span></span><span></span></div>
         {{range .Sets}}
         <div class="lift-set-wrap">
         {{if .Skipped}}
@@ -66,19 +96,22 @@
           <button class="sm ghost" name="op" value="unskip-set:{{$ex.Index}}:{{.Index}}">Undo</button>
         </div>
         {{else}}
-        <div class="lift-set{{if .Done}} done{{end}}">
+        <div class="lift-set{{if .Done}} done{{end}}{{if .Next}} next{{end}}{{if .Timing}} timing{{end}}">
           <span class="lift-n{{if .Record}} pr{{end}}"{{if .Record}} title="A new best estimated one-rep max"{{end}}>{{if .Record}}PR{{else}}{{add .Index 1}}{{end}}</span>
           <input class="txt num" name="w{{$ex.Index}}.{{.Index}}" value="{{.Weight}}" placeholder="BW" inputmode="decimal" autocomplete="off" aria-label="Weight, set {{add .Index 1}}"
             hx-post="/lifting/workout?quiet=1" hx-trigger="change" hx-include="closest form" hx-swap="none">
-          <input class="txt num" name="r{{$ex.Index}}.{{.Index}}" value="{{.Reps}}" placeholder="reps" inputmode="numeric" autocomplete="off" aria-label="Reps, set {{add .Index 1}}"
+          <input class="txt num" name="r{{$ex.Index}}.{{.Index}}" value="{{.Reps}}" placeholder="{{if $ex.Hold}}secs{{else}}reps{{end}}" inputmode="numeric" autocomplete="off" aria-label="{{if $ex.Hold}}Seconds{{else}}Reps{{end}}, set {{add .Index 1}}"
             hx-post="/lifting/workout?quiet=1" hx-trigger="change" hx-include="closest form" hx-swap="none">
           {{if .Done}}<button class="tick on" name="op" value="undo:{{$ex.Index}}:{{.Index}}" title="Done (click to undo)">✓</button>
+          {{else if .Timing}}<button class="tick timing" name="op" value="done:{{$ex.Index}}:{{.Index}}" title="Stop and log the time held">■</button>
+          {{else if $ex.Hold}}<button class="tick" name="op" value="hold:{{$ex.Index}}:{{.Index}}" title="Start the hold timer">▶</button>
           {{else}}<button class="tick" name="op" value="done:{{$ex.Index}}:{{.Index}}" title="Log this set and start the rest timer">✓</button>{{end}}
           <label class="icon note-btn" title="Note, skip or remove this set"><input type="checkbox"{{if .Note}} checked{{end}}>✎</label>
         </div>
         <div class="lift-set-note">
           <input class="txt" name="n{{$ex.Index}}.{{.Index}}" value="{{.Note}}" maxlength="200" placeholder="Note for set {{add .Index 1}}, or why you're skipping it" autocomplete="off"
             hx-post="/lifting/workout?quiet=1" hx-trigger="change" hx-include="closest form" hx-swap="none">
+          {{if and $ex.Hold (not .Done) (not .Timing)}}<button class="sm" name="op" value="done:{{$ex.Index}}:{{.Index}}" title="Log the seconds typed, without the timer">Log</button>{{end}}
           {{if not .Done}}<button class="sm" name="op" value="skip-set:{{$ex.Index}}:{{.Index}}" title="Skip this set (the note says why)">Skip set</button>{{end}}
           <button class="icon del" name="op" value="remove-set:{{$ex.Index}}:{{.Index}}" title="Remove this set">✕</button>
         </div>
@@ -87,6 +120,7 @@
         {{end}}
       </div>
       <button class="sm ghost" name="op" value="add-set:{{.Index}}">+ Add set</button>
+      </div>
       {{end}}
     </section>
     {{end}}
@@ -131,7 +165,7 @@
     <div class="lift-day">
       <div>
         <div>{{.Name}}</div>
-        <div class="small muted">{{range $i, $e := .Exercises}}{{if $i}} · {{end}}{{$e.Name}}{{else}}No exercises yet{{end}}</div>
+        <div class="small muted">{{or .Summary "No exercises yet"}}</div>
         {{with .Task}}<div class="small muted">Ticks the task “{{.}}”</div>{{end}}
       </div>
       {{if and $.Going (eq $.GoingDay .ID)}}<span class="badge active">in progress</span>
@@ -162,19 +196,25 @@
           <button class="icon del" name="op" value="remove-day:{{$d}}" title="Remove day">✕</button>
         </span>
       </div>
-      <div class="lift-edit-ex head"><span>Exercise</span><span>Sets</span><span>Reps</span><span>Rest (s)</span><span></span></div>
+      <div class="lift-edit-ex head"><span>Exercise</span><span>Sets</span><span>Reps / s</span><span>Rest (s)</span><span></span></div>
       {{$count := len .Exercises}}
       {{range $e, $ex := .Exercises}}
       <div class="lift-edit-ex">
         <input class="txt" name="d{{$d}}.e{{$e}}.name" value="{{.Name}}" list="lift-names-edit" placeholder="Exercise" maxlength="80" aria-label="Exercise">
         <input class="txt num" name="d{{$d}}.e{{$e}}.sets" value="{{.Sets}}" inputmode="numeric" aria-label="Sets">
-        <input class="txt num" name="d{{$d}}.e{{$e}}.reps" value="{{.Reps}}" placeholder="10" maxlength="20" aria-label="Reps" title="A number, a range (8-12), max, 45 s…">
+        <input class="txt num" name="d{{$d}}.e{{$e}}.reps" value="{{.Reps}}" placeholder="10" maxlength="20" aria-label="Reps, or seconds for a hold" title="A number, a range (8-12), max; for a hold, its seconds (45, 1:30)">
         <input class="txt num" name="d{{$d}}.e{{$e}}.rest" value="{{.Rest}}" inputmode="numeric" aria-label="Rest in seconds">
         <span class="lift-btns">
           <button class="icon" name="op" value="up-ex:{{$d}}:{{$e}}" title="Move up"{{if eq $e 0}} disabled{{end}}>↑</button>
           <button class="icon" name="op" value="down-ex:{{$d}}:{{$e}}" title="Move down"{{if eq (add $e 1) $count}} disabled{{end}}>↓</button>
           <button class="icon del" name="op" value="remove-ex:{{$d}}:{{$e}}" title="Remove">✕</button>
         </span>
+        <div class="lift-edit-more">
+          <input class="txt" name="d{{$d}}.e{{$e}}.options" value="{{join .Options ", "}}" list="lift-names-edit" maxlength="300" placeholder="Or instead (optional): Cable row, DB row" aria-label="Exercises that can take its place, comma-separated" title="Exercises you can swap in during the workout, comma-separated">
+          <label class="check" title="Held for the seconds in Reps (plank, dead hang), with a timer"><input type="checkbox" name="d{{$d}}.e{{$e}}.hold" value="1"{{if .Hold}} checked{{end}}> Hold</label>
+          <label class="check" title="Shown folded in the workout: do it if you have time"><input type="checkbox" name="d{{$d}}.e{{$e}}.optional" value="1"{{if .Optional}} checked{{end}}> Optional</label>
+          {{if lt (add $e 1) $count}}<label class="check" title="Done back to back with the next exercise, then rest"><input type="checkbox" name="d{{$d}}.e{{$e}}.superset" value="1"{{if .Superset}} checked{{end}}> Superset with next</label>{{end}}
+        </div>
       </div>
       {{end}}
       <button class="sm ghost" name="op" value="add-ex:{{$d}}">+ Exercise</button>
@@ -226,7 +266,7 @@
     <summary><span><b>{{.Title}}</b> <span class="small muted">{{shortDay .Day}}</span></span>
       <span class="small muted">{{.Took}} · {{.Sets}} {{plural .Sets "set" "sets"}} · {{.Volume}} {{$.Unit}}{{if .Records}} <span class="badge lift-pr">{{.Records}} PR</span>{{end}}</span></summary>
     <div class="lift-past-body">
-      {{range .Exercises}}<div><b>{{.Name}}</b> <span class="muted">{{.Sets}}</span></div>{{end}}
+      {{range .Exercises}}<div><b>{{.Name}}</b> <span class="muted">{{.Sets}}</span>{{with .Swap}} <span class="small lift-swapped">· {{.}}</span>{{end}}</div>{{end}}
       {{with .Note}}<p class="small muted">{{.}}</p>{{end}}
       <span class="lift-btns"><button class="sm" hx-get="/lifting/workouts/{{.ID}}/edit" hx-target="closest .lift-past" hx-swap="outerHTML">Edit</button>
         <button class="sm ghost" hx-post="/lifting/workouts/{{.ID}}/delete" hx-swap="none" hx-confirm="Delete this workout from the history?">Delete</button></span>
@@ -336,13 +376,13 @@
       {{if .Skipped}}<input type="hidden" name="e{{.Index}}.skipped" value="1">
       <label class="lift-edit-why"><span>Skipped because</span><input class="txt" name="e{{.Index}}.why" value="{{.Why}}" maxlength="200" placeholder="(no reason given)"></label>
       {{if .Sets}}<span class="small muted">Sets with reps count as done, so saving un-skips it.</span>{{end}}{{end}}
-      {{if or .Sets (not .Skipped)}}<div class="lift-set lift-set-edit head"><span>Set</span><span>{{$.Unit}}</span><span>Reps</span><span></span><span></span></div>{{end}}
+      {{if or .Sets (not .Skipped)}}<div class="lift-set lift-set-edit head"><span>Set</span><span>{{$.Unit}}</span><span>{{if .Hold}}Secs{{else}}Reps{{end}}</span><span></span><span></span></div>{{end}}
       {{range .Sets}}
       <div class="lift-set-wrap">
       <div class="lift-set lift-set-edit">
         <span class="lift-n">{{add .Index 1}}</span>
         <input class="txt num" name="e{{$ex.Index}}.s{{.Index}}.w" value="{{.Weight}}" placeholder="BW" inputmode="decimal" autocomplete="off" aria-label="Weight, set {{add .Index 1}}">
-        <input class="txt num" name="e{{$ex.Index}}.s{{.Index}}.r" value="{{.Reps}}" placeholder="reps" inputmode="numeric" autocomplete="off" aria-label="Reps, set {{add .Index 1}}">
+        <input class="txt num" name="e{{$ex.Index}}.s{{.Index}}.r" value="{{.Reps}}" placeholder="{{if $ex.Hold}}secs{{else}}reps{{end}}" inputmode="numeric" autocomplete="off" aria-label="{{if $ex.Hold}}Seconds{{else}}Reps{{end}}, set {{add .Index 1}}">
         <label class="icon note-btn" title="A note for this set"><input type="checkbox"{{if .Note}} checked{{end}}>✎</label>
         <button class="icon del" name="op" value="remove-set:{{$ex.Index}}:{{.Index}}" title="Remove set">✕</button>
       </div>

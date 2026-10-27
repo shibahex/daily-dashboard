@@ -192,3 +192,51 @@ func TestGroupSets(t *testing.T) {
 		}
 	}
 }
+
+func TestWorkoutFeaturesRender(t *testing.T) {
+	ui := &UI{templates: newTemplateSet("../../web")}
+	now := time.Now()
+	d := lifting.Data{Unit: "lb"}
+	d.SaveRoutine(lifting.Routine{Name: "Core", Days: []lifting.Day{{Name: "Core", Exercises: []lifting.Planned{
+		{Name: "Plank", Sets: 2, Reps: "45", Hold: true, Rest: 60},
+		{Name: "Curl", Sets: 2, Reps: "10", Rest: 60, Superset: true, Options: []string{"Hammer curl"}},
+		{Name: "Pushdown", Sets: 2, Reps: "12", Rest: 90, Optional: true},
+	}}}})
+	r := d.Routines[0]
+	d.Start(r.ID, r.Days[0].ID, now)
+	d.Apply(lifting.Change{Op: "hold", Exercise: 0, Set: 0}, now)
+	html, err := ui.renderToHTML("lift-workout", workoutViewOf(d, now))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"data-auto-done", `value="done:0:0"`, "Hold · Plank, set 1", `value="hold:0:1"`, // the hold banner, the next set's ▶
+		`class="lift-ex ss-first`, "Superset", `class="lift-ex ss-last`, // Curl + Pushdown
+		`value="swap-to:1:0">Hammer curl`, "lift-ex ss-last closed", // the choice, the folded optional
+	} {
+		if !strings.Contains(string(html), want) {
+			t.Errorf("no %q", want)
+		}
+	}
+	editor, err := ui.renderToHTML("lift-routine-editor", routineEditorView{Routine: d.Routines[0]})
+	if err != nil || !strings.Contains(string(editor), `value="Hammer curl"`) || !strings.Contains(string(editor), `name="d0.e0.hold" value="1" checked`) {
+		t.Errorf("editor: %v", err)
+	}
+}
+
+func TestRoutineEditorReadsFeatures(t *testing.T) {
+	form := url.Values{"name": {"Core"}, "d0.id": {""}, "d0.name": {"Core"},
+		"d0.e0.name": {"Plank"}, "d0.e0.sets": {"3"}, "d0.e0.reps": {"1:00"}, "d0.e0.rest": {"60"}, "d0.e0.hold": {"1"},
+		"d0.e0.superset": {"1"}, "d0.e0.options": {"Side plank, Dead bug"},
+		"d0.e1.name": {"Curl"}, "d0.e1.sets": {"3"}, "d0.e1.reps": {"10"}, "d0.e1.rest": {"60"}, "d0.e1.optional": {"1"}}
+	r := httptest.NewRequest("POST", "/lifting/routines/new", strings.NewReader(form.Encode()))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	routine := lifting.CleanRoutine(routineFromForm(r))
+	plank, curl := routine.Days[0].Exercises[0], routine.Days[0].Exercises[1]
+	if !plank.Hold || plank.Reps != "60" || !plank.Superset || len(plank.Options) != 2 || plank.Options[1] != "Dead bug" {
+		t.Errorf("plank: %+v", plank)
+	}
+	if !curl.Optional || curl.Hold || curl.Superset {
+		t.Errorf("curl: %+v", curl)
+	}
+}
