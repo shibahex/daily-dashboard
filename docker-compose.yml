@@ -10,8 +10,8 @@ services:
     ports:
       - "${DASHBOARD_PORT:-1628}:1628"
     environment:
-      # The domain you open the dashboard at (your nginx site), always over https.
-      DASHBOARD_PUBLIC_URL: https://${DOMAIN:-localhost}
+      # Reached over https through your proxy, at whatever hostname it's opened at.
+      DASHBOARD_PUBLIC_URL: https://*
       TZ: ${TZ:-UTC}
       ANKI_CONNECT_URL: ${ANKI_CONNECT_URL:-}
       ANKI_CONNECT_API_KEY: ${ANKI_CONNECT_API_KEY:-}

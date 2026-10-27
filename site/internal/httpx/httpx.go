@@ -11,9 +11,12 @@ import (
 )
 
 // OnlyHosts refuses requests whose Host isn't one of allowed (localhost on this port and the
-// public address), so a website can't reach the dashboard through some other name that points
-// at it (DNS rebinding).
+// public addresses), so a website can't reach the dashboard through some other name that points
+// at it (DNS rebinding). nil allows every name.
 func OnlyHosts(allowed []string, next http.Handler) http.Handler {
+	if allowed == nil {
+		return next
+	}
 	known := map[string]bool{}
 	for _, host := range allowed {
 		known[strings.ToLower(host)] = true

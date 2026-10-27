@@ -39,6 +39,28 @@ func TestNetworkFromEnv(t *testing.T) {
 	}
 
 	clear()
+	t.Setenv("DASHBOARD_LISTEN", "0.0.0.0:1628")
+	t.Setenv("DASHBOARD_PUBLIC_URL", "https://a.example.lan, https://B.example.lan")
+	n, err = NetworkFromEnv(1628)
+	if hosts := n.AllowedHosts(); err != nil || len(hosts) != 4 || hosts[3] != "b.example.lan" || n.BaseURL() != "https://a.example.lan" {
+		t.Errorf("several addresses: %v %v", hosts, err)
+	}
+
+	clear()
+	t.Setenv("DASHBOARD_LISTEN", "0.0.0.0:1628")
+	t.Setenv("DASHBOARD_PUBLIC_URL", "https://*")
+	n, err = NetworkFromEnv(1628)
+	if err != nil || !n.HTTPS() || !n.AnyHost || n.AllowedHosts() != nil {
+		t.Errorf("any address: %+v %v", n, err)
+	}
+
+	clear()
+	t.Setenv("DASHBOARD_PUBLIC_URL", "https://a.example.lan,http://b.example.lan")
+	if _, err := NetworkFromEnv(1628); err == nil {
+		t.Error("mixing https and http should be refused")
+	}
+
+	clear()
 	t.Setenv("DASHBOARD_PUBLIC_URL", "health.example.lan")
 	if _, err := NetworkFromEnv(1628); err == nil {
 		t.Error("a public URL without a scheme should be refused")

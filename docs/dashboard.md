@@ -25,10 +25,10 @@ On start it installs a Taskwarrior `on-modify` hook so starting/stopping a task 
 
 ## Sharing it on a network
 
-By default the dashboard only answers on this computer. To let others use it, put it behind a reverse proxy that handles HTTPS and tell the dashboard the address people use, in `site/.env`:
+By default the dashboard only answers on this computer. To let others use it, put it behind a reverse proxy that handles HTTPS and tell the dashboard it's reached over HTTPS, in `site/.env`. It then answers at whatever hostname the proxy sends; to allow only some, list them instead (`https://health.example.lan,https://other.example.lan`):
 
 ```sh
-DASHBOARD_PUBLIC_URL=https://health.example.lan
+DASHBOARD_PUBLIC_URL=https://*
 # DASHBOARD_LISTEN=127.0.0.1:1628             # keep this when the proxy runs on the same computer
 # DASHBOARD_TRUSTED_PROXIES=127.0.0.1/32,::1/128
 ```
@@ -52,10 +52,10 @@ location / {
 }
 ```
 
-With [Tailscale](https://tailscale.com), `tailscale serve --bg 1628` gives it an HTTPS address on your tailnet; use that address as `DASHBOARD_PUBLIC_URL`.
+With [Tailscale](https://tailscale.com), `tailscale serve --bg 1628` gives it an HTTPS address on your tailnet.
 
 - The dashboard refuses to listen beyond this computer without HTTPS, since passwords would cross the network in the clear. `DASHBOARD_ALLOW_HTTP=1` overrides that if you accept the risk.
-- Over HTTPS the session cookie is `Secure` (`__Host-session`). Requests must use `localhost` or the public address; anything else is refused.
+- Over HTTPS the session cookie is `Secure` (`__Host-session`). Requests must use `localhost` or a public address; anything else is refused, unless the address is `https://*`.
 - Login rate limits use the client's address, which it takes from `X-Forwarded-For` only when the request comes from a trusted proxy.
 
 ## Docker
@@ -65,17 +65,18 @@ GitHub builds an image from `main` (`ghcr.io/shibahex/daily-dashboard`, tagged `
 ```sh
 git clone https://github.com/shibahex/daily-dashboard.git
 cd daily-dashboard
-cp .env.example .env     # set DOMAIN and TZ
+cp .env.example .env     # set TZ
 docker compose up -d
 docker compose logs dashboard   # the sign-up link for the first account
 ```
 
-`.env` has two settings to fill in:
+`.env` has one setting to fill in:
 
-- `DOMAIN`: the domain you type in the browser to open the dashboard, like `health.example.com`: the one your nginx site uses. Just the name, no `https://`.
 - `TZ`: your time zone, like `America/New_York`, so "today" starts at your midnight.
 
-Then point nginx at port 1628. The browser only does the dashboard's password and notes encryption on an `https://` page, so you can't sign in over plain `http://<server>:1628` (only on `http://localhost:1628` on the server itself). Keep the `Host` header: the dashboard refuses names it doesn't know.
+The dashboard answers at whatever hostname nginx sends it, and invite links use the address you're on, so there's no domain to set.
+
+Then point nginx at port 1628. The browser only does the dashboard's password and notes encryption on an `https://` page, so you can't sign in over plain `http://<server>:1628` (only on `http://localhost:1628` on the server itself). Keep the `Host` header: invite links use it.
 
 ```nginx
 server {
@@ -97,7 +98,7 @@ server {
 
 In Nginx Proxy Manager: a proxy host for `health.example.com` that forwards to `http://<server's IP>:1628`, with an SSL certificate.
 
-**Portainer:** **Stacks → Add stack → Repository**, with the URL `https://github.com/shibahex/daily-dashboard`, reference `refs/heads/main` and compose path `docker-compose.yml`. Add `DOMAIN` and `TZ` under **Environment variables**, deploy, and find the sign-up link in the container's logs. To update, use **Pull and redeploy**; the volume keeps the data.
+**Portainer:** **Stacks → Add stack → Repository**, with the URL `https://github.com/shibahex/daily-dashboard`, reference `refs/heads/main` and compose path `docker-compose.yml`. Add `TZ` under **Environment variables**, deploy, and find the sign-up link in the container's logs. To update, use **Pull and redeploy**; the volume keeps the data.
 
 - Updating with plain Docker: `docker compose pull && docker compose up -d`.
 - Optional settings in `.env`: `ANKI_CONNECT_URL` (and `ANKI_CONNECT_API_KEY`) for AnkiConnect on the computer that runs Anki, `DASHBOARD_PORT` for another port.

@@ -2,7 +2,9 @@ package web
 
 import (
 	"fmt"
+	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -74,13 +76,24 @@ func (ui *UI) renderAdmin(w http.ResponseWriter, r *http.Request, saved string, 
 	ui.render(w, "admin-card", view)
 }
 
-func (ui *UI) inviteLink(code string) string { return ui.BaseURL + "/invite?code=" + code }
+// inviteLink is at the address the admin is using (the server only answers at allowed ones).
+func (ui *UI) inviteLink(r *http.Request, code string) string {
+	host := r.Host
+	if name, _, err := net.SplitHostPort(r.Host); err == nil {
+		host = name
+	}
+	scheme := "http"
+	if ui.HTTPS && host != "localhost" && host != "127.0.0.1" {
+		scheme = "https"
+	}
+	return scheme + "://" + r.Host + "/invite?code=" + url.QueryEscape(code)
+}
 
 func (ui *UI) invite(w http.ResponseWriter, r *http.Request) {
 	username := formText(r, "username")
 	code, err := ui.Auth.Invite(username, auth.Role(r.FormValue("role")))
 	ui.renderAdmin(w, r, "Invite made for "+username, err, func(v *adminView) {
-		v.Link, v.LinkFor = ui.inviteLink(code), username
+		v.Link, v.LinkFor = ui.inviteLink(r, code), username
 	})
 }
 
@@ -105,7 +118,7 @@ func (ui *UI) resetUserPassword(w http.ResponseWriter, r *http.Request) {
 	}
 	code, err := ui.Auth.ResetPassword(target.ID)
 	ui.renderAdmin(w, r, "Reset link made for "+target.Username, err, func(v *adminView) {
-		v.Link, v.LinkFor = ui.inviteLink(code), target.Username
+		v.Link, v.LinkFor = ui.inviteLink(r, code), target.Username
 	})
 }
 

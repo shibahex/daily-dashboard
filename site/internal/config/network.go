@@ -11,11 +11,13 @@ import (
 	"strings"
 )
 
-// Network is how the dashboard is reached: where it listens, the address people use (usually
+// Network is how the dashboard is reached: where it listens, the addresses people use (usually
 // through a reverse proxy that handles HTTPS), and which proxies to believe about who's asking.
 type Network struct {
 	Listen         string         // host:port to listen on
-	PublicURL      *url.URL       // https://health.example.lan; nil when it's only used on this computer
+	Scheme         string         // "https" or "http" for the public addresses; "" when it's only used on this computer
+	PublicHosts    []string       // health.example.lan…; empty with AnyHost
+	AnyHost        bool           // answers at whatever address it's opened at (DASHBOARD_PUBLIC_URL=https://*)
 	TrustedProxies []netip.Prefix // peers whose X-Forwarded-For is believed
 }
 
@@ -31,12 +33,29 @@ func NetworkFromEnv(port int) (Network, error) {
 		}
 		n.Listen = listen
 	}
-	if raw := strings.TrimSpace(os.Getenv("DASHBOARD_PUBLIC_URL")); raw != "" {
+	// One or more addresses, comma-separated; https://* is any address, for a dashboard behind a
+	// proxy that decides which names reach it.
+	for _, raw := range strings.Split(os.Getenv("DASHBOARD_PUBLIC_URL"), ",") {
+		raw = strings.TrimSpace(raw)
+		if raw == "" {
+			continue
+		}
 		public, err := url.Parse(raw)
 		if err != nil || (public.Scheme != "https" && public.Scheme != "http") || public.Host == "" {
-			return n, fmt.Errorf("DASHBOARD_PUBLIC_URL must be a full address, like https://health.example.lan")
+			return n, fmt.Errorf("DASHBOARD_PUBLIC_URL must be full addresses, like https://health.example.lan (or https://* for any)")
 		}
-		n.PublicURL = &url.URL{Scheme: public.Scheme, Host: public.Host}
+		if n.Scheme != "" && n.Scheme != public.Scheme {
+			return n, errors.New("DASHBOARD_PUBLIC_URL's addresses must all be https or all http")
+		}
+		n.Scheme = public.Scheme
+		if public.Host == "*" {
+			n.AnyHost = true
+		} else {
+			n.PublicHosts = append(n.PublicHosts, strings.ToLower(public.Host))
+		}
+	}
+	if n.AnyHost {
+		n.PublicHosts = nil
 	}
 	proxies := os.Getenv("DASHBOARD_TRUSTED_PROXIES")
 	if strings.TrimSpace(proxies) == "" {
@@ -75,22 +94,26 @@ func (n Network) LocalOnly() bool {
 }
 
 // HTTPS is true when people reach it at an https:// address.
-func (n Network) HTTPS() bool { return n.PublicURL != nil && n.PublicURL.Scheme == "https" }
+func (n Network) HTTPS() bool { return n.Scheme == "https" }
 
-// AllowedHosts are the Host headers it answers to: localhost on its port, and the public address.
+// AllowedHosts are the Host headers it answers to: localhost on its port, and the public
+// addresses. nil with AnyHost: every name is answered.
 func (n Network) AllowedHosts() []string {
-	_, port, _ := net.SplitHostPort(n.Listen)
-	hosts := []string{"localhost:" + port, "127.0.0.1:" + port}
-	if n.PublicURL != nil {
-		hosts = append(hosts, n.PublicURL.Host)
+	if n.AnyHost {
+		return nil
 	}
-	return hosts
+	_, port, _ := net.SplitHostPort(n.Listen)
+	return append([]string{"localhost:" + port, "127.0.0.1:" + port}, n.PublicHosts...)
 }
 
-// BaseURL is the address to print and put in links: the public one, or localhost.
+// BaseURL is the address to print when there's no request to take it from: the first public
+// one, a stand-in with AnyHost, or localhost.
 func (n Network) BaseURL() string {
-	if n.PublicURL != nil {
-		return n.PublicURL.String()
+	switch {
+	case len(n.PublicHosts) > 0:
+		return n.Scheme + "://" + n.PublicHosts[0]
+	case n.AnyHost:
+		return n.Scheme + "://<the dashboard's address>"
 	}
 	_, port, _ := net.SplitHostPort(n.Listen)
 	return "http://localhost:" + port

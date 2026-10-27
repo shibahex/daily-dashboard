@@ -21,7 +21,7 @@ type UI struct {
 	Auth       *auth.Auth
 	Paths      config.Paths // the server's: templates and static files
 	Workspaces *workspace.Manager
-	BaseURL    string // the address people use, for invite links
+	HTTPS      bool // people reach it over HTTPS (through a proxy): the scheme of invite links
 
 	// The sandbox the AI's MCP tools run in (SandboxErr says why there's none: then the tools
 	// refuse to start), the MCP programs, and their only way to the network.
