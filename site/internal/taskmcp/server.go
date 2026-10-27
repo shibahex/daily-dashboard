@@ -119,7 +119,10 @@ func (s Server) handle(message []byte, call CallFunc) []byte {
 }
 
 func rpcResult(id json.RawMessage, result any) []byte {
-	reply, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": id, "result": result})
+	reply, err := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": id, "result": result})
+	if err != nil {
+		return rpcError(id, -32603, "internal error: the answer can't be written")
+	}
 	return reply
 }
 

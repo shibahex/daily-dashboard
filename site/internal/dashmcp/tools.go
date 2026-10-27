@@ -24,7 +24,7 @@ const SocketEnv = "DASHBOARD_DATA_SOCKET"
 var schema = taskmcp.Schema
 
 const (
-	dayHelp  = `A day: "today", "yesterday" or YYYY-MM-DD (local). Default today.`
+	dayHelp  = `A day: today, yesterday or YYYY-MM-DD (local). Default today.`
 	timeHelp = `Local time to the minute: 2026-10-27T18:30.`
 )
 

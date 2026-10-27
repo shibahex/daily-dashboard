@@ -106,3 +106,24 @@ func TestLiftingTools(t *testing.T) {
 		t.Errorf("history: %s", history)
 	}
 }
+
+func TestToolsAreValid(t *testing.T) {
+	for _, tool := range Tools {
+		var schema struct {
+			Properties map[string]json.RawMessage `json:"properties"`
+			Required   []string                   `json:"required"`
+		}
+		if err := json.Unmarshal(tool.InputSchema, &schema); err != nil {
+			t.Errorf("%s's input schema isn't JSON: %v", tool.Name, err)
+			continue
+		}
+		for _, name := range schema.Required {
+			if _, ok := schema.Properties[name]; !ok {
+				t.Errorf("%s requires %q, which isn't one of its properties", tool.Name, name)
+			}
+		}
+	}
+	if _, err := json.Marshal(Tools); err != nil {
+		t.Errorf("the tool list can't be written: %v", err)
+	}
+}
