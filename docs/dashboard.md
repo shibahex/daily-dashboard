@@ -231,11 +231,11 @@ Your notes are only as private as the scripts that handle them, and those come f
 
 | Script | Hash |
 |---|---|
-| `app.js` | `sha384-JnctrkvlZGdxCnBCEGJ0/B983nJBDl/YhS/5Pw5MaBcNP2ds3+FkYlaqvzAPCQoo` |
+| `app.js` | `sha384-pm5KsYFE+ac+hV7zNxgfU95LNQ1vG2ChChTvgucaXuQTupYX6Ny5qO3vdviv7dm6` |
 | `keys.js` | `sha384-nwe1d2+ABaJt3Q/12zr1QRW8BolKLItadMXGeqOorCsyP4qfCfXFCb1JdeSaVU2g` |
 | `notes.js` | `sha384-AfMYqfyrh1ctxfqOKdVHMa363w7VG3KevRVtPk4h/8s2lM91Imr4obUH9Apa8X8o` |
 | `backup.js` | `sha384-Y/pu3exPYWdYgVyNW/qbSljWfBE5nxJTGCj/X/XM4YXwnnbu3HvijZaMlMKshMIJ` |
-| `assistant.js` | `sha384-eRcMdkCkEXWUIgP/KIaVzxfTtHrekmL3mh2dRRwcnCLT9QtVIj4Ef77etBXhxq2N` |
+| `assistant.js` | `sha384-iXt2rEZ2/SiuX3KVvMLjVvJH2CjmcCA2Y63Klv3PQPXAR+8GjsVsGUTeyG3b3q/c` |
 | `htmx.js` | `sha384-HGfztofotfshcF7+8n44JQL2oJmowVChPTg48S+jvZoztPfvwD79OC/LTtG6dMp+` |
 | `htmx-sse.js` | `sha384-fw+eTlCc7suMV/1w/7fr2/PmwElUIt5i82bi+qTiLXvjRXZ2/FkiTNA/w0MhXnGI` |
 | `marked.js` | `sha384-IvVdUXkhyoD0shbjhiiOnuiTbervTaB0VJcnEcg3shUAMVOOF6lKj4ozJrCwvz6s` |
