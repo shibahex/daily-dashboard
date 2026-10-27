@@ -309,6 +309,7 @@ type weightCardView struct {
 	Trend        *sparkline
 	Reached      bool    // the latest weight meets the target
 	ToGo         float64 // lb left to the target (0 when reached or there's none)
+	MyFitnessPal bool    // MyFitnessPal is connected, so the card asks whether to send weigh-ins there
 }
 
 // sparkline is the weight trend over the last 90 days.
@@ -341,7 +342,8 @@ func (ui *UI) weightView(r *http.Request, editing bool) (weightCardView, error) 
 	weights := ui.ws(r).Store.Weights()
 	today := time.Now().Format("2006-01-02")
 	shown := shownDay(r)
-	view := weightCardView{Editing: editing, Plan: plan.Weight, Current: plan.Weight.Start, DayName: dayName(shown)}
+	view := weightCardView{Editing: editing, Plan: plan.Weight, Current: plan.Weight.Start, DayName: dayName(shown),
+		MyFitnessPal: ui.ws(r).MyFitnessPal.Client().Setup().SignedIn}
 	view.StartDate, _ = time.ParseInLocation("2006-01-02", plan.Weight.StartDate, time.Local)
 	if len(weights) > 0 {
 		last := weights[len(weights)-1]
@@ -426,8 +428,9 @@ func (ui *UI) saveWeightPlan(w http.ResponseWriter, r *http.Request) {
 	ui.renderWeightAfterChange(r, w)
 }
 
-// logWeight logs the shown day's weigh-in (lb), or removes it (remove=1). A new weigh-in also goes to
-// MyFitnessPal and ticks the "Weigh in" checklist item.
+// logWeight logs the shown day's weigh-in (lb), or removes it (remove=1), and ticks the "Weigh in"
+// checklist item. When MyFitnessPal is connected the form asks (mfp) whether to send it there too,
+// and the answer is kept as the default for next time.
 func (ui *UI) logWeight(w http.ResponseWriter, r *http.Request) {
 	day := shownDay(r).Format(dayLayout)
 	if r.FormValue("remove") != "" {
@@ -450,12 +453,31 @@ func (ui *UI) logWeight(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ui.ws(r).Store.TickWeighIn(day)
-	message := say("Weight logged · sent to MyFitnessPal")
-	if err := ui.ws(r).MyFitnessPal.LogWeight(day, lb); err != nil {
-		message = &notice{Message: "Saved here, but not in MyFitnessPal: " + problem.Public(err), Bad: true}
+	message := say("Weight logged")
+	if r.FormValue("mfpAsked") != "" {
+		send := r.FormValue("mfp") != ""
+		if err := ui.rememberMyFitnessPalChoice(r, send); err != nil {
+			fail(w, err)
+			return
+		}
+		if send {
+			message = say("Weight logged · sent to MyFitnessPal")
+			if err := ui.ws(r).MyFitnessPal.LogWeight(day, lb); err != nil {
+				message = &notice{Message: "Saved here, but not in MyFitnessPal: " + problem.Public(err), Bad: true}
+			}
+		}
 	}
 	announce(w, message, checklistChanged)
 	ui.renderWeightAfterChange(r, w)
+}
+
+// rememberMyFitnessPalChoice saves whether weigh-ins go to MyFitnessPal, when that changed.
+func (ui *UI) rememberMyFitnessPalChoice(r *http.Request, send bool) error {
+	plan, err := ui.ws(r).Store.LoadPlan()
+	if err != nil || plan.Weight.NoMyFitnessPal == !send {
+		return err
+	}
+	return ui.ws(r).Store.UpdatePlan(func(p *store.Plan) { p.Weight.NoMyFitnessPal = !send })
 }
 
 func (ui *UI) renderWeightAfterChange(r *http.Request, w http.ResponseWriter) {

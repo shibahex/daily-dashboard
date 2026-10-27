@@ -122,14 +122,15 @@ func (g *Gateway) run(tool string, arguments json.RawMessage) (string, error) {
 		return "Saved the checklist: " + strings.Join(items, ", "), g.ws.Store.UpdatePlan(func(p *store.Plan) { p.Checklist = items })
 	case "weight_log":
 		var in struct {
-			Weight    float64
-			Unit, Day string
-			Remove    bool
+			Weight       float64
+			Unit, Day    string
+			Remove       bool
+			MyFitnessPal *bool
 		}
 		if err := decode(arguments, &in); err != nil {
 			return "", err
 		}
-		return g.weightLog(in.Weight, in.Unit, in.Day, in.Remove)
+		return g.weightLog(in.Weight, in.Unit, in.Day, in.Remove, in.MyFitnessPal)
 	case "weight_plan":
 		var in struct {
 			Start     *float64 `json:"start"`
@@ -188,6 +189,16 @@ func (g *Gateway) run(tool string, arguments json.RawMessage) (string, error) {
 			return "", err
 		}
 		return g.liftingHistory(in.Exercise, in.Limit)
+	case "lifting_goal":
+		var in struct {
+			Exercise  string
+			OneRepMax float64 `json:"one_rep_max"`
+			Unit      string
+		}
+		if err := decode(arguments, &in); err != nil {
+			return "", err
+		}
+		return g.liftingGoal(in.Exercise, in.OneRepMax, in.Unit)
 	case "lifting_log":
 		var in struct {
 			Exercise string
@@ -442,7 +453,7 @@ func (g *Gateway) checklistSet(item, state, reason, typedDay string) (string, er
 	return fmt.Sprintf("%s “%s” on %s.", done, name, day), nil
 }
 
-func (g *Gateway) weightLog(weight float64, unit, typedDay string, remove bool) (string, error) {
+func (g *Gateway) weightLog(weight float64, unit, typedDay string, remove bool, toMyFitnessPal *bool) (string, error) {
 	day, err := g.day(typedDay)
 	if err != nil {
 		return "", err
@@ -466,8 +477,19 @@ func (g *Gateway) weightLog(weight float64, unit, typedDay string, remove bool) 
 	}
 	g.ws.Store.TickWeighIn(day)
 	message := fmt.Sprintf("Logged %s lb on %s.", store.FormatPounds(lb), day)
-	if g.ws.MyFitnessPal == nil {
+	if g.ws.MyFitnessPal == nil || !g.ws.MyFitnessPal.Client().Setup().SignedIn {
 		return message, nil
+	}
+	if toMyFitnessPal == nil {
+		plan, err := g.ws.Store.LoadPlan()
+		if err != nil {
+			return "", err
+		}
+		send := !plan.Weight.NoMyFitnessPal
+		toMyFitnessPal = &send
+	}
+	if !*toMyFitnessPal {
+		return message + " Not sent to MyFitnessPal.", nil
 	}
 	if err := g.ws.MyFitnessPal.LogWeight(day, lb); err != nil {
 		message += " It wasn't sent to MyFitnessPal: " + problem.Public(err)
@@ -539,8 +561,19 @@ func (g *Gateway) liftingOverview(count int) (string, error) {
 	data := g.ws.Lifting.Load()
 	recent := data.Workouts[max(0, len(data.Workouts)-count):]
 	slices.Reverse(recent)
+	type goal struct {
+		Exercise string  `json:"exercise"`
+		Goal     float64 `json:"one_rep_max_goal_lb"`
+		OneRM    float64 `json:"actual_one_rep_max_lb,omitempty"`
+		Reached  bool    `json:"reached"`
+	}
+	goals := []goal{}
+	for _, g := range data.Goals {
+		oneRM, _ := data.OneRM(g.Name, time.Time{})
+		goals = append(goals, goal{g.Name, g.LB, oneRM, oneRM >= g.LB})
+	}
 	return asJSON(map[string]any{"unit": data.Unit, "weights_are_in": "lb", "routines": data.Routines,
-		"workout_in_progress": data.Active, "recent_workouts": recent})
+		"workout_in_progress": data.Active, "recent_workouts": recent, "goals": goals})
 }
 
 func (g *Gateway) liftingHistory(name string, limit int) (string, error) {
@@ -556,12 +589,13 @@ func (g *Gateway) liftingHistory(name string, limit int) (string, error) {
 		Workout  string        `json:"workout"`
 		Sets     []lifting.Set `json:"sets_lb"`
 		BestE1RM float64       `json:"best_e1rm_lb,omitempty"`
+		Single   float64       `json:"actual_one_rep_max_lb,omitempty"`
 		Record   bool          `json:"record,omitempty"`
 	}
 	var sessions []session
 	for i := len(history) - 1; i >= 0 && len(sessions) < limit; i-- {
 		h := history[i]
-		sessions = append(sessions, session{Day: h.Day.Format("2006-01-02"), Workout: h.Title, Sets: h.Sets, BestE1RM: math.Round(h.Best*10) / 10, Record: h.Record})
+		sessions = append(sessions, session{Day: h.Day.Format("2006-01-02"), Workout: h.Title, Sets: h.Sets, BestE1RM: math.Round(h.Best*10) / 10, Single: h.Single, Record: h.Record})
 	}
 	return asJSON(sessions)
 }
@@ -603,6 +637,29 @@ func (g *Gateway) liftingLog(name string, typed []struct {
 		}
 	}
 	return fmt.Sprintf("Logged %s: %s, in %s.", strings.TrimSpace(name), strings.Join(parts, ", "), where), nil
+}
+
+func (g *Gateway) liftingGoal(name string, oneRM float64, unit string) (string, error) {
+	var current float64
+	err := g.ws.Lifting.Update(func(d *lifting.Data) error {
+		if unit != "kg" && unit != "lb" {
+			unit = d.Unit
+		}
+		current, _ = d.OneRM(name, time.Time{})
+		return d.SetGoal(name, lifting.FromShown(oneRM, unit))
+	})
+	if err != nil {
+		return "", err
+	}
+	name = strings.TrimSpace(name)
+	if oneRM == 0 {
+		return "Cleared the one-rep max goal for " + name + ".", nil
+	}
+	message := fmt.Sprintf("%s one-rep max goal: %s %s.", name, strconv.FormatFloat(oneRM, 'f', -1, 64), unit)
+	if current == 0 {
+		return message + " There's no single logged for it yet.", nil
+	}
+	return message + fmt.Sprintf(" Actual one-rep max so far: %s %s.", lifting.FormatShown(current, unit), unit), nil
 }
 
 // ---------- Timewarrior ----------

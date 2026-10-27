@@ -49,6 +49,8 @@ ul.notes { margin: 0; padding-left: 18px; } ul.notes li { margin: 4px 0; }
 .editor label.lbl { display: block; font-size: 12px; color: var(--muted); margin: 8px 0 3px; }
 .weight-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .weight-row input { width: 130px; }
+.weight-row .w-mfp { display: flex; align-items: center; gap: 5px; cursor: pointer; }
+.weight-row .w-mfp input { width: 15px; height: 15px; margin: 0; accent-color: var(--accent); }
 .w-now { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
 .w-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 10px 0 4px; }
 .w-stats .goal b { font-size: 16px; }

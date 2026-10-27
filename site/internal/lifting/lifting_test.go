@@ -468,3 +468,47 @@ func TestOptionalCarriesOver(t *testing.T) {
 		}
 	}
 }
+
+func TestSummaries(t *testing.T) {
+	w := Workout{Exercises: []Exercise{
+		{Name: "Bench", Sets: []Set{{LB: 135, Reps: 10, Done: true}, {LB: 155, Reps: 6, Done: true}, {LB: 155, Reps: 8, Done: true}, {LB: 185, Reps: 5}}},
+		{Name: "Plank", Hold: true, Sets: []Set{{Secs: 60, Done: true}}},
+		{Name: "Pull-up", Sets: []Set{{Reps: 8, Done: true}, {Reps: 6, Done: true}}},
+		{Name: "Dips", Skipped: true},
+	}}
+	got := w.Summaries()
+	want := []Summary{{Name: "Bench", Sets: 3, Reps: 8, LB: 155}, {Name: "Pull-up", Sets: 2, Reps: 8}}
+	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+		t.Fatalf("got %+v", got)
+	}
+}
+
+func TestOneRMAndGoals(t *testing.T) {
+	day := time.Date(2026, 1, 5, 18, 0, 0, 0, time.UTC)
+	d := Data{Workouts: []Workout{
+		{ID: "a", Started: day, Ended: day.Add(time.Hour), Exercises: []Exercise{{Name: "Squat", Sets: []Set{{LB: 200, Reps: 5, Done: true}, {LB: 205, Reps: 1, Done: true}, {LB: 215, Reps: 1}}}}},
+	}}
+	if lb, _ := d.OneRM("squat", time.Time{}); lb != 205 {
+		t.Fatalf("one-rep max %v: estimates and undone sets don't count", lb)
+	}
+	if err := d.SetGoal("Squat", 225); err != nil || d.Goal("SQUAT") != 225 {
+		t.Fatalf("goal %v, %v", d.Goal("squat"), err)
+	}
+	next := Workout{ID: "b", Started: day.AddDate(0, 0, 3), Ended: day.AddDate(0, 0, 3).Add(time.Hour),
+		Exercises: []Exercise{{Name: "squat", Sets: []Set{{LB: 220, Reps: 3, Done: true}}}}}
+	if reached := d.GoalsReached(next); len(reached) != 0 {
+		t.Fatalf("an estimate reached the goal: %v", reached)
+	}
+	next.Exercises[0].Sets = append(next.Exercises[0].Sets, Set{LB: 225, Reps: 1, Done: true})
+	d.Workouts = append(d.Workouts, next)
+	if reached := d.GoalsReached(next); len(reached) != 1 {
+		t.Fatalf("a 225 single didn't reach the goal: %v", reached)
+	}
+	later := Workout{Started: day.AddDate(0, 0, 7), Exercises: []Exercise{{Name: "Squat", Sets: []Set{{LB: 230, Reps: 1, Done: true}}}}}
+	if reached := d.GoalsReached(later); len(reached) != 0 {
+		t.Fatal("a goal is reached once")
+	}
+	if err := d.SetGoal("squat", 0); err != nil || len(d.Goals) != 0 {
+		t.Fatalf("clearing left %v", d.Goals)
+	}
+}

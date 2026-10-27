@@ -240,3 +240,50 @@ func TestRoutineEditorReadsFeatures(t *testing.T) {
 		t.Errorf("curl: %+v", curl)
 	}
 }
+
+func TestOneRMGoalRenders(t *testing.T) {
+	ui := &UI{templates: newTemplateSet("../../web")}
+	now := time.Now()
+	d := liftingData()
+	r := d.Routines[0]
+	d.Start(r.ID, r.Days[0].ID, now.Add(-2*time.Hour))
+	lb, one := 205.0, 1
+	d.SetTyped(map[[2]int]lifting.Typed{{0, 0}: {LB: &lb, Reps: &one}})
+	d.Apply(lifting.Change{Op: "done"}, now)
+	d.Finish(now.Add(-time.Hour), 60, "")
+	if err := d.SetGoal("Bench press", 225); err != nil {
+		t.Fatal(err)
+	}
+	progress := progressViewOf(d, "Bench press")
+	if progress.OneRM != "205" || progress.Goal != "225" || progress.ToGo != "20" || progress.Reached {
+		t.Fatalf("progress %+v", progress)
+	}
+	d.Start(r.ID, r.Days[0].ID, now)
+	lb = 225
+	d.SetTyped(map[[2]int]lifting.Typed{{0, 0}: {LB: &lb, Reps: &one}})
+	d.Apply(lifting.Change{Op: "done"}, now)
+	strength := strengthView{Unit: "lb", Measure: "max", HasLifts: true, Series: []strengthSeries{{Slot: 1, Name: "Bench press",
+		Latest: "205", Path: "M0,60", Goal: "225", GoalY: 20, ToGo: "20"}}, Chart: &strengthChart{From: now, To: now}}
+	cases := []struct {
+		name string
+		view any
+		want string
+	}{
+		{"lift-progress", progress, `name="goal" value="225"`},
+		{"lift-progress", progress, "20 lb to go"},
+		{"lift-workout", workoutViewOf(d, now), ">GOAL<"},
+		{"lift-workout", workoutViewOf(d, now), "/ goal 225"},
+		{"card-strength", strength, `stroke-dasharray="5 4"`},
+		{"card-strength", strength, "goal 225 (20 to go)"},
+	}
+	for _, c := range cases {
+		html, err := ui.renderToHTML(c.name, c.view)
+		if err != nil {
+			t.Errorf("%s: %v", c.name, err)
+			continue
+		}
+		if !strings.Contains(string(html), c.want) {
+			t.Errorf("%s: no %q", c.name, c.want)
+		}
+	}
+}

@@ -3,11 +3,13 @@
 {{define "lifting"}}
 <div class="lift-top">
   <a class="edit-btn" href="/lifting/export.csv" download hx-boost="false" title="Every finished set, one row each">Export (CSV)</a>
+  {{if .MyFitnessPal}}<button class="edit-btn lift-mfp-btn" hx-get="/lifting/myfitnesspal" hx-target="#lift-mfp" hx-swap="innerHTML" title="Which MyFitnessPal exercise each lift is logged as">MyFitnessPal matches</button>{{end}}
   <span class="small muted">Weights in</span>
   <form class="seg" hx-post="/lifting/unit" hx-trigger="change" hx-swap="none">
     <label><input type="radio" name="unit" value="lb"{{if eq .Unit "lb"}} checked{{end}}>lb</label><label><input type="radio" name="unit" value="kg"{{if eq .Unit "kg"}} checked{{end}}>kg</label>
   </form>
 </div>
+<div class="task-slot" id="lift-mfp"></div>
 <div class="lift-grid">
   <div class="col">{{template "lift-workout" .Workout}}{{template "lift-routines" .Routines}}</div>
   <div class="col">{{template "lift-progress" .Progress}}{{template "lift-history" .History}}</div>
@@ -51,7 +53,9 @@
             {{if .Optional}}<span class="badge">optional</span>{{end}}
             {{if .Hold}}<span class="badge">hold</span>{{end}}
             {{if not .Skipped}}<span class="ex-1rm{{if .Record}} pr{{end}}" title="Estimated one-rep max (Epley) from the best set below, to the nearest {{$.Plate}} {{$.Unit}}{{with .Best}}. Your best so far: {{.}}{{end}}">
-              <span class="ex-1rm-label">{{if .Record}}PR{{else}}1RM{{end}}</span> <b class="ex-1rm-now">{{.Est}}</b>{{with .Best}}<span class="muted"> / best {{.}}</span>{{end}}</span>{{end}}
+              <span class="ex-1rm-label">{{if .Record}}PR{{else}}Est.{{end}}</span> <b class="ex-1rm-now">{{.Est}}</b>{{with .Best}}<span class="muted"> / best {{.}}</span>{{end}}</span>
+            {{if or .Max .Goal}}<span class="ex-max{{if .GoalMet}} reached{{end}}" title="Your actual one-rep max: your heaviest single (one rep), never an estimate">
+              <span class="ex-1rm-label">1RM</span> <b>{{or .Max "—"}}</b>{{with .Goal}}<span class="muted"> / goal {{.}}</span>{{end}}{{if .GoalMet}} ✓{{end}}</span>{{end}}{{end}}
           </div>
           <div class="small muted">{{if .Skipped}}Skipped{{with .Why}}: {{.}}{{end}}{{else}}{{.Plan}}{{with .Last}} · last time {{.}}{{end}}{{end}}</div>
           {{with .Instead}}<div class="small lift-swapped">⇄ instead of {{.}}{{with $ex.SwapWhy}}: {{.}}{{end}}</div>{{end}}
@@ -97,7 +101,7 @@
         </div>
         {{else}}
         <div class="lift-set{{if .Done}} done{{end}}{{if .Next}} next{{end}}{{if .Timing}} timing{{end}}">
-          <span class="lift-n{{if .Record}} pr{{end}}"{{if .Record}} title="A new best estimated one-rep max"{{end}}>{{if .Record}}PR{{else}}{{add .Index 1}}{{end}}</span>
+          <span class="lift-n{{if .Goal}} goal{{else if .Record}} pr{{else if .Single}} single{{end}}"{{if .Goal}} title="A single at your one-rep max goal"{{else if .Record}} title="A new best estimated one-rep max"{{else if .Single}} title="A single: an actual one-rep max"{{end}}>{{if .Goal}}GOAL{{else if .Record}}PR{{else if .Single}}1RM{{else}}{{add .Index 1}}{{end}}</span>
           <input class="txt num" name="w{{$ex.Index}}.{{.Index}}" value="{{.Weight}}" placeholder="BW" inputmode="decimal" autocomplete="off" aria-label="Weight, set {{add .Index 1}}"
             hx-post="/lifting/workout?quiet=1" hx-trigger="change" hx-include="closest form" hx-swap="none">
           <input class="txt num" name="r{{$ex.Index}}.{{.Index}}" value="{{.Reps}}" placeholder="{{if $ex.Hold}}secs{{else}}reps{{end}}" inputmode="numeric" autocomplete="off" aria-label="{{if $ex.Hold}}Seconds{{else}}Reps{{end}}, set {{add .Index 1}}"
@@ -151,8 +155,31 @@
   <label>Took <input class="txt num" name="took" value="{{.Took}}" title="Minutes or hours: 45, 50m, 1h 10m. Leave blank to not log time."></label>
   <input class="txt" name="note" value="{{.Note}}" maxlength="500" placeholder="Note (optional): felt strong, left shoulder tight…">
   <span class="small muted">{{with .Task}}{{if $.TaskDue}}Ticks “{{.}}” and logs the time to it.{{else}}“{{.}}” isn't due, so it stays as it is. The time is logged as Lifting.{{end}}{{else}}The time is logged as Lifting. Blank = don't log.{{end}}</span>
+  {{if .MyFitnessPal}}<input type="hidden" name="mfpAsked" value="1"><label class="small" title="Each lift goes to MyFitnessPal's exercise diary as its heaviest set, and the time as strength training (remembered for next time)"><input type="checkbox" name="mfp" value="1"{{if .Send}} checked{{end}}> Also log in MyFitnessPal</label>{{end}}
   <span><button class="sm primary">Save workout</button> {{template "close-button"}}</span>
 </form>
+{{end}}
+
+{{/* Which MyFitnessPal exercise each lift is logged as. Change opens a search for that lift. */}}
+{{define "lift-mfp"}}
+<div class="panel lift-mfp">
+  <div class="spread"><b>MyFitnessPal matches</b>{{template "close-button" "Close"}}</div>
+  <p class="small muted">A finished workout goes to MyFitnessPal's exercise diary with each lift as its heaviest set. Lifts are matched the first time they're sent; change any here.</p>
+  {{range .Lifts}}
+  <div class="lift-mfp-row">
+    <span><b>{{.Name}}</b> <span class="muted">→ {{or .Match "not matched yet"}}</span></span>
+    <form class="lift-mfp-search" hx-get="/lifting/myfitnesspal/search" hx-target="next .lift-mfp-results" hx-swap="innerHTML">
+      <input type="hidden" name="name" value="{{.Name}}">
+      <input class="txt" name="q" value="{{.Name}}" aria-label="Search MyFitnessPal for {{.Name}}"><button class="sm">Search</button>
+    </form>
+    <div class="lift-mfp-results"></div>
+  </div>
+  {{else}}<p class="muted">No lifts yet.</p>{{end}}
+</div>
+{{end}}
+
+{{define "lift-mfp-results"}}
+{{range .Results}}<button class="sm" hx-post="/lifting/myfitnesspal/match" hx-vals="{{vals "name" $.Name "id" .ID "label" .Name}}" hx-target="#lift-mfp" hx-swap="innerHTML">{{.Name}}</button>{{else}}<span class="small muted">Nothing found. Try other words.</span>{{end}}
 {{end}}
 
 {{define "lift-routines"}}
@@ -237,10 +264,17 @@
     {{if .Names}}<select class="txt lift-pick" name="exercise" aria-label="Exercise" hx-get="/lifting/progress" hx-trigger="change" hx-target="closest .card" hx-swap="outerHTML">{{range .Names}}<option{{if eq . $.Name}} selected{{end}}>{{.}}</option>{{end}}</select>{{end}}</div>
   {{if .Count}}
   <div class="lift-stats">
+    <div title="Your heaviest single (one rep){{if .OneRM}}, {{monthDay .OneRMDay}}{{end}}"><b>{{or .OneRM "—"}}</b><span>actual 1RM{{if .OneRM}} ({{.Unit}}){{end}}</span></div>
     <div><b>{{or .Best "—"}}</b><span>best est. 1RM{{if .Best}} ({{.Unit}}){{end}}</span></div>
     <div><b>{{or .Heaviest "BW"}}</b><span>heaviest{{if .Heaviest}} ({{.Unit}}){{end}}</span></div>
     <div><b>{{.Count}}</b><span>{{plural .Count "session" "sessions"}}</span></div>
   </div>
+  <form class="lift-goal{{if .Reached}} reached{{end}}" hx-post="/lifting/goal" hx-swap="none">
+    <input type="hidden" name="exercise" value="{{.Name}}">
+    <label>1RM goal <input class="txt num" name="goal" value="{{.Goal}}" placeholder="—" inputmode="decimal" autocomplete="off"></label><span class="muted">{{.Unit}}</span>
+    <button class="sm">Save</button>
+    <span class="small muted">{{if .Reached}}<span class="badge reached">✓ goal reached</span>{{else if .Goal}}{{.ToGo}} {{.Unit}} to go{{else}}Reached with a single (one rep) at that weight{{end}}</span>
+  </form>
   {{with .Trend}}
   <div class="spark-wrap">
     <svg class="spark" viewBox="0 0 300 60" preserveAspectRatio="none"><path d="{{.Path}}" fill="none" stroke="var(--accent)" stroke-width="2" vector-effect="non-scaling-stroke"/></svg>
@@ -249,12 +283,12 @@
   <div class="small muted spread"><span>{{monthDay .From}}</span><span>est. 1RM per session</span><span>{{monthDay .To}}</span></div>
   {{end}}
   <table class="lift-table lift-log">
-    <thead><tr><th>Day</th><th>Sets <span class="muted">({{.Unit}})</span></th><th></th><th class="num">Est. 1RM</th></tr></thead>
+    <thead><tr><th>Day</th><th>Sets <span class="muted">({{.Unit}})</span></th><th></th><th class="num" title="The actual one-rep max when there was a single, else the estimate (~)">1RM</th></tr></thead>
     {{range .Sessions}}<tr{{if .Record}} class="pr"{{end}}><td class="muted">{{shortDay .Day}}</td>
       <td>{{range .Groups}}<span class="lift-group"><b>{{.Weight}}</b> <span class="muted">{{.Reps}}</span></span>{{end}}</td>
-      <td>{{if .Record}}<span class="badge lift-pr">PR</span>{{end}}</td><td class="num">{{with .Best}}~{{.}}{{end}}</td></tr>{{end}}
+      <td>{{if .Record}}<span class="badge lift-pr">PR</span>{{end}}</td><td class="num">{{with .Single}}<b title="A single: an actual one-rep max">{{.}}</b> <span class="small muted">1RM</span>{{else}}{{with .Best}}~{{.}}{{end}}{{end}}</td></tr>{{end}}
   </table>
-  {{else}}<p class="muted">Finish a workout to see each exercise's progress here: the best estimated one-rep max, the heaviest set and every session.</p>{{end}}
+  {{else}}<p class="muted">Finish a workout to see each exercise's progress here: your actual one-rep max (your heaviest single), the best estimate, the heaviest set and every session.</p>{{end}}
 </div>
 {{end}}
 
@@ -269,6 +303,7 @@
       {{range .Exercises}}<div><b>{{.Name}}</b> <span class="muted">{{.Sets}}</span>{{with .Swap}} <span class="small lift-swapped">· {{.}}</span>{{end}}</div>{{end}}
       {{with .Note}}<p class="small muted">{{.}}</p>{{end}}
       <span class="lift-btns"><button class="sm" hx-get="/lifting/workouts/{{.ID}}/edit" hx-target="closest .lift-past" hx-swap="outerHTML">Edit</button>
+        {{if .Sent}}<span class="small muted">in MyFitnessPal</span>{{else if $.MyFitnessPal}}<button class="sm" hx-post="/lifting/workouts/{{.ID}}/myfitnesspal" hx-swap="none" hx-disabled-elt="this" title="Log each lift's heaviest set and the time in MyFitnessPal's exercise diary">Send to MyFitnessPal</button>{{end}}
         <button class="sm ghost" hx-post="/lifting/workouts/{{.ID}}/delete" hx-swap="none" hx-confirm="Delete this workout from the history?">Delete</button></span>
     </div>
   </details>
@@ -286,7 +321,7 @@
   {{else}}
   <form class="strength-controls" hx-post="/cards/strength" hx-trigger="change" hx-target="closest .card" hx-swap="outerHTML">
     <div class="seg" role="radiogroup" aria-label="What to chart">
-      <label title="The heaviest weight you logged each session"><input type="radio" name="measure" value="heaviest"{{if eq .Measure "heaviest"}} checked{{end}}>Heaviest</label><label title="Each session's best estimated one-rep max (Epley)"><input type="radio" name="measure" value="e1rm"{{if eq .Measure "e1rm"}} checked{{end}}>Est. 1RM</label>
+      <label title="The heaviest weight you logged each session"><input type="radio" name="measure" value="heaviest"{{if eq .Measure "heaviest"}} checked{{end}}>Heaviest</label><label title="Each session's best estimated one-rep max (Epley)"><input type="radio" name="measure" value="e1rm"{{if eq .Measure "e1rm"}} checked{{end}}>Est. 1RM</label><label title="Each session's heaviest single (one rep): your actual one-rep max"><input type="radio" name="measure" value="max"{{if eq .Measure "max"}} checked{{end}}>1RM</label>
     </div>
     <div class="seg" role="radiogroup" aria-label="How far back">
       {{range .Ranges}}<label><input type="radio" name="range" value="{{.ID}}"{{if eq .ID $.Range}} checked{{end}}>{{.Label}}</label>{{end}}
@@ -294,17 +329,17 @@
   </form>
   {{if .Series}}
   <ul class="strength-legend">
-    {{range .Series}}
+    {{range $s := .Series}}
     <li><span class="strength-key" style="--c: var(--lift-{{.Slot}})"></span><span class="strength-name">{{.Name}}</span>
-      <span class="strength-num">{{if .Latest}}<b>{{.Latest}}</b> <span class="small muted">{{$.Unit}}</span>{{with .Ratio}}<span class="small muted" title="Your best in this range, × your bodyweight ({{$.Body}} {{$.Unit}})"> · {{.}}×</span>{{end}}{{with .Change}} <span class="badge active" title="Up over this range">{{.}}</span>{{end}}{{else}}<span class="small muted">nothing in this range</span>{{end}}</span></li>
+      <span class="strength-num">{{if .Latest}}<b>{{.Latest}}</b> <span class="small muted">{{$.Unit}}</span>{{with .Ratio}}<span class="small muted" title="Your best in this range, × your bodyweight ({{$.Body}} {{$.Unit}})"> · {{.}}×</span>{{end}}{{with .Change}} <span class="badge active" title="Up over this range">{{.}}</span>{{end}}{{else}}<span class="small muted">{{if eq $.Measure "max"}}no singles in this range{{else}}nothing in this range{{end}}</span>{{end}}{{with .Goal}}<span class="small muted strength-goal{{if $s.Reached}} reached{{end}}" title="Your one-rep max goal, reached with a single"> · goal {{.}}{{if $s.Reached}} ✓{{else}} ({{$s.ToGo}} to go){{end}}</span>{{end}}</span></li>
     {{end}}
   </ul>
   {{with .Chart}}
-  <div class="strength-chart" role="img" aria-label="{{if eq $.Measure "e1rm"}}Estimated one-rep max{{else}}Heaviest weight{{end}} per session, {{monthDay .From}} to {{monthDay .To}}">
+  <div class="strength-chart" role="img" aria-label="{{if eq $.Measure "e1rm"}}Estimated one-rep max{{else if eq $.Measure "max"}}Actual one-rep max (heaviest single){{else}}Heaviest weight{{end}} per session, {{monthDay .From}} to {{monthDay .To}}">
     {{range .Ticks}}<span class="strength-tick" style="top:{{.Top}}%"><span>{{.Label}}</span></span>{{end}}
     <div class="strength-plot">
-      <svg viewBox="0 0 300 120" preserveAspectRatio="none" aria-hidden="true">{{range $.Series}}{{if .Path}}<path d="{{.Path}}" fill="none" stroke="var(--lift-{{.Slot}})" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>{{end}}{{end}}</svg>
-      {{range $s := $.Series}}{{range .Points}}<span class="spark-point strength-point{{if gt .Left 70.0}} right{{else if lt .Left 30.0}} left{{end}}" style="left:{{.Left}}%;top:{{.Top}}%;--c: var(--lift-{{$s.Slot}})" tabindex="0"><span class="tip"><b>{{$s.Name}}</b> · {{shortDay .Day}}<br>{{if eq $.Measure "e1rm"}}~{{.Value}} {{$.Unit}} est. 1RM{{with .Set}} from {{.}}{{end}}{{else}}{{.Value}} {{$.Unit}} heaviest{{with .Set}}<br>best set {{.}}{{end}} · ~{{.E1RM}} est. 1RM{{end}}</span></span>{{end}}{{end}}
+      <svg viewBox="0 0 300 120" preserveAspectRatio="none" aria-hidden="true">{{range $.Series}}{{if ge .GoalY 0.0}}<line x1="0" x2="300" y1="{{.GoalY}}" y2="{{.GoalY}}" stroke="var(--lift-{{.Slot}})" stroke-width="1.5" stroke-dasharray="5 4" opacity=".7" vector-effect="non-scaling-stroke"><title>{{.Name}} goal: {{.Goal}} {{$.Unit}}</title></line>{{end}}{{end}}{{range $.Series}}{{if .Path}}<path d="{{.Path}}" fill="none" stroke="var(--lift-{{.Slot}})" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>{{end}}{{end}}</svg>
+      {{range $s := $.Series}}{{range .Points}}<span class="spark-point strength-point{{if gt .Left 70.0}} right{{else if lt .Left 30.0}} left{{end}}" style="left:{{.Left}}%;top:{{.Top}}%;--c: var(--lift-{{$s.Slot}})" tabindex="0"><span class="tip"><b>{{$s.Name}}</b> · {{shortDay .Day}}<br>{{if eq $.Measure "e1rm"}}~{{.Value}} {{$.Unit}} est. 1RM{{with .Set}} from {{.}}{{end}}{{else if eq $.Measure "max"}}{{.Value}} {{$.Unit}} 1RM (a single){{else}}{{.Value}} {{$.Unit}} heaviest{{with .Set}}<br>best set {{.}}{{end}} · ~{{.E1RM}} est. 1RM{{end}}</span></span>{{end}}{{end}}
     </div>
   </div>
   <div class="small muted spread strength-dates"><span>{{monthDay .From}}</span><span>{{monthDay .To}}</span></div>

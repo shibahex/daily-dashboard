@@ -32,6 +32,8 @@ type WeightPlan struct {
 	StartDate string   `json:"startDate"`
 	Target    FlexText `json:"target"` // "170" or "207–218"
 	Best      float64  `json:"best"`
+	// NoMyFitnessPal keeps new weigh-ins out of MyFitnessPal (the Weight card's checkbox, unticked).
+	NoMyFitnessPal bool `json:"noMyFitnessPal,omitempty"`
 }
 
 // Session is one kind of training day.

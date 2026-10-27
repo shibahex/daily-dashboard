@@ -33,6 +33,114 @@ type Data struct {
 	Workouts []Workout `json:"workouts"`          // finished, oldest first
 	Seeded   bool      `json:"seeded,omitempty"`  // the plan's sessions were copied in (once)
 	Strength Strength  `json:"strength,omitzero"` // what the Strength chart shows
+	Goals    []Goal    `json:"goals,omitempty"`   // one-rep max goals, one per lift
+	// MyFitnessPal is whether finished workouts go to MyFitnessPal's exercise diary, and how.
+	MyFitnessPal MyFitnessPal `json:"myfitnesspal,omitzero"`
+}
+
+// Goal is a one-rep max to reach on a lift: an actual single (one rep) at LB or more, never an
+// estimate from a set of more reps.
+type Goal struct {
+	Name string  `json:"name"`
+	LB   float64 `json:"lb"`
+}
+
+// Goal is the lift's one-rep max goal in pounds, or 0.
+func (d Data) Goal(name string) float64 {
+	for _, goal := range d.Goals {
+		if sameExercise(goal.Name, name) {
+			return goal.LB
+		}
+	}
+	return 0
+}
+
+// SetGoal sets a lift's one-rep max goal (pounds), or clears it with 0.
+func (d *Data) SetGoal(name string, lb float64) error {
+	if name = cleanName(name); name == "" {
+		return problem.Invalidf("name the lift")
+	}
+	if lb < 0 || lb > 2000 || math.IsNaN(lb) {
+		return problem.Invalidf("a one-rep max goal is a weight up to 2000 lb")
+	}
+	d.Goals = slices.DeleteFunc(d.Goals, func(g Goal) bool { return sameExercise(g.Name, name) })
+	if lb > 0 {
+		if len(d.Goals) >= maxGoals {
+			return problem.Invalidf("that's a lot of goals: clear one first")
+		}
+		d.Goals = append(d.Goals, Goal{Name: name, LB: math.Round(lb*100) / 100})
+	}
+	return nil
+}
+
+// OneRM is a lift's actual one-rep max: the heaviest single (a done set of one rep) in workouts
+// that ended before `before` (any time when zero), and the day it was done.
+func (d Data) OneRM(name string, before time.Time) (lb float64, day time.Time) {
+	for _, w := range d.Workouts {
+		if !before.IsZero() && !w.Ended.Before(before) {
+			continue
+		}
+		for _, ex := range w.Exercises {
+			if !sameExercise(ex.Name, name) {
+				continue
+			}
+			if single := Single(ex.Sets); single > lb {
+				lb, day = single, w.Started
+			}
+		}
+	}
+	return lb, day
+}
+
+// Single is the heaviest done set of exactly one rep, in pounds, or 0.
+func Single(sets []Set) float64 {
+	heaviest := 0.0
+	for _, set := range doneSets(sets) {
+		if set.Reps == 1 && set.LB > heaviest {
+			heaviest = set.LB
+		}
+	}
+	return heaviest
+}
+
+// GoalsReached names the lifts whose one-rep max goal a finished workout reached for the first
+// time.
+func (d Data) GoalsReached(w Workout) []string {
+	var reached []string
+	for _, ex := range w.Exercises {
+		goal := d.Goal(ex.Name)
+		if goal == 0 || slices.Contains(reached, ex.Name) {
+			continue
+		}
+		if before, _ := d.OneRM(ex.Name, w.Started); Single(ex.Sets) >= goal && before < goal {
+			reached = append(reached, ex.Name)
+		}
+	}
+	return reached
+}
+
+// MyFitnessPal is the Lifting tab's link to MyFitnessPal's exercise diary.
+type MyFitnessPal struct {
+	Off bool `json:"off,omitempty"` // the finish panel's checkbox, unticked
+	// Matches pairs exercise names (lower case) with MyFitnessPal's exercises.
+	Matches map[string]Match `json:"matches,omitempty"`
+}
+
+// Match is the MyFitnessPal exercise a lift is logged as.
+type Match struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// MatchKey is how an exercise name is looked up in MyFitnessPal.Matches.
+func MatchKey(name string) string { return strings.ToLower(cleanName(name)) }
+
+// SetMatch remembers which MyFitnessPal exercise a lift is logged as.
+func (d *Data) SetMatch(name string, match Match) {
+	if d.MyFitnessPal.Matches == nil {
+		d.MyFitnessPal.Matches = map[string]Match{}
+	}
+	d.MyFitnessPal.Matches[MatchKey(name)] = match
 }
 
 // Strength is what the Strength chart (on Today) shows: which lifts, in fixed colour slots,
@@ -89,6 +197,7 @@ type Workout struct {
 	RestFor   int        `json:"restFor,omitempty"` // seconds the current rest started with
 	Exercises []Exercise `json:"exercises"`
 	Note      string     `json:"note,omitempty"`
+	Sent      bool       `json:"sentToMyFitnessPal,omitempty"` // logged in MyFitnessPal's exercise diary
 }
 
 // HoldTimer is a hold set being timed: it counts down from For seconds.
@@ -137,6 +246,7 @@ const (
 	maxSets     = 30
 	maxItems    = 40 // exercises in a workout or day, days in a routine
 	maxWorkouts = 5000
+	maxGoals    = 100
 )
 
 // ---------- the file ----------
@@ -820,6 +930,48 @@ func (d *Data) Finish(now time.Time, minutes int, note string) (Workout, error) 
 
 func (d *Data) Discard() { d.Active = nil }
 
+// Summary is an exercise as one row of MyFitnessPal's exercise diary, which has one weight and
+// rep count for all the sets: the heaviest set's (the most reps at that weight).
+type Summary struct {
+	Name       string
+	Sets, Reps int
+	LB         float64
+}
+
+// Summaries are the workout's exercises with done sets, as MyFitnessPal rows. Holds are left out:
+// MyFitnessPal counts reps, not seconds.
+func (w Workout) Summaries() []Summary {
+	var rows []Summary
+	for _, ex := range w.Exercises {
+		if ex.Hold {
+			continue
+		}
+		row := Summary{Name: ex.Name}
+		for _, set := range doneSets(ex.Sets) {
+			if set.Reps < 1 {
+				continue
+			}
+			row.Sets++
+			if set.LB > row.LB || set.LB == row.LB && set.Reps > row.Reps {
+				row.LB, row.Reps = set.LB, set.Reps
+			}
+		}
+		if row.Sets > 0 {
+			rows = append(rows, row)
+		}
+	}
+	return rows
+}
+
+// MarkSent records that a finished workout is in MyFitnessPal.
+func (d *Data) MarkSent(id string) {
+	for i := range d.Workouts {
+		if d.Workouts[i].ID == id {
+			d.Workouts[i].Sent = true
+		}
+	}
+}
+
 // quickLogWindow is how soon after a finished workout a logged set still joins it.
 const quickLogWindow = 2 * time.Hour
 
@@ -988,6 +1140,7 @@ type Session struct {
 	Sets    []Set
 	Best    float64 // the best set's estimated one-rep max, pounds
 	Heavy   float64 // the heaviest weight, pounds
+	Single  float64 // the heaviest single (an actual one-rep max), pounds; 0 without one
 	Record  bool
 }
 
@@ -1000,7 +1153,7 @@ func (d Data) History(name string) []Session {
 			if !sameExercise(ex.Name, name) {
 				continue
 			}
-			session := Session{Workout: w.ID, Day: w.Started, Title: w.Title, Sets: doneSets(ex.Sets)}
+			session := Session{Workout: w.ID, Day: w.Started, Title: w.Title, Sets: doneSets(ex.Sets), Single: Single(ex.Sets)}
 			if len(session.Sets) == 0 { // skipped that day
 				continue
 			}
@@ -1287,6 +1440,7 @@ func (d *Data) PickLifts(names []string, now time.Time) {
 type Point struct {
 	Day     time.Time
 	Heavy   float64
+	Single  float64 // the heaviest single: an actual one-rep max
 	Best    float64
 	BestSet Set
 }
@@ -1302,7 +1456,7 @@ func (d Data) Points(name string, since time.Time) []Point {
 			if !sameExercise(ex.Name, name) {
 				continue
 			}
-			point := Point{Day: w.Started}
+			point := Point{Day: w.Started, Single: Single(ex.Sets)}
 			for _, set := range doneSets(ex.Sets) {
 				point.Heavy = math.Max(point.Heavy, set.LB)
 				if e := E1RM(set); e > point.Best {

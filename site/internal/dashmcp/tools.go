@@ -55,12 +55,13 @@ var Tools = []taskmcp.Tool{
 	},
 	{
 		Name:        "weight_log",
-		Description: "Log the user's weigh-in for a day (it's also sent to MyFitnessPal when that's connected), or remove one.",
+		Description: "Log the user's weigh-in for a day, or remove one. When MyFitnessPal is connected it's sent there too unless the user turned that off on the Weight card; set myfitnesspal to decide for this one.",
 		InputSchema: schema(`{
 "weight":{"type":"number","description":"The weight, in unit."},
 "unit":{"type":"string","enum":["lb","kg"],"description":"Default lb."},
 "day":{"type":"string","description":"` + dayHelp + `"},
-"remove":{"type":"boolean","description":"Remove that day's weigh-in instead."}
+"remove":{"type":"boolean","description":"Remove that day's weigh-in instead."},
+"myfitnesspal":{"type":"boolean","description":"Also log it in MyFitnessPal. Leave out to use the user's choice on the Weight card."}
 }`),
 	},
 	{
@@ -92,13 +93,23 @@ var Tools = []taskmcp.Tool{
 	{
 		Name: "lifting_overview", Annotations: taskmcp.ReadOnly,
 		Description: "Read the Lifting tab: the routines (with their ids, days and each exercise's sets, reps or hold seconds, " +
-			"rest, alternatives, optional and superset flags), the workout in progress, and the latest finished workouts.",
+			"rest, alternatives, optional and superset flags), the workout in progress, the latest finished workouts, and the " +
+			"one-rep max goals with each lift's actual one-rep max (its heaviest single; estimates never count).",
 		InputSchema: schema(`{"workouts":{"type":"integer","minimum":0,"maximum":50,"description":"How many recent workouts to include. Default 5."}}`),
 	},
 	{
 		Name: "lifting_history", Annotations: taskmcp.ReadOnly,
-		Description: "One exercise's sessions, newest first: each day's sets and its best estimated one-rep max.",
+		Description: "One exercise's sessions, newest first: each day's sets, its best estimated one-rep max, and its heaviest single (an actual one-rep max) when there was one.",
 		InputSchema: schema(`{"exercise":{"type":"string"},"limit":{"type":"integer","minimum":1,"maximum":100,"description":"Default 10."}}`, "exercise"),
+	},
+	{
+		Name:        "lifting_goal",
+		Description: "Set a lift's one-rep max goal (\"squat 1RM goal 225\"), or clear it with 0. It's reached only by an actual single (one rep) at that weight, never by an estimate.",
+		InputSchema: schema(`{
+"exercise":{"type":"string","description":"The lift, named as the user already names it (see lifting_overview)."},
+"one_rep_max":{"type":"number","minimum":0,"description":"The goal, in unit; 0 clears it."},
+"unit":{"type":"string","enum":["lb","kg"],"description":"Default: the unit the Lifting tab shows."}
+}`, "exercise", "one_rep_max"),
 	},
 	{
 		Name: "lifting_log",

@@ -25,18 +25,19 @@ import (
 const liftingChanged = "lifting-changed"
 
 type liftingPageView struct {
-	Unit     string
-	Workout  workoutView
-	Routines routinesView
-	Progress progressView
-	History  liftingHistoryView
+	Unit         string
+	MyFitnessPal bool // connected: the lifts' matches there can be changed
+	Workout      workoutView
+	Routines     routinesView
+	Progress     progressView
+	History      liftingHistoryView
 }
 
 func (ui *UI) liftingPage(w http.ResponseWriter, r *http.Request) {
 	ui.seedLifting(r)
 	data := ui.ws(r).Lifting.Load()
-	view := liftingPageView{Unit: data.Unit, Workout: workoutViewOf(data, time.Now()), Routines: routinesViewOf(data),
-		Progress: progressViewOf(data, r.URL.Query().Get("exercise")), History: liftingHistoryOf(data, 0)}
+	view := liftingPageView{Unit: data.Unit, MyFitnessPal: ui.myFitnessPalConnected(r), Workout: workoutViewOf(data, time.Now()),
+		Routines: routinesViewOf(data), Progress: progressViewOf(data, r.URL.Query().Get("exercise")), History: ui.liftingHistory(r, data, 0)}
 	ui.renderPage(r, w, "lifting", "Lifting", "lifting", view)
 }
 
@@ -162,6 +163,9 @@ type exerciseView struct {
 	Est         string // the best estimated one-rep max of its sets as typed (app.js keeps it current)
 	Best        string // the best before this workout
 	Record      bool   // a set done today beat Best
+	Max         string // the actual one-rep max (heaviest single) so far, this workout included
+	Goal        string // the one-rep max goal
+	GoalMet     bool   // Max reaches Goal
 	Skipped     bool
 	Why         string
 	Hold        bool // held for seconds: the second box is seconds, and each set has a timer
@@ -181,6 +185,8 @@ type setView struct {
 	Reps    string // or a hold's seconds
 	Done    bool
 	Record  bool
+	Single  bool // a done set of one rep: an actual one-rep max
+	Goal    bool // a single that reaches the lift's goal
 	Note    string
 	Skipped bool
 	Why     string
@@ -227,13 +233,26 @@ func workoutViewOf(data lifting.Data, now time.Time) workoutView {
 			Instead: ex.Instead, SwapWhy: ex.SwapWhy, Superset: ex.Superset && e < len(w.Exercises)-1, Done: true}
 		exercise.Group = supersetPlace(w.Exercises, e)
 		exercise.Open = !ex.Optional
+		goal := data.Goal(ex.Name)
 		if best := data.Best(ex.Name, time.Time{}); best > 0 && !ex.Hold {
 			exercise.Best = lifting.FormatPlate(best, data.Unit)
+		}
+		if !ex.Hold {
+			oneRM, _ := data.OneRM(ex.Name, time.Time{})
+			oneRM = math.Max(oneRM, lifting.Single(ex.Sets))
+			if oneRM > 0 {
+				exercise.Max = lifting.FormatShown(oneRM, data.Unit)
+			}
+			if goal > 0 {
+				exercise.Goal, exercise.GoalMet = lifting.FormatShown(goal, data.Unit), oneRM >= goal
+			}
 		}
 		estimate := 0.0
 		for s, set := range ex.Sets {
 			shown := setViewOf(s, set, data.Unit, ex.Hold)
 			shown.Record = records[[2]int{e, s}]
+			shown.Single = set.Done && set.Reps == 1 && set.LB > 0 && !ex.Hold
+			shown.Goal = shown.Single && goal > 0 && set.LB >= goal
 			shown.Timing = view.Hold != nil && view.Hold.Exercise == e && view.Hold.Set == s
 			exercise.Record = exercise.Record || shown.Record
 			exercise.Open = exercise.Open || set.Done || set.Edited || shown.Timing
@@ -476,6 +495,9 @@ type finishView struct {
 	TaskDue  bool
 	Sets     int
 	NoneDone bool
+	// MyFitnessPal is connected, so the panel asks whether to send the workout there (Send: the
+	// last answer).
+	MyFitnessPal, Send bool
 }
 
 func (ui *UI) finishPanel(w http.ResponseWriter, r *http.Request) {
@@ -487,6 +509,7 @@ func (ui *UI) finishPanel(w http.ResponseWriter, r *http.Request) {
 	minutes := max(1, int(math.Round(time.Since(data.Active.Started).Minutes())))
 	view := finishView{Took: minutesText(min(minutes, 24*60)), Note: data.Active.Note, Task: data.Active.Task, Sets: data.Active.DoneSets()}
 	view.NoneDone = view.Sets == 0
+	view.MyFitnessPal, view.Send = ui.myFitnessPalConnected(r), !data.MyFitnessPal.Off
 	if view.Task != "" {
 		_, view.TaskDue = ui.dueTaskNamed(r, view.Task)
 	}
@@ -508,7 +531,8 @@ func (ui *UI) dueTaskNamed(r *http.Request, description string) (string, bool) {
 }
 
 // finishWorkout saves the workout, then ticks its task (which logs the time with the task's
-// tags) or, without one due, logs the time as "Lifting" plus the workout's name.
+// tags) or, without one due, logs the time as "Lifting" plus the workout's name. When the panel
+// asked (mfp), it goes to MyFitnessPal too, and the answer is kept for next time.
 func (ui *UI) finishWorkout(w http.ResponseWriter, r *http.Request) {
 	ws := ui.ws(r)
 	minutes, err := parseTook(r.FormValue("took"))
@@ -518,9 +542,12 @@ func (ui *UI) finishWorkout(w http.ResponseWriter, r *http.Request) {
 	}
 	end := time.Now().Truncate(time.Minute)
 	var finished lifting.Workout
+	asked, send := r.FormValue("mfpAsked") != "", r.FormValue("mfp") != ""
 	err = ws.Lifting.Update(func(d *lifting.Data) error {
 		var err error
-		finished, err = d.Finish(end, minutes, r.FormValue("note"))
+		if finished, err = d.Finish(end, minutes, r.FormValue("note")); err == nil && asked {
+			d.MyFitnessPal.Off = !send
+		}
 		return err
 	})
 	if err != nil {
@@ -528,6 +555,9 @@ func (ui *UI) finishWorkout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	message := fmt.Sprintf("Workout saved ✓ · %d %s", finished.DoneSets(), plural(finished.DoneSets(), "set", "sets"))
+	for _, name := range ws.Lifting.Load().GoalsReached(finished) {
+		message += " · " + name + " 1RM goal reached 🎉"
+	}
 	warning := ""
 	uuid, due := "", false
 	if finished.Task != "" {
@@ -549,10 +579,17 @@ func (ui *UI) finishWorkout(w http.ResponseWriter, r *http.Request) {
 	if minutes > 0 && warning == "" {
 		message += " · " + minutesText(minutes) + " logged"
 	}
+	if asked && send {
+		if left, err := ui.sendWorkout(r, finished); err != nil {
+			warning = strings.TrimSpace(warning + " Saved, but not in MyFitnessPal: " + problem.Public(err) + " (send it from Workouts).")
+		} else {
+			message += " · sent to MyFitnessPal" + leftOutText(left)
+		}
+	}
 	if warning != "" {
-		announce(w, &notice{Message: warning, Bad: true}, liftingChanged, tasksChanged, timeChanged)
+		announce(w, &notice{Message: warning, Bad: true}, liftingChanged, tasksChanged, timeChanged, nutritionChanged)
 	} else {
-		announce(w, say(message), liftingChanged, tasksChanged, timeChanged)
+		announce(w, say(message), liftingChanged, tasksChanged, timeChanged, nutritionChanged)
 	}
 	nothing(w)
 }
@@ -718,6 +755,11 @@ type progressView struct {
 	Count    int
 	Best     string // best estimated one-rep max
 	Heaviest string
+	OneRM    string    // the actual one-rep max: the heaviest single
+	OneRMDay time.Time // when it was done
+	Goal     string    // the one-rep max goal ("" without one)
+	ToGo     string    // what's left to it
+	Reached  bool
 	Trend    *sparkline // each session's best estimated one-rep max (in LB: the shown unit)
 	Sessions []progressSession
 }
@@ -727,6 +769,7 @@ type progressSession struct {
 	Title  string
 	Groups []setGroup
 	Best   string
+	Single string // the session's heaviest single, an actual one-rep max
 	Record bool
 }
 
@@ -784,11 +827,24 @@ func progressViewOf(data lifting.Data, name string) progressView {
 		view.Best, view.Heaviest = lifting.FormatPlate(best, data.Unit), lifting.FormatShown(heaviest, data.Unit)
 	}
 	view.Trend = trendLine(trend)
+	if oneRM, day := data.OneRM(view.Name, time.Time{}); oneRM > 0 {
+		view.OneRM, view.OneRMDay = lifting.FormatShown(oneRM, data.Unit), day
+	}
+	if goal := data.Goal(view.Name); goal > 0 {
+		oneRM, _ := data.OneRM(view.Name, time.Time{})
+		view.Goal, view.Reached = lifting.FormatShown(goal, data.Unit), oneRM >= goal
+		if !view.Reached {
+			view.ToGo = lifting.FormatShown(goal-oneRM, data.Unit)
+		}
+	}
 	for i := len(history) - 1; i >= 0 && len(view.Sessions) < 12; i-- {
 		session := history[i]
 		shown := progressSession{Day: session.Day, Title: session.Title, Groups: groupSets(session.Sets, data.Unit), Record: session.Record}
 		if session.Best > 0 {
 			shown.Best = lifting.FormatPlate(session.Best, data.Unit)
+		}
+		if session.Single > 0 {
+			shown.Single = lifting.FormatShown(session.Single, data.Unit)
 		}
 		view.Sessions = append(view.Sessions, shown)
 	}
@@ -836,10 +892,11 @@ func (ui *UI) progressCard(w http.ResponseWriter, r *http.Request) {
 // ---------- history ----------
 
 type liftingHistoryView struct {
-	Unit     string
-	Workouts []liftingHistoryRow
-	More     int
-	Limit    int
+	Unit         string
+	MyFitnessPal bool // connected: workouts not sent there yet can be
+	Workouts     []liftingHistoryRow
+	More         int
+	Limit        int
 }
 
 type liftingHistoryRow struct {
@@ -851,6 +908,7 @@ type liftingHistoryRow struct {
 	Volume    string
 	Records   int
 	Note      string
+	Sent      bool // in MyFitnessPal
 	Exercises []liftingHistoryExercise
 }
 
@@ -865,7 +923,7 @@ func liftingHistoryOf(data lifting.Data, limit int) liftingHistoryView {
 		workout := data.Workouts[i]
 		row := liftingHistoryRow{ID: workout.ID, Day: workout.Started, Title: workout.Title, Note: workout.Note,
 			Took: formatDuration(workout.Duration(workout.Ended)), Sets: workout.DoneSets(),
-			Volume: formatNumber(lifting.Shown(workout.Volume(), data.Unit)), Records: len(data.Records(workout))}
+			Volume: formatNumber(lifting.Shown(workout.Volume(), data.Unit)), Records: len(data.Records(workout)), Sent: workout.Sent}
 		for _, ex := range workout.Exercises {
 			sets := setsWithNotes(ex.Sets, data.Unit)
 			if ex.Skipped {
@@ -891,7 +949,13 @@ func liftingHistoryOf(data lifting.Data, limit int) liftingHistoryView {
 
 func (ui *UI) liftingHistoryCard(w http.ResponseWriter, r *http.Request) {
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-	ui.render(w, "lift-history", liftingHistoryOf(ui.ws(r).Lifting.Load(), min(limit, 1000)))
+	ui.render(w, "lift-history", ui.liftingHistory(r, ui.ws(r).Lifting.Load(), min(limit, 1000)))
+}
+
+func (ui *UI) liftingHistory(r *http.Request, data lifting.Data, limit int) liftingHistoryView {
+	view := liftingHistoryOf(data, limit)
+	view.MyFitnessPal = ui.myFitnessPalConnected(r)
+	return view
 }
 
 func (ui *UI) deleteWorkout(w http.ResponseWriter, r *http.Request) {
@@ -900,6 +964,35 @@ func (ui *UI) deleteWorkout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	announce(w, say("Workout deleted"), liftingChanged)
+	nothing(w)
+}
+
+// saveLiftGoal sets a lift's one-rep max goal (typed in the shown unit), or clears it when blank.
+func (ui *UI) saveLiftGoal(w http.ResponseWriter, r *http.Request) {
+	name, typed := formText(r, "exercise"), strings.ReplaceAll(formText(r, "goal"), ",", ".")
+	goal := 0.0
+	if typed != "" {
+		value, err := strconv.ParseFloat(typed, 64)
+		if err != nil || value <= 0 {
+			fail(w, problem.Invalidf("type the one-rep max to reach, or leave it blank to clear the goal"))
+			return
+		}
+		goal = value
+	}
+	var unit string
+	err := ui.ws(r).Lifting.Update(func(d *lifting.Data) error {
+		unit = d.Unit
+		return d.SetGoal(name, lifting.FromShown(goal, unit))
+	})
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	message := "Goal cleared"
+	if goal > 0 {
+		message = fmt.Sprintf("%s 1RM goal: %s %s", name, strconv.FormatFloat(goal, 'f', -1, 64), unit)
+	}
+	announce(w, say(message), liftingChanged)
 	nothing(w)
 }
 
@@ -942,7 +1035,7 @@ func (ui *UI) linkWorkouts(r *http.Request, rows []taskRow) {
 // (in a fixed colour slot, so a lift keeps its colour), what they are now, and the picker.
 type strengthView struct {
 	Unit     string
-	Measure  string // "heaviest" or "e1rm"
+	Measure  string // "heaviest", "e1rm" or "max" (actual one-rep maxes: singles)
 	Range    string
 	Ranges   []choice
 	Series   []strengthSeries
@@ -956,13 +1049,17 @@ type strengthView struct {
 }
 
 type strengthSeries struct {
-	Slot   int // 1 to lifting.ChartSlots: the colour
-	Name   string
-	Latest string // the last session's number
-	Ratio  string // "1.45" × bodyweight, for the best number in the range
-	Change string // "▲ 10" over the range
-	Path   string
-	Points []strengthPoint
+	Slot    int // 1 to lifting.ChartSlots: the colour
+	Name    string
+	Latest  string // the last session's number
+	Ratio   string // "1.45" × bodyweight, for the best number in the range
+	Change  string // "▲ 10" over the range
+	Path    string
+	Points  []strengthPoint
+	Goal    string  // the one-rep max goal, in Unit
+	GoalY   float64 // its line's height on the chart (0 to 120, from the top); -1 when off the chart
+	Reached bool    // an actual single reached it
+	ToGo    string
 }
 
 type strengthPoint struct {
@@ -992,9 +1089,10 @@ type strengthTick struct {
 
 var strengthRanges = []choice{{"3m", "3M"}, {"6m", "6M"}, {"1y", "1Y"}, {"all", "All"}}
 
-// strengthMeasure is what the chart plots: the estimated one-rep max, unless "heaviest" was picked.
+// strengthMeasure is what the chart plots: the estimated one-rep max, unless "heaviest" or "max"
+// (actual one-rep maxes) was picked.
 func strengthMeasure(saved string) string {
-	if saved == "heaviest" {
+	if saved == "heaviest" || saved == "max" {
 		return saved
 	}
 	return "e1rm"
@@ -1049,8 +1147,11 @@ func (ui *UI) strengthViewOf(r *http.Request) strengthView {
 
 	since := rangeStart(view.Range, now)
 	value := func(p lifting.Point) float64 { // estimates to the plate, logged weights as logged
-		if view.Measure == "e1rm" {
+		switch view.Measure {
+		case "e1rm":
 			return lifting.RoundToPlate(lifting.Shown(p.Best, data.Unit), data.Unit)
+		case "max":
+			return lifting.Shown(p.Single, data.Unit)
 		}
 		return lifting.Shown(p.Heavy, data.Unit)
 	}
@@ -1066,7 +1167,17 @@ func (ui *UI) strengthViewOf(r *http.Request) strengthView {
 			continue
 		}
 		points := data.Points(name, since)
-		series := strengthSeries{Slot: i + 1, Name: name}
+		if view.Measure == "max" {
+			points = slices.DeleteFunc(points, func(p lifting.Point) bool { return p.Single == 0 })
+		}
+		series := strengthSeries{Slot: i + 1, Name: name, GoalY: -1}
+		if goal := data.Goal(name); goal > 0 {
+			oneRM, _ := data.OneRM(name, time.Time{})
+			series.Goal, series.Reached = lifting.FormatShown(goal, data.Unit), oneRM >= goal
+			if !series.Reached {
+				series.ToGo = lifting.FormatShown(goal-oneRM, data.Unit)
+			}
+		}
 		if len(points) > 0 {
 			last := points[len(points)-1]
 			series.Latest = valueText(value(last))
@@ -1100,6 +1211,12 @@ func (ui *UI) strengthViewOf(r *http.Request) strengthView {
 	if to.Sub(from) < 7*24*time.Hour {
 		from = to.AddDate(0, 0, -7)
 	}
+	for _, l := range lines { // goals on the axis too, so their lines show
+		if l.series.Goal != "" && len(l.points) > 0 {
+			goal := lifting.Shown(data.Goal(l.series.Name), data.Unit)
+			low, high = math.Min(low, goal), math.Max(high, goal)
+		}
+	}
 	low, high = niceBounds(low, high)
 	const width, height = 300.0, 120.0
 	x := func(t time.Time) float64 { return t.Sub(from).Seconds() / to.Sub(from).Seconds() * width }
@@ -1126,6 +1243,9 @@ func (ui *UI) strengthViewOf(r *http.Request) strengthView {
 			series.Points = append(series.Points, point)
 		}
 		series.Path = strings.TrimSpace(path.String())
+		if series.Goal != "" && len(l.points) > 0 {
+			series.GoalY = y(lifting.Shown(data.Goal(series.Name), data.Unit))
+		}
 		view.Series = append(view.Series, series)
 	}
 	return view
@@ -1168,7 +1288,7 @@ func (ui *UI) saveStrength(w http.ResponseWriter, r *http.Request) {
 		if r.PostForm.Has("pick") {
 			d.PickLifts(r.PostForm["lift"], time.Now())
 		}
-		if measure := r.PostForm.Get("measure"); measure == "heaviest" || measure == "e1rm" {
+		if measure := r.PostForm.Get("measure"); measure == "heaviest" || measure == "e1rm" || measure == "max" {
 			d.Strength.Measure = measure
 		}
 		for _, choice := range strengthRanges {
@@ -1404,5 +1524,5 @@ func (ui *UI) saveWorkout(w http.ResponseWriter, r *http.Request) {
 	}
 	announce(w, say("Workout saved"), liftingChanged)
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-	ui.render(w, "lift-history", liftingHistoryOf(ws.Lifting.Load(), min(limit, 1000)))
+	ui.render(w, "lift-history", ui.liftingHistory(r, ws.Lifting.Load(), min(limit, 1000)))
 }

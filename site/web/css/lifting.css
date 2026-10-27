@@ -195,3 +195,22 @@ button.tick.timing { background: var(--accent); border-color: var(--accent); col
 .lift-set.lift-set-edit { grid-template-columns: 28px minmax(0, 1fr) minmax(0, 1fr) 28px 28px; }
 @media (max-width: 560px) { .lift-edit-meta { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } .lift-edit-meta label:last-child { grid-column: 1 / -1; } }
 .lift-top .edit-btn { margin-right: auto; }
+
+.lift-mfp { flex-direction: column; align-items: stretch; margin-bottom: 12px; }
+.lift-mfp p { margin: 0; }
+.lift-mfp-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 6px 0; border-top: 1px solid var(--line); }
+.lift-mfp-row > span { flex: 1 1 220px; min-width: 0; }
+.lift-mfp-search { display: flex; gap: 6px; }
+.lift-mfp-search .txt { width: 180px; }
+.lift-mfp-results { display: flex; flex-wrap: wrap; gap: 6px; flex-basis: 100%; }
+.lift-mfp-results:empty { display: none; }
+.lift-top .lift-mfp-btn { margin-right: 0; }
+
+.lift-n.single { font-size: 11px; font-weight: 700; color: var(--accent); }
+.lift-n.goal { font-size: 10px; font-weight: 700; color: var(--good, var(--accent)); }
+.ex-max { font-size: 13px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ex-max.reached b { color: var(--good, var(--accent)); }
+.lift-goal { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin: 4px 0 10px; }
+.lift-goal label { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; }
+.lift-goal .num { width: 76px; }
+.strength-goal.reached { color: var(--good, var(--accent)); }

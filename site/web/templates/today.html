@@ -101,6 +101,7 @@
   {{end}}
   <form class="weight-row w-log" hx-post="/weight" hx-target="closest .card" hx-swap="outerHTML">
     <input class="txt" name="lb" type="number" step="0.1" placeholder="{{capitalize .DayName}}" value="{{if .TodayLB}}{{pounds .TodayLB}}{{end}}"><span class="muted">lb</span>
+    {{if .MyFitnessPal}}<input type="hidden" name="mfpAsked" value="1"><label class="w-mfp small muted" title="Also log this weigh-in in MyFitnessPal (remembered for next time)"><input type="checkbox" name="mfp" value="1"{{if not .Plan.NoMyFitnessPal}} checked{{end}}> MyFitnessPal</label>{{end}}
     <button class="sm primary">{{if .TodayLB}}Update{{else}}Log{{end}}</button>
     {{if .TodayLB}}<button class="sm ghost" name="remove" value="1">Remove</button>{{end}}
   </form>
