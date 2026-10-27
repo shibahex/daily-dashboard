@@ -83,3 +83,8 @@
 /* Why the AI can't run yet (no key, no local model…): a full-width notice under the bar. */
 .chat-problem { margin: 12px 4px 0; padding: 10px 14px; border-radius: 10px; background: var(--warn-soft); color: var(--warn); font-size: 14px; line-height: 1.5; }
 .chat-problem .link { color: inherit; font-weight: 600; text-decoration: underline; }
+/* "Allow this?": what the AI wants to change, waiting for the user's answer */
+.ask-first { margin-top: 8px; padding: 10px 12px; border: 1px solid var(--accent); border-radius: 10px; background: var(--accent-soft); display: flex; flex-direction: column; gap: 8px; }
+.ask-title { font-size: 14px; }
+.ask-input { margin: 0; padding: 8px 10px; max-height: 180px; overflow: auto; border-radius: 6px; background: var(--panel); font-size: 12.5px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.ask-buttons { display: flex; flex-wrap: wrap; gap: 6px; }

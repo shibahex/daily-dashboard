@@ -9,7 +9,7 @@ import (
 )
 
 // The MCP servers the tab knows, in order. Both are on unless the user turned one off.
-var KnownMCPs = auth.KnownMCPs
+var KnownMCPs = append([]string{"dashboard"}, auth.KnownMCPs...)
 
 // Conversation is data/chat.json: the AI's settings (which MCPs, "Attach prompt", the model).
 // Older files also hold a plain chat, which the browser seals once (web/sealed.go) and the

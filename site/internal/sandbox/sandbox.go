@@ -27,6 +27,8 @@ const (
 	// TasksSocket is where the Taskwarrior MCP finds the dashboard (a unix socket it dials itself:
 	// it needs no socat).
 	TasksSocket = socketDir + "/tasks.sock"
+	// DataSocket is where the dashboard's own tools (dashmcp) find the dashboard, the same way.
+	DataSocket = socketDir + "/data.sock"
 )
 
 // Tools are the programs the sandbox needs, as real paths (in the Nix store on NixOS).
@@ -89,6 +91,7 @@ type Spec struct {
 	Egress    string   // the egress proxy's socket
 	Anki      string   // the user's Anki gateway socket ("" = no Anki)
 	Tasks     string   // the user's Taskwarrior gateway socket ("" = no Taskwarrior tools)
+	Data      string   // the user's dashboard tools' gateway socket ("" = none)
 	Path      []string // extra folders for PATH (the CLI's and MCPs' programs)
 	Env       []string // KEY=value for inside, on top of the basics
 }
@@ -126,6 +129,9 @@ func (t Tools) Command(spec Spec, args []string) ([]string, error) {
 	}
 	if spec.Tasks != "" {
 		cmd = append(cmd, "--ro-bind", spec.Tasks, TasksSocket)
+	}
+	if spec.Data != "" {
+		cmd = append(cmd, "--ro-bind", spec.Data, DataSocket)
 	}
 	for _, m := range spec.Mounts {
 		flag := "--ro-bind"

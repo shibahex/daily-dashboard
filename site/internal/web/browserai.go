@@ -13,6 +13,7 @@ import (
 
 	"dashboard/internal/assistant"
 	"dashboard/internal/auth"
+	"dashboard/internal/dashmcp"
 	"dashboard/internal/mcp"
 	"dashboard/internal/problem"
 	"dashboard/internal/sandbox"
@@ -97,6 +98,7 @@ func (ui *UI) assistantSetup(w http.ResponseWriter, r *http.Request) {
 	var mcps []browserMCP
 	var ready []string
 	for _, m := range []browserMCP{
+		{ID: "dashboard", Label: "Dashboard", Ready: true},
 		{ID: "myfitnesspal", Label: "MyFitnessPal", Ready: ws.MyFitnessPal.Client().Setup().SignedIn},
 		{ID: "anki", Label: "Anki", Ready: ws.Anki().Status().Connected},
 		{ID: "taskwarrior", Label: "Taskwarrior", Ready: mcpReady(ws, "taskwarrior")},
@@ -203,20 +205,30 @@ func (ui *UI) assistantTools(w http.ResponseWriter, r *http.Request) {
 		fail(w, fmt.Errorf("%w: %v", problem.Unavailablef("Couldn't start the tools"), err))
 		return
 	}
+	// ReadOnly tools only read: the chat runs them without asking (assistant.ReadOnlyTool).
 	type tool struct {
 		Name        string          `json:"name"`
 		Description string          `json:"description"`
 		InputSchema json.RawMessage `json:"input_schema"`
+		ReadOnly    bool            `json:"read_only,omitempty"`
 	}
 	tools := []tool{}
-	for _, name := range session.order {
-		for _, t := range session.lists[name] {
-			tools = append(tools, tool{Name: name + toolSep + t.Name, Description: t.Description, InputSchema: t.InputSchema})
+	user, ws := ui.user(r), ui.ws(r)
+	if slices.Contains(allowedMCPs(user.Policy, ws.Conversations.Load()), "dashboard") {
+		for _, t := range dashmcp.Tools {
+			tools = append(tools, tool{Name: "dashboard" + toolSep + t.Name, Description: t.Description, InputSchema: t.InputSchema,
+				ReadOnly: t.Annotations != nil && t.Annotations.ReadOnlyHint})
 		}
 	}
-	if user := ui.user(r); webOn(user, ui.ws(r).Conversations.Load()) {
+	for _, name := range session.order {
+		for _, t := range session.lists[name] {
+			tools = append(tools, tool{Name: name + toolSep + t.Name, Description: t.Description, InputSchema: t.InputSchema,
+				ReadOnly: assistant.ReadOnlyTool(t.Name, t.Annotations.ReadOnlyHint)})
+		}
+	}
+	if webOn(user, ws.Conversations.Load()) {
 		for _, t := range ui.webTools() {
-			tools = append(tools, tool{Name: webServer + toolSep + t.Name, Description: t.Description, InputSchema: t.InputSchema})
+			tools = append(tools, tool{Name: webServer + toolSep + t.Name, Description: t.Description, InputSchema: t.InputSchema, ReadOnly: true})
 		}
 	}
 	writeNoStoreJSON(w, tools)
@@ -228,6 +240,14 @@ func (ui *UI) assistantTool(w http.ResponseWriter, r *http.Request) {
 	server, tool, found := strings.Cut(r.FormValue("name"), toolSep)
 	if server == webServer {
 		ui.webTool(w, r, user, ws, tool)
+		return
+	}
+	if server == "dashboard" {
+		if !slices.Contains(allowedMCPs(user.Policy, ws.Conversations.Load()), "dashboard") || !dashmcp.Has(tool) {
+			fail(w, problem.Invalidf("that tool isn't available"))
+			return
+		}
+		writeNoStoreJSON(w, dashmcp.NewGateway(ws).Call(tool, json.RawMessage(r.FormValue("input"))))
 		return
 	}
 	session, err := ui.tools().open(ui, user, ws)
@@ -295,7 +315,7 @@ func (ui *UI) tools() *toolSessions {
 func (ts *toolSessions) open(ui *UI, user auth.User, ws *workspace.Workspace) (*toolSession, error) {
 	var names []string
 	for _, name := range allowedMCPs(user.Policy, ws.Conversations.Load()) {
-		if mcpReady(ws, name) {
+		if mcpReady(ws, name) && name != "dashboard" { // the dashboard's own tools run here (dashboardTools)
 			names = append(names, name)
 		}
 	}

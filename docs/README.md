@@ -10,7 +10,7 @@ It takes the place of a workout logger, a food diary app, a weight tracker and a
 
 - **Today:** workout, checklist with streaks, weight trend, calories and macros from MyFitnessPal (log and edit foods right there), lifting progress, tasks due, Anki cards due, time tracked. Drag the cards to arrange them.
 - **Tasks:** [Taskwarrior](https://taskwarrior.org) tasks with repeating schedules, skips with reasons, and time tracking in [Timewarrior](https://timewarrior.net).
-- **Lifting:** routines with days of exercises, a workout logger that fills in last time's weights, a rest timer, notes per set, each set's estimated 1RM as you type, PRs and progress charts. Finishing a workout can tick its task and log the time.
+- **Lifting:** routines with days of exercises, a workout logger that fills in last time's weights, rest and hold timers, supersets, optional exercises and quick swaps, notes per set, each set's estimated 1RM as you type, PRs and progress charts. Finishing a workout can tick its task and log the time.
 - **Anki:** decks and due counts, add cards, search and edit notes, and your review history in History (through the AnkiConnect add-on).
 - **History:** activity heatmap, activity feed, time log.
 - **MCPs:** chat with an AI that can use the [MyFitnessPal](https://github.com/Mason-Levyy/myfitnesspal-mcp) and [Anki](https://github.com/ankimcp/anki-mcp-server) MCPs, add and change your Taskwarrior tasks, and search the web: "what should I eat tonight?", "log 2 eggs for breakfast", "make flashcards from my notes", "add a task to call the dentist on Friday". Use Claude with your own key, or a model running on your own computer.

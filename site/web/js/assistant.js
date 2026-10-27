@@ -468,16 +468,11 @@
 
   async function runTool(block, signal) {
     if (block.name === "save_note") {
-      // Every note the AI writes is the user's call: what it read (a food name, a card) may have
-      // asked it to, and small models call tools unasked. A replaced note's old text stays in its history.
+      // The user allowed it first (askFirst). A replaced note's old text stays in its history.
       const title = String(block.input?.title || "").trim();
-      const replacing = title && await SealedNotes.exists(title);
-      if (!title || !confirm(replacing ? `The AI wants to replace your note “${title}”. Allow it?`
-        : `The AI wants to add a note called “${title}”. Allow it?`)) {
-        return { text: `The user didn't allow ${replacing ? "replacing" : "adding"} that note. Don't try again unless they ask.`, isError: true };
-      }
-      const done = await SealedNotes.saveNote(block.input.title, block.input.text);
-      return { text: `Note "${block.input.title}" ${done}.`, isError: false };
+      if (!title) return { text: "A note needs a title.", isError: true };
+      const done = await SealedNotes.saveNote(title, block.input.text);
+      return { text: `Note "${title}" ${done}.`, isError: false };
     }
     // Stop doesn't wait for a tool that hangs.
     return post("/assistant/tool", { name: block.name, input: JSON.stringify(block.input || {}) }, signal)
@@ -485,6 +480,46 @@
         if (e.name === "AbortError") throw e;
         return { text: e.message, isError: true };
       });
+  }
+
+  // ---------- asking first ----------
+
+  // needsAsking says whether a tool call waits for the user: everything but the tools that only
+  // read. What the AI read (a food name, a card, a web page) may have asked it to change things,
+  // and small models call tools unasked.
+  const needsAsking = name => name === "save_note" || !tools.some(t => t.name === name && t.read_only);
+
+  // askFirst shows what the AI wants to do under its reply, with Allow, Allow all (for the rest of
+  // this answer) and Deny, and answers whether it was allowed. Stop counts as Deny.
+  function askFirst(reply, call, signal) {
+    if (reply.allowAll) return Promise.resolve(true);
+    return new Promise(resolve => {
+      const onAbort = () => done(false);
+      const done = (ok, all) => {
+        signal.removeEventListener("abort", onAbort);
+        reply.asking = null;
+        if (all) reply.allowAll = true;
+        renderReply(reply);
+        resolve(ok);
+      };
+      signal.addEventListener("abort", onAbort);
+      const input = call.name === "save_note"
+        ? `${call.input?.title || ""}\n\n${String(call.input?.text || "").slice(0, 400)}`
+        : Object.entries(call.input || {}).map(([k, v]) => `${k}: ${typeof v === "string" ? v : JSON.stringify(v)}`).join("\n");
+      reply.asking = { label: call.name === "save_note" ? "Save a note" : toolLabel(call.name), input: input.slice(0, 800),
+        allow: () => done(true), allowAll: () => done(true, true), deny: () => done(false) };
+      renderReply(reply);
+    });
+  }
+
+  // askCard is the Allow / Deny card under a reply.
+  function askCard(asking) {
+    const button = (label, className, onclick) => Object.assign(el("button", { type: "button", className }, label), { onclick });
+    return el("div", { className: "ask-first", role: "group", ariaLabel: "Allow this?" },
+      el("div", { className: "ask-title" }, "Allow this? ", el("b", {}, asking.label)),
+      asking.input ? el("pre", { className: "ask-input" }, asking.input) : null,
+      el("div", { className: "ask-buttons" }, button("Allow", "sm primary", asking.allow),
+        button("Allow all for this answer", "sm", asking.allowAll), button("Deny", "sm ghost", asking.deny)));
   }
 
   // ---------- one answer ----------
@@ -667,6 +702,13 @@
         if (stop !== "tool_use" || !calls.length) break;
         const results = [];
         for (const call of calls) {
+          if (needsAsking(call.name) && !await askFirst(reply, call, busy.signal)) {
+            reply.tools.push({ label: toolLabel(call.name), detail: "not allowed", error: true });
+            results.push({ type: "tool_result", tool_use_id: call.id, is_error: true,
+              content: "The user didn't allow this. Don't try it again unless they ask; say what you would have done." });
+            renderReply(reply);
+            continue;
+          }
           const shown = { label: toolLabel(call.name), detail: toolDetail(call.input) };
           reply.tools.push(shown);
           renderReply(reply);
@@ -703,8 +745,9 @@
     // did things has no bubble.
     const text = el("div", { className: "bubble md" });
     if (m.text) text.innerHTML = markdown(m.text);
-    else if (m === current && !m.tools?.length && !m.error) text.append(el("span", { className: "typing" }, el("i"), el("i"), el("i")), waitNote() || "");
+    else if (m === current && !m.tools?.length && !m.error && !m.asking) text.append(el("span", { className: "typing" }, el("i"), el("i"), el("i")), waitNote() || "");
     if (text.hasChildNodes()) body.append(text);
+    if (m.asking && m === current) body.append(askCard(m.asking));
     if (m.sources?.length) {
       body.append(el("div", { className: "sources" }, "Sources: ", ...m.sources.flatMap((s, i) => [
         i ? ", " : "", el("a", { href: s.url, target: "_blank", rel: "noopener noreferrer", title: s.url, textContent: s.title.slice(0, 80) }),
@@ -756,8 +799,8 @@
     if (setup) showStatus();
   }
 
-  const providerNames = { claude: "Claude", local: "Local model", "claude-code": "Claude Code (server)", codex: "Codex (server)", gemini: "Gemini CLI (server)" };
-  const shortNames = { claude: "Claude", local: "Local model", "claude-code": "Claude Code", codex: "Codex", gemini: "Gemini CLI" };
+  const providerNames = { claude: "Claude API", local: "Local model", "claude-code": "Claude Code (server)", codex: "Codex (server)", gemini: "Gemini CLI (server)" };
+  const shortNames = { claude: "Claude API", local: "Local model", "claude-code": "Claude Code", codex: "Codex", gemini: "Gemini CLI" };
 
   // showStatus is the line under the title: which AI, where it runs and, for a local model whose
   // server says, whether it's in memory (with a button to load it).

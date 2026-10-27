@@ -2,7 +2,10 @@ package store
 
 import (
 	"encoding/json"
+	"math"
+	"regexp"
 	"strconv"
+	"strings"
 
 	"dashboard/internal/jsonfile"
 )
@@ -116,3 +119,76 @@ func (t FlexText) String() string { return string(t) }
 
 // FormatPounds writes a weight the way it's shown: 182.4, 230 (no trailing .0).
 func FormatPounds(lb float64) string { return strconv.FormatFloat(lb, 'f', -1, 64) }
+
+var nonWordRun = regexp.MustCompile(`[^a-z0-9]+`)
+
+// SessionKey is the key of the session with this title (or key), not case sensitive. One that
+// isn't there is added.
+func (p *Plan) SessionKey(name string) string {
+	for key, session := range p.Sessions {
+		if strings.EqualFold(key, name) || strings.EqualFold(strings.TrimSpace(session.Title), strings.TrimSpace(name)) {
+			return key
+		}
+	}
+	key := strings.Trim(nonWordRun.ReplaceAllString(strings.ToLower(name), "-"), "-")
+	if key == "" {
+		key = "session"
+	}
+	for p.Sessions[key].Title != "" {
+		key += "-2"
+	}
+	p.Sessions[key] = Session{Title: name}
+	return key
+}
+
+var targetNumber = regexp.MustCompile(`\d+(?:\.\d+)?`)
+
+// TargetRange reads the weight target: one weight ("170") or a range ("207–218"), both ends the
+// same for one weight. ok is false without a number.
+func (w WeightPlan) TargetRange() (low, high float64, ok bool) {
+	numbers := targetNumber.FindAllString(strings.ReplaceAll(string(w.Target), ",", ""), 2)
+	if len(numbers) == 0 {
+		return 0, 0, false
+	}
+	low, _ = strconv.ParseFloat(numbers[0], 64)
+	high = low
+	if len(numbers) == 2 {
+		high, _ = strconv.ParseFloat(numbers[1], 64)
+	}
+	if high < low {
+		low, high = high, low
+	}
+	return low, high, low > 0
+}
+
+// TargetReached says whether a weight meets the plan's target: inside a range, or at or past a
+// single target in the plan's direction (down to it when the start was above it, up to it when
+// the start was below).
+func TargetReached(current float64, w WeightPlan) bool {
+	low, high, ok := w.TargetRange()
+	if !ok || current <= 0 {
+		return false
+	}
+	if current >= low && current <= high {
+		return true
+	}
+	if low == high {
+		if w.Start >= low {
+			return current <= low
+		}
+		return current >= low
+	}
+	return false
+}
+
+// ToGo is how far a weight is from the target's nearest end, in lb (0 when it's reached).
+func ToGo(current float64, w WeightPlan) float64 {
+	low, high, ok := w.TargetRange()
+	if !ok || current <= 0 || TargetReached(current, w) {
+		return 0
+	}
+	if current > high {
+		return math.Round((current-high)*10) / 10
+	}
+	return math.Round((low-current)*10) / 10
+}

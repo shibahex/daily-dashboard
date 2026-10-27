@@ -84,10 +84,10 @@
     <div class="foot"><span></span><span><button type="button" class="sm" hx-get="/cards/weight" hx-target="closest .card" hx-swap="outerHTML">Cancel</button> <button class="sm primary">Save</button></span></div>
   </form>
   {{else}}
-  <div class="w-now"><span class="big">{{pounds .Current}} lb</span>{{if .HasWeighIns}}<span class="small muted">weighed {{if .WeighedToday}}today{{else}}{{monthDay .LastWeighIn}}{{end}}</span>{{end}}</div>
+  <div class="w-now{{if .Reached}} reached{{end}}"><span class="big">{{pounds .Current}} lb</span>{{if .Reached}}<span class="badge reached" title="Your latest weigh-in meets your target">✓ goal reached</span>{{end}}{{if .HasWeighIns}}<span class="small muted">weighed {{if .WeighedToday}}today{{else}}{{monthDay .LastWeighIn}}{{end}}</span>{{end}}</div>
   <div class="w-stats">
     <div class="goal"><b class="{{if lt .Change 0.0}}delta-down{{else if gt .Change 0.0}}delta-up{{end}}">{{if eq .Change 0.0}}±0{{else if lt .Change 0.0}}▼ {{pounds (abs .Change)}}{{else}}▲ {{pounds .Change}}{{end}}</b><span>since {{monthDay .StartDate}}</span></div>
-    <div class="goal"><b>{{.Plan.Target}}</b><span>target</span></div>
+    <div class="goal{{if .Reached}} reached{{end}}"><b>{{.Plan.Target}}</b><span>{{if .Reached}}target ✓{{else if .ToGo}}target · {{pounds .ToGo}} to go{{else}}target{{end}}</span></div>
     <div class="goal"><b>{{pounds .Plan.Best}}</b><span>lowest</span></div>
   </div>
   {{with .Trend}}

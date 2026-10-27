@@ -307,6 +307,8 @@ type weightCardView struct {
 	Change       float64 // since the plan's start
 	StartDate    time.Time
 	Trend        *sparkline
+	Reached      bool    // the latest weight meets the target
+	ToGo         float64 // lb left to the target (0 when reached or there's none)
 }
 
 // sparkline is the weight trend over the last 90 days.
@@ -353,6 +355,7 @@ func (ui *UI) weightView(r *http.Request, editing bool) (weightCardView, error) 
 		}
 	}
 	view.Change = math.Round((view.Current-plan.Weight.Start)*10) / 10
+	view.Reached, view.ToGo = store.TargetReached(view.Current, plan.Weight), store.ToGo(view.Current, plan.Weight)
 	view.Trend = weightTrend(weights, time.Now().AddDate(0, 0, -90).Format("2006-01-02"))
 	return view, nil
 }

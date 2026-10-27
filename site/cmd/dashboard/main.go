@@ -22,6 +22,7 @@ import (
 	"dashboard/internal/api"
 	"dashboard/internal/auth"
 	"dashboard/internal/config"
+	"dashboard/internal/dashmcp"
 	"dashboard/internal/egress"
 	"dashboard/internal/httpx"
 	"dashboard/internal/myfitnesspal"
@@ -35,6 +36,14 @@ import (
 const defaultPort = 1628
 
 func main() {
+	if len(os.Args) == 2 && os.Args[1] == dashmcp.Command {
+		// The dashboard's own tools (Today, Lifting, Timewarrior), started by the AI inside its sandbox.
+		if err := dashmcp.RunStdio(); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
 	if len(os.Args) == 2 && os.Args[1] == taskmcp.Command {
 		// The Taskwarrior MCP server, started by the AI inside its sandbox (see taskmcp).
 		if err := taskmcp.RunStdio(); err != nil {

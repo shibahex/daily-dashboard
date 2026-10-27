@@ -70,6 +70,15 @@ func Context(planFile, dataDir string) string {
 
 // mcpInstructions is what the agent is told about each MCP server.
 var mcpInstructions = map[string]string{
+	"dashboard": `Dashboard: these tools read and change the user's own dashboard. dashboard_overview reads the Today
+tab (checklist, skip reasons, weight and its target, this week, reminders, goals); checklist_set ticks,
+skips or clears an item (or changes a skip reason); weight_log and weight_plan change the Weight card;
+week_set, reminders_set, goals_set and checklist_items change the plan (read it first and send whole
+lists, keeping what the user didn't ask to change). lifting_log logs sets the user says they did ("just
+did 225 bench for 5": one set of 225 × 5, in the Lifting tab's unit unless they say otherwise; ask for the
+reps if they're missing); lifting_overview and lifting_history read routines and workouts, and
+lifting_routine_save creates or edits routines (send the whole routine, ids included). time_* read and
+change Timewarrior. Only change what the user asked for, and after a change, say what changed.`,
 	"myfitnesspal": `MyFitnessPal: the fitness_* tools read and write the user's real diary. To log food, search
 first, prefer verified matches and foods the user has logged before, then say exactly what you logged
 with calories and protein/carbs/fat. If the food or amount is unclear, ask before logging. Use today's

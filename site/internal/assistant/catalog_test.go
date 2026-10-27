@@ -58,3 +58,18 @@ func TestListModelsAsksEachMaker(t *testing.T) {
 		t.Errorf("gemini: %v", models)
 	}
 }
+
+func TestReadOnlyTool(t *testing.T) {
+	for name, want := range map[string]bool{
+		"myfitnesspal__fitness_get_day": true, "fitness_search_food": true, "fitness_log_food": false,
+		"anki__findNotes": true, "anki__deckNames": true, "anki__addNote": false, "anki__deleteDecks": false,
+		"tasks_add": false, "getaway_car": false,
+	} {
+		if got := ReadOnlyTool(name, false); got != want {
+			t.Errorf("%s: %v, want %v", name, got, want)
+		}
+	}
+	if !ReadOnlyTool("anything", true) {
+		t.Error("the MCP's own hint wins")
+	}
+}

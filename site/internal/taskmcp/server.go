@@ -18,15 +18,36 @@ import (
 // call that couldn't be made at all.
 type CallFunc func(tool string, arguments json.RawMessage) (Result, error)
 
+// Server is an MCP server that only has tools: its name and the tools it offers.
+type Server struct {
+	Name  string
+	Tools []Tool
+}
+
+// Taskwarrior is this package's server: the tasks_* tools.
+var Taskwarrior = Server{Name: "taskwarrior", Tools: Tools}
+
+func (s Server) has(name string) bool {
+	for _, t := range s.Tools {
+		if t.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+// Serve speaks MCP over stdio for the Taskwarrior tools (see Server.Serve).
+func Serve(in io.Reader, out io.Writer, call CallFunc) error { return Taskwarrior.Serve(in, out, call) }
+
 // Serve speaks MCP over stdio (JSON-RPC 2.0, one message a line) until in ends: initialize, ping,
 // tools/list and tools/call, which it passes to call. It's all an AI's MCP client needs of a
 // server that only has tools.
-func Serve(in io.Reader, out io.Writer, call CallFunc) error {
+func (s Server) Serve(in io.Reader, out io.Writer, call CallFunc) error {
 	lines := bufio.NewReaderSize(in, 1<<20)
 	for {
 		line, err := lines.ReadBytes('\n')
 		if len(bytes.TrimSpace(line)) > 0 {
-			if reply := handle(bytes.TrimSpace(line), call); reply != nil {
+			if reply := s.handle(bytes.TrimSpace(line), call); reply != nil {
 				if _, werr := out.Write(append(reply, '\n')); werr != nil {
 					return werr
 				}
@@ -48,7 +69,7 @@ type rpcRequest struct {
 }
 
 // handle answers one message (nil for a notification, which gets no answer).
-func handle(message []byte, call CallFunc) []byte {
+func (s Server) handle(message []byte, call CallFunc) []byte {
 	var request rpcRequest
 	if err := json.Unmarshal(message, &request); err != nil {
 		return rpcError(json.RawMessage("null"), -32700, "parse error")
@@ -68,12 +89,12 @@ func handle(message []byte, call CallFunc) []byte {
 		return rpcResult(request.ID, map[string]any{
 			"protocolVersion": params.ProtocolVersion,
 			"capabilities":    map[string]any{"tools": map[string]any{}},
-			"serverInfo":      map[string]string{"name": "taskwarrior", "version": "1"},
+			"serverInfo":      map[string]string{"name": s.Name, "version": "1"},
 		})
 	case "ping":
 		return rpcResult(request.ID, map[string]any{})
 	case "tools/list":
-		return rpcResult(request.ID, map[string]any{"tools": Tools})
+		return rpcResult(request.ID, map[string]any{"tools": s.Tools})
 	case "tools/call":
 		var params struct {
 			Name      string          `json:"name"`
@@ -82,7 +103,7 @@ func handle(message []byte, call CallFunc) []byte {
 		if err := json.Unmarshal(request.Params, &params); err != nil {
 			return rpcError(request.ID, -32602, "bad params")
 		}
-		if _, known := toolNamed(params.Name); !known {
+		if !s.has(params.Name) {
 			return rpcError(request.ID, -32602, "unknown tool "+params.Name)
 		}
 		result, err := call(params.Name, params.Arguments)
@@ -117,8 +138,13 @@ func RunStdio() error {
 	return Forward(socket, os.Stdin, os.Stdout)
 }
 
-// Forward serves MCP on in and out, and passes each tool call to the gateway at socket.
+// Forward serves the Taskwarrior tools on in and out (see Server.Forward).
 func Forward(socket string, in io.Reader, out io.Writer) error {
+	return Taskwarrior.Forward(socket, in, out)
+}
+
+// Forward serves MCP on in and out, and passes each tool call to the gateway at socket.
+func (s Server) Forward(socket string, in io.Reader, out io.Writer) error {
 	client := &http.Client{
 		Timeout: 90 * time.Second,
 		Transport: &http.Transport{
@@ -127,11 +153,11 @@ func Forward(socket string, in io.Reader, out io.Writer) error {
 			},
 		},
 	}
-	return Serve(in, out, func(tool string, arguments json.RawMessage) (Result, error) {
+	return s.Serve(in, out, func(tool string, arguments json.RawMessage) (Result, error) {
 		body, _ := json.Marshal(map[string]any{"tool": tool, "arguments": arguments})
 		response, err := client.Post("http://dashboard/call", "application/json", bytes.NewReader(body))
 		if err != nil {
-			return Result{}, errors.New("couldn't reach the dashboard's Taskwarrior")
+			return Result{}, errors.New("couldn't reach the dashboard")
 		}
 		defer response.Body.Close()
 		data, err := io.ReadAll(io.LimitReader(response.Body, maxResponse+1))

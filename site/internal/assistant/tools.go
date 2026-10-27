@@ -92,3 +92,23 @@ func snakeCase(name string) string {
 	}
 	return out.String()
 }
+
+// readVerbs start the names of tools that only read, in MCPs that don't mark them (MyFitnessPal's
+// fitness_get_day, Anki's findNotes, deckNames…).
+var readVerbs = []string{"get", "list", "search", "find", "read", "show", "query", "lookup", "describe", "count", "check",
+	"draft", "bulk_export", "deck_names", "model_names", "notes_info", "cards_info", "version"}
+
+// ReadOnlyTool says whether a tool only reads, so the chat runs it without asking: its MCP says so
+// (hint), or its name starts with a reading verb. Anything else is asked about first.
+func ReadOnlyTool(name string, hint bool) bool {
+	if hint {
+		return true
+	}
+	name = strings.TrimPrefix(strings.ToLower(snakeCase(shortName(name))), "fitness_")
+	for _, verb := range readVerbs {
+		if name == verb || strings.HasPrefix(name, verb+"_") {
+			return true
+		}
+	}
+	return false
+}

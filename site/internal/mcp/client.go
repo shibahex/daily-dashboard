@@ -31,6 +31,9 @@ type Tool struct {
 	Name        string          `json:"name"`
 	Description string          `json:"description,omitempty"`
 	InputSchema json.RawMessage `json:"inputSchema"`
+	Annotations struct {
+		ReadOnlyHint bool `json:"readOnlyHint,omitempty"`
+	} `json:"annotations,omitzero"`
 }
 
 // Start runs args (args[0] is the program) with env and says hello (initialize).

@@ -8,6 +8,7 @@ import (
 
 	"dashboard/internal/assistant"
 	"dashboard/internal/auth"
+	"dashboard/internal/dashmcp"
 	"dashboard/internal/mcp"
 	"dashboard/internal/problem"
 	"dashboard/internal/sandbox"
@@ -124,6 +125,26 @@ func (sb *toolSandbox) mcpServer(name string, spec *sandbox.Spec) (mcp.Server, e
 		spec.Path = append(spec.Path, program.Path)
 		return mcp.Server{Command: program.Command, Args: []string{taskmcp.Command},
 			Env: map[string]string{taskmcp.SocketEnv: sandbox.TasksSocket}}, nil
+	case "dashboard":
+		// Like Taskwarrior's: the dashboard's own program, passing calls to the gateway here.
+		program, err := sb.ui.Programs.Self()
+		if err != nil {
+			return mcp.Server{}, err
+		}
+		socket := filepath.Join(sb.sockets, "data.sock")
+		listener, err := net.Listen("unix", socket)
+		if err != nil {
+			return mcp.Server{}, err
+		}
+		sb.listeners = append(sb.listeners, listener)
+		go dashmcp.NewGateway(sb.ws).Serve(listener)
+		spec.Data = socket
+		if program.Mount.Source != "" {
+			spec.Mounts = append(spec.Mounts, program.Mount)
+		}
+		spec.Path = append(spec.Path, program.Path)
+		return mcp.Server{Command: program.Command, Args: []string{dashmcp.Command},
+			Env: map[string]string{dashmcp.SocketEnv: sandbox.DataSocket}}, nil
 	}
 	return mcp.Server{}, problem.Invalidf("unknown MCP " + name)
 }

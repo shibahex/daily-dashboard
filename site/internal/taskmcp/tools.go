@@ -24,7 +24,17 @@ type Tool struct {
 	Name        string          `json:"name"`
 	Description string          `json:"description"`
 	InputSchema json.RawMessage `json:"inputSchema"`
+	Annotations *Annotations    `json:"annotations,omitempty"`
 }
+
+// Annotations are hints about a tool: ReadOnlyHint says it changes nothing, so the chat runs it
+// without asking first.
+type Annotations struct {
+	ReadOnlyHint bool `json:"readOnlyHint,omitempty"`
+}
+
+// ReadOnly marks a tool that only reads.
+var ReadOnly = &Annotations{ReadOnlyHint: true}
 
 // Result is a tool call's answer.
 type Result struct {
@@ -33,6 +43,11 @@ type Result struct {
 }
 
 const uuidProperty = `{"type":"string","description":"The task's uuid, as tasks_list shows it."}`
+
+// Schema makes an object schema from its properties (JSON) and the names that are required.
+func Schema(properties string, required ...string) json.RawMessage {
+	return schema(properties, required...)
+}
 
 // schema makes an object schema from its properties (JSON) and the names that are required.
 func schema(properties string, required ...string) json.RawMessage {
@@ -53,7 +68,7 @@ const (
 // Tools are the tools, in the order they're offered.
 var Tools = []Tool{
 	{
-		Name: "tasks_list",
+		Name: "tasks_list", Annotations: ReadOnly,
 		Description: "List the user's Taskwarrior tasks, soonest due first. By default only pending tasks " +
 			"(not waiting, completed, deleted or repeating schedules). Repeating tasks show up as separate " +
 			"copies with a parent. Dates are local time, like 2026-10-24T09:30. Look tasks up here before " +

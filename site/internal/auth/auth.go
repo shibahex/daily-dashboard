@@ -102,7 +102,12 @@ var (
 )
 
 func (p Policy) AllowsProvider(id string) bool { return slices.Contains(p.Providers, id) }
-func (p Policy) AllowsMCP(name string) bool    { return slices.Contains(p.MCPs, name) }
+
+// AllowsMCP says whether the user's AI may use an MCP. The dashboard's own tools (dashmcp) work
+// on the user's own data, so everyone has them.
+func (p Policy) AllowsMCP(name string) bool {
+	return name == "dashboard" || slices.Contains(p.MCPs, name)
+}
 
 // Clean keeps only known providers and MCPs; editing files needs reading them.
 func (p Policy) Clean() Policy {
