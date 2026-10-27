@@ -46,6 +46,16 @@ func serverAIs(user auth.User) []string {
 	return ids
 }
 
+// offeredServerAIs are the server-side AIs the user could pick if they turned the AI on the
+// server on: the chat offers them, and asks before turning it on.
+func offeredServerAIs(user auth.User) []string {
+	if user.ServerAI {
+		return nil
+	}
+	user.ServerAI = true
+	return serverAIs(user)
+}
+
 // runningAI is who has an answer running (one at a time each).
 var runningAI = struct {
 	sync.Mutex
@@ -119,7 +129,7 @@ func (ui *UI) assistantRun(w http.ResponseWriter, r *http.Request) {
 
 	run := &serverRun{ui: ui, ws: ws, user: user, box: &toolSandbox{ui: ui, ws: ws, workspace: "agent-workspace"}}
 	defer run.box.cleanUp()
-	req, err := run.prepare(provider, message, session, model, r.FormValue("history"), r.FormValue("key"), notes)
+	req, err := run.prepare(provider, message, session, model, r.FormValue("history"), r.FormValue("key"), userNow(r), notes)
 	if err != nil {
 		send(map[string]any{"type": "error", "text": problem.Public(err)})
 		send(map[string]any{"type": "done"})
@@ -168,7 +178,7 @@ type serverRun struct {
 
 // prepare builds the CLI's request: the MCP servers inside the sandbox, the notes as files when
 // the AI may change them, and the instructions with the notes, plan and data.
-func (run *serverRun) prepare(provider assistant.Provider, message, session, model, history, key string, notes []sealedNote) (assistant.Request, error) {
+func (run *serverRun) prepare(provider assistant.Provider, message, session, model, history, key, now string, notes []sealedNote) (assistant.Request, error) {
 	ui, ws, user := run.ui, run.ws, run.user
 	spec, err := run.box.open()
 	if err != nil {
@@ -196,7 +206,7 @@ func (run *serverRun) prepare(provider assistant.Provider, message, session, mod
 		}
 	}
 	web := webOn(user, conversation)
-	instructions := assistant.Instructions(time.Now(), assistant.Context(ws.Paths.Plan(), ws.Paths.Data), ready, !conversation.NoInstructions, web) +
+	instructions := assistant.Instructions(now, assistant.Context(ws.Paths.Plan(), ws.Paths.Data), ready, !conversation.NoInstructions, web) +
 		notesForPrompt(notes, edit)
 	if session == "" && strings.TrimSpace(history) != "" {
 		// A new conversation for this AI in a chat that already had some: what was said, so it
@@ -337,6 +347,15 @@ func (run *serverRun) changedNotes() []sealedNote {
 		changed = append(changed, sealedNote{Title: title, Text: string(data)})
 	}
 	return changed
+}
+
+// userNow is the user's local date and time as their browser wrote it (now), or the server's.
+func userNow(r *http.Request) string {
+	now := strings.Join(strings.Fields(r.FormValue("now")), " ")
+	if now == "" || len(now) > 300 {
+		return assistant.Now(time.Now())
+	}
+	return now
 }
 
 // ---------- turning it on ----------

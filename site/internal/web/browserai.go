@@ -50,13 +50,17 @@ var oldKeys = map[string]string{"anthropic": "anthropicKey", "local_key": "local
 
 // assistantSetup tells the browser how to run the AI: which AIs it may use (Claude, a local
 // model on the user's own computer, and for people who turned it on, the AIs on the server), the
-// chosen one and its model, the system prompt (everything but the notes, which the browser adds),
-// the MCPs, and whether it may save notes.
+// chosen one and its model, the system prompt (everything but the notes and the time, which the
+// browser adds), the MCPs, and whether it may save notes.
 func (ui *UI) assistantSetup(w http.ResponseWriter, r *http.Request) {
 	user, ws := ui.user(r), ui.ws(r)
 	providers := allowedAIs(user)
 	if len(providers) == 0 {
-		writeNoStoreJSON(w, map[string]any{"problem": "Your admin hasn't turned on an AI for you"})
+		why := "Your admin hasn't turned on an AI for you"
+		if len(offeredServerAIs(user)) > 0 {
+			why = "Turn on the AI on the server on the Account page first"
+		}
+		writeNoStoreJSON(w, map[string]any{"problem": why})
 		return
 	}
 	conversation := ws.Conversations.Load()
@@ -69,7 +73,8 @@ func (ui *UI) assistantSetup(w http.ResponseWriter, r *http.Request) {
 		"provider":     provider,
 		"models":       modelsFor(provider), // a local server's come from it, in the browser
 		"model":        conversation.Models[provider],
-		"server":       serverAIs(user), // the providers that run on the server
+		"server":       serverAIs(user),        // the providers that run on the server
+		"offer":        offeredServerAIs(user), // the ones they may pick once they turn on the AI on the server
 		"instructions": !conversation.NoInstructions,
 		"edit":         user.Policy.EditFiles,
 		"relayed":      ui.Auth.RelayedModelServers(), // local model servers reached through the server (modelrelay.go)
@@ -105,7 +110,7 @@ func (ui *UI) assistantSetup(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	answer["mcps"] = mcps
-	answer["system"] = assistant.Instructions(time.Now(), assistant.Context(ws.Paths.Plan(), ws.Paths.Data),
+	answer["system"] = assistant.Instructions("", assistant.Context(ws.Paths.Plan(), ws.Paths.Data),
 		ready, !conversation.NoInstructions, webOn(user, conversation))
 	writeNoStoreJSON(w, answer)
 }
