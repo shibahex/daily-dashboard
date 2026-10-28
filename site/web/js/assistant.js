@@ -15,10 +15,14 @@
   const ANTHROPIC = "https://api.anthropic.com/v1/messages";
   const MAX_TURNS = 20; // tool rounds in one answer
   const MAX_NOTES = 192 * 1024;
+  const MAX_IMAGES = 4;  // images in one message
+  const KEEP_IMAGES = 4; // images the chat keeps for the AI to see again; older ones become a note, so the saved chat stays small
 
   let root, setup, tools = [], chat = { messages: [], api: [] }, version = 0, key = null, busy = null, saving = null;
   // answering is the answer under way (it settles once it has stopped and saved); current is its reply.
   let answering = null, current = null;
+  // attached are the images waiting to go with the next message: { mediaType, data (base64), thumb (a small data: URL) }.
+  let attached = [];
   // The sealed settings: { anthropicKey, claudeCodeKey, openaiKey, geminiKey, localURL (".../v1"), localModel, localKey,
   // relayOK (the model server the user agreed to reach through the dashboard's server) }.
   let settings = {}, settingsVersion = 0;
@@ -372,8 +376,65 @@
         last.content = [...asBlocks(last.content), ...asBlocks(m.content)];
       } else merged.push({ ...m });
     }
-    return merged;
+    return withFewImages(merged);
   }
+
+  // withFewImages keeps the last KEEP_IMAGES images and puts a short note in place of older ones.
+  function withFewImages(api) {
+    let kept = 0;
+    for (let i = api.length - 1; i >= 0; i--) {
+      const m = api[i];
+      if (typeof m.content === "string" || !m.content.some(b => b.type === "image")) continue;
+      api[i] = { ...m, content: m.content.map(b => b.type !== "image" ? b
+        : ++kept <= KEEP_IMAGES ? b : { type: "text", text: "(An image the user sent earlier, no longer kept.)" }) };
+    }
+    return api;
+  }
+
+  // ---------- images ----------
+
+  // readImage shrinks a picture to at most 1568 pixels a side (what Claude looks at anyway) as a
+  // JPEG, and makes a small copy to show in the chat.
+  async function readImage(file) {
+    const name = file.name || "that image";
+    if (!file.type.startsWith("image/")) throw new Error(`${name} isn't an image`);
+    const bitmap = await createImageBitmap(file).catch(() => { throw new Error(`Couldn't open ${name}: try a JPEG or PNG`); });
+    const draw = (side, quality) => {
+      const scale = Math.min(1, side / Math.max(bitmap.width, bitmap.height));
+      const canvas = el("canvas", { width: Math.max(1, Math.round(bitmap.width * scale)), height: Math.max(1, Math.round(bitmap.height * scale)) });
+      const g = canvas.getContext("2d");
+      g.fillStyle = "#fff"; // under transparent parts, which JPEG can't keep
+      g.fillRect(0, 0, canvas.width, canvas.height);
+      g.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      return canvas.toDataURL("image/jpeg", quality);
+    };
+    const full = draw(1568, 0.82), thumb = draw(240, 0.7);
+    bitmap.close();
+    return { mediaType: "image/jpeg", data: full.slice(full.indexOf(",") + 1), thumb };
+  }
+
+  async function addImages(files) {
+    for (const file of files) {
+      if (attached.length >= MAX_IMAGES) return toast(`Up to ${MAX_IMAGES} images a message`, { bad: true });
+      try { attached.push(await readImage(file)); }
+      catch (e) { toast(e.message, { bad: true }); }
+      renderAttached();
+    }
+  }
+
+  // renderAttached shows the waiting images over the message box, each with a button to take it off.
+  function renderAttached() {
+    const strip = $("attached");
+    strip.hidden = !attached.length;
+    strip.replaceChildren(...attached.map(image => {
+      const remove = el("button", { type: "button", className: "remove", title: "Remove", ariaLabel: "Remove image" }, "×");
+      remove.onclick = () => { attached = attached.filter(i => i !== image); renderAttached(); };
+      return el("figure", {}, el("img", { src: image.thumb, alt: "" }), remove);
+    }));
+  }
+
+  // imageBlock is an image in Anthropic's shape, which the chat keeps.
+  const imageBlock = image => ({ type: "image", source: { type: "base64", media_type: image.mediaType, data: image.data } });
 
   // ---------- the prompt ----------
 
@@ -612,7 +673,10 @@
         out.push({ role: "tool", tool_call_id: b.tool_use_id, content: String(b.content ?? "") });
       }
       const text = blocks.filter(b => b.type === "text").map(b => b.text).join("\n\n");
-      if (text) out.push({ role: "user", content: text });
+      const images = blocks.filter(b => b.type === "image")
+        .map(b => ({ type: "image_url", image_url: { url: `data:${b.source.media_type};base64,${b.source.data}` } }));
+      if (images.length) out.push({ role: "user", content: [...images, ...(text ? [{ type: "text", text }] : [])] });
+      else if (text) out.push({ role: "user", content: text });
     }
     return out;
   }
@@ -660,11 +724,12 @@
     return { content, stop: usedTools || finish === "tool_calls" ? "tool_use" : "end_turn" };
   }
 
-  async function answer(question) {
+  async function answer(question, images = []) {
     if (onServer()) return answerOnServer(question);
     const reply = current = { role: "assistant", text: "", tools: [] };
-    chat.messages.push({ role: "user", text: question }, reply);
-    chat.api.push({ role: "user", content: question });
+    chat.messages.push({ role: "user", text: question, ...(images.length ? { images: images.map(i => i.thumb) } : {}) }, reply);
+    chat.api.push({ role: "user", content: images.length
+      ? [...images.map(imageBlock), ...(question ? [{ type: "text", text: question }] : [])] : question });
     chat.api = validHistory(chat.api);
     busy = new AbortController();
     renderAll();
@@ -735,7 +800,10 @@
   // ---------- the page ----------
 
   function bubble(m) {
-    if (m.role === "user") return el("div", { className: "msg user" }, m.text);
+    if (m.role === "user") {
+      const images = m.images?.length ? el("div", { className: "msg-images" }, ...m.images.map(src => el("img", { src, alt: "Image you sent" }))) : null;
+      return el("div", { className: "msg user" + (images && !m.text ? " only-images" : "") }, images, m.text || null);
+    }
     const body = el("div", { className: "body" });
     if (m.tools?.length) {
       body.append(el("div", { className: "tools" }, ...m.tools.map(t =>
@@ -794,6 +862,10 @@
   function renderControls() {
     const field = $("form").elements.message;
     field.disabled = !!busy || !!setup?.problem;
+    // The AIs on the server take a message as text only.
+    const attach = $("attach");
+    attach.hidden = !!setup && onServer();
+    attach.disabled = field.disabled;
     $("send").hidden = !!busy;
     $("stop").hidden = !busy;
     if (setup) showStatus();
@@ -1017,10 +1089,39 @@
       event.preventDefault();
       const field = event.target.elements.message;
       const question = field.value.trim();
-      if (!question || busy || !setup || setup.problem) return;
+      if ((!question && !attached.length) || busy || !setup || setup.problem) return;
+      if (attached.length && onServer()) return toast(`${shortNames[setup.provider]} can't see images: pick Claude API or a local model`, { bad: true });
+      const images = attached;
       field.value = "";
-      answering = answer(question).finally(() => { answering = null; });
+      attached = [];
+      renderAttached();
+      answering = answer(question, images).finally(() => { answering = null; });
     });
+    // Images come from the button, a paste or a drop.
+    const files = $("files");
+    $("attach").onclick = () => files.click();
+    files.onchange = () => { addImages([...files.files]); files.value = ""; };
+    const canAttach = () => setup && !onServer();
+    const imagesIn = list => [...list || []].filter(f => (!f.kind || f.kind === "file") && f.type.startsWith("image/"));
+    const hasFiles = event => [...event.dataTransfer?.types || []].includes("Files");
+    const form = $("form");
+    form.addEventListener("paste", event => {
+      const found = imagesIn(event.clipboardData?.items).map(i => i.getAsFile()).filter(Boolean);
+      if (!found.length || !canAttach()) return;
+      event.preventDefault();
+      addImages(found);
+    });
+    form.addEventListener("dragover", event => {
+      if (canAttach() && hasFiles(event)) event.preventDefault();
+    });
+    form.addEventListener("drop", event => {
+      if (!canAttach() || !hasFiles(event)) return;
+      event.preventDefault(); // else the browser opens the file in place of the page
+      const found = imagesIn(event.dataTransfer.files);
+      if (found.length) addImages(found);
+      else toast("Only images can go with a message", { bad: true });
+    });
+    renderAttached(); // the ones added before the tab was opened again
     $("stop").onclick = () => busy?.abort();
     start();
   });
