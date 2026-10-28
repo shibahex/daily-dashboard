@@ -6,7 +6,7 @@ The web dashboard in `site/`: a self-hosted page for daily habits: today's worko
 - **Tasks:** add, edit, complete (asks how long it took, default 30 min, and logs it in Timewarrior; also on past days), skip with reasons, repeating schedules (every N days, specific weekdays every N weeks, monthly), undo
 - **Lifting:** routines, a workout logger with a rest timer, progress per exercise and past workouts (below)
 - **History:** GitHub-style activity heatmap (tasks done, hours tracked, checklist), activity feed, time log editor, skip reasons
-- **Docs:** your own Markdown notes, encrypted in your browser (see **Encrypted data**), plus these guides. **Edit** a note, add one with the box under the list, move the open one with ↑ ↓, or delete it. Each note keeps its last 10 versions (**Earlier versions**, under it) and deleted notes stay in **Recently deleted** until 20 newer ones push them out.
+- **Docs:** your own Markdown notes, encrypted in your browser (see **Encrypted data**), plus these guides. **Edit** a note, add one with the box under the list, move the open one with ↑ ↓, or delete it. Each note keeps its last 10 versions (**Earlier versions**, under it) and deleted notes stay in **Recently deleted** (the last 3), where you can restore them or delete them for good.
 - **Anki:** your decks and due cards, add cards, search and edit notes (below)
 - **MCPs:** chat with an AI about your notes, MyFitnessPal diary, Anki cards and tasks. It runs in your browser (below)
 

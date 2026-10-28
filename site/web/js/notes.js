@@ -5,11 +5,12 @@
 // runs in this browser too (assistant.js), reads and saves them through all() and saveNote().
 //
 // Nothing is lost for good by one click: each note keeps its last versions (history), and
-// deleted notes stay in "Recently deleted" (trash) until enough newer ones push them out.
+// deleted notes stay in "Recently deleted" (trash) until newer ones push them out or they're
+// deleted from there for good.
 
 const SealedNotes = (() => {
   const HISTORY = 10; // versions kept per note
-  const TRASH = 20; // deleted notes kept
+  const TRASH = 3; // deleted notes kept
 
   // { key, version, seq, notes: [{ id, title, text, history: [{ title, text, at }] }], trash: [...] }
   let state = null;
@@ -34,7 +35,7 @@ const SealedNotes = (() => {
     state = { key, version: answer.version, seq: 0, notes: [], trash: [] };
     if (answer.blob) {
       const value = await Keys.openBlob(key, "notes", answer.blob);
-      Object.assign(state, { seq: value.seq || 0, notes: value.notes || [], trash: value.trash || [] });
+      Object.assign(state, { seq: value.seq || 0, notes: value.notes || [], trash: (value.trash || []).slice(0, TRASH) });
     } else if (answer.plain?.length) {
       // Notes from before: seal them, and the server deletes the plain copies.
       state.notes = answer.plain.map(p => ({ id: newId(), title: titleOf(p.name), text: p.text }));
@@ -177,7 +178,13 @@ const SealedNotes = (() => {
         state.notes.push(note);
         current = note.id;
       }, "Note restored");
-      box.append(el("div", { className: "version" }, el("span", { title: "Deleted " + when(gone.deletedAt) }, gone.title || "Untitled"), restore));
+      const forget = button("Delete", { className: "sm ghost", title: "Delete for good" });
+      forget.onclick = () => {
+        if (!confirm(`Delete “${gone.title || "Untitled"}” for good? It can't be brought back.`)) return;
+        change(() => state.trash.splice(state.trash.indexOf(gone), 1), "Note deleted for good");
+      };
+      box.append(el("div", { className: "version" }, el("span", { title: "Deleted " + when(gone.deletedAt) }, gone.title || "Untitled"),
+        el("span", { className: "trash-buttons" }, restore, forget)));
     });
     return box;
   }
