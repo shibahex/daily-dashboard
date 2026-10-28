@@ -83,12 +83,12 @@ a.sign-in-btn { display: block; text-align: center; text-decoration: none; borde
   border: 1px solid var(--line); background: var(--chip); color: var(--ink); cursor: pointer; }
 .backup input[type=file]::file-selector-button:hover { border-color: var(--accent); }
 
-/* Connecting MyFitnessPal takes a few seconds: the button spins and the note says so
+/* Connecting MyFitnessPal or Anki takes a few seconds: the button spins and the note says so
    (htmx marks the waiting form with .htmx-request; busy-spin is in nutrition.css). */
 .mfp-connect.htmx-request .wait-hint { display: none; }
-.mfp-connect.htmx-request .busy-note { display: inline; }
-.mfp-connect.htmx-request button.primary { position: relative; color: transparent !important; }
-.mfp-connect.htmx-request button.primary::after {
+.mfp-connect.htmx-request .busy-note, .anki-connect.htmx-request .busy-note { display: inline; }
+.mfp-connect.htmx-request button.primary, .anki-connect.htmx-request button.primary { position: relative; color: transparent !important; }
+.mfp-connect.htmx-request button.primary::after, .anki-connect.htmx-request button.primary::after {
   content: ""; position: absolute; left: 50%; top: 50%; width: 14px; height: 14px; margin: -7px 0 0 -7px;
   border: 2px solid var(--on-accent); border-right-color: transparent; border-radius: 50%; animation: busy-spin .7s linear infinite; }
 

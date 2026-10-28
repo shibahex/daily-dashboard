@@ -130,7 +130,7 @@
     <h2>Anki</h2>
     {{if .Anki.Connected}}<p>Connected to <code>{{.AnkiURL}}</code>.</p>
     {{else if .AnkiURL}}<p>Set to <code>{{.AnkiURL}}</code>, but it isn't answering. Is Anki open on that computer?</p>{{end}}
-    <form hx-post="/account/anki" hx-target="#connections-card" hx-swap="outerHTML" hx-disabled-elt="find button">
+    <form class="anki-connect" hx-post="/account/anki" hx-target="#connections-card" hx-swap="outerHTML" hx-disabled-elt="find button">
       <p class="muted small">Set up Anki on your computer first:</p>
       <ol class="mfp-steps">
         <li><b>Install AnkiConnect</b> in Anki: <b>Tools → Add-ons → Get Add-ons…</b>, code <code>{{or .Anki.Addon "2055492159"}}</code>.</li>
@@ -142,7 +142,8 @@
       <label>AnkiConnect address <input class="txt" name="url" value="{{or .AnkiTyped .AnkiURL}}" placeholder="http://192.168.1.20:8765" required autocomplete="off" spellcheck="false"></label>
       <label>AnkiConnect API key <input class="txt" type="password" name="key" value="{{.AnkiKey}}" required autocomplete="off" spellcheck="false"></label>
       <div class="row"><button class="sm primary">{{if .AnkiURL}}Save{{else}}Connect{{end}}</button>
-      {{if .AnkiURL}}<button type="button" class="sm ghost" hx-post="/account/anki/remove" hx-target="#connections-card" hx-swap="outerHTML" hx-confirm="Disconnect your Anki?">Disconnect</button>{{end}}</div>
+      {{if .AnkiURL}}<button type="button" class="sm ghost" hx-post="/account/anki/remove" hx-target="#connections-card" hx-swap="outerHTML" hx-confirm="Disconnect your Anki?">Disconnect</button>{{end}}
+      <span class="busy-note">Checking with Anki…</span></div>
     </form>
   </div>
 
