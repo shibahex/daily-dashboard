@@ -131,9 +131,16 @@
     {{if .Anki.Connected}}<p>Connected to <code>{{.AnkiURL}}</code>.</p>
     {{else if .AnkiURL}}<p>Set to <code>{{.AnkiURL}}</code>, but it isn't answering. Is Anki open on that computer?</p>{{end}}
     <form hx-post="/account/anki" hx-target="#connections-card" hx-swap="outerHTML" hx-disabled-elt="find button">
-      <p class="muted small">On your computer: install AnkiConnect in Anki (<b>Tools → Add-ons → Get Add-ons…</b>, code <code>{{or .Anki.Addon "2055492159"}}</code>), then in its config set <code>"webBindAddress": "0.0.0.0"</code> and an <code>"apiKey"</code> of your own, and restart Anki. If that computer has a firewall, let in TCP port 8765 (also when the dashboard runs in Docker on the same computer). The key is required: without it anyone on the network could use your Anki.</p>
-      <label>AnkiConnect address <input class="txt" name="url" value="{{.AnkiURL}}" placeholder="http://192.168.1.20:8765" required autocomplete="off" spellcheck="false"></label>
-      <label>AnkiConnect API key <input class="txt" type="password" name="key" required autocomplete="off" spellcheck="false"></label>
+      <p class="muted small">Set up Anki on your computer first:</p>
+      <ol class="mfp-steps">
+        <li><b>Install AnkiConnect</b> in Anki: <b>Tools → Add-ons → Get Add-ons…</b>, code <code>{{or .Anki.Addon "2055492159"}}</code>.</li>
+        <li><b>Open its config</b> (Tools → Add-ons → AnkiConnect → Config) and set <code>"webBindAddress": "0.0.0.0"</code> and an <code>"apiKey"</code> of your own. The key is required: without it anyone on the network could use your Anki.</li>
+        <li><b>Restart Anki.</b></li>
+        <li><b>Firewall:</b> if that computer has one, let in TCP port 8765 (also when the dashboard runs in Docker on the same computer).</li>
+        <li><b>Enter the address and key below</b> and press Connect.</li>
+      </ol>
+      <label>AnkiConnect address <input class="txt" name="url" value="{{or .AnkiTyped .AnkiURL}}" placeholder="http://192.168.1.20:8765" required autocomplete="off" spellcheck="false"></label>
+      <label>AnkiConnect API key <input class="txt" type="password" name="key" value="{{.AnkiKey}}" required autocomplete="off" spellcheck="false"></label>
       <div class="row"><button class="sm primary">{{if .AnkiURL}}Save{{else}}Connect{{end}}</button>
       {{if .AnkiURL}}<button type="button" class="sm ghost" hx-post="/account/anki/remove" hx-target="#connections-card" hx-swap="outerHTML" hx-confirm="Disconnect your Anki?">Disconnect</button>{{end}}</div>
     </form>

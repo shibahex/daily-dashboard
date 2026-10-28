@@ -295,6 +295,8 @@ type connectionsView struct {
 	MFPToken      string   // ...and the cookie they pasted, so they don't paste it again
 	Anki          anki.Status
 	AnkiURL       string
+	AnkiTyped     string // the address and key from a failed Connect, so they don't type them again
+	AnkiKey       string
 	Error         string
 	Saved         string
 }
@@ -377,8 +379,16 @@ func (ui *UI) disconnectMyFitnessPal(w http.ResponseWriter, r *http.Request) {
 }
 
 func (ui *UI) connectAnki(w http.ResponseWriter, r *http.Request) {
-	err := ui.Workspaces.ConnectAnki(ui.user(r), formText(r, "url"), strings.TrimSpace(r.FormValue("key")))
-	ui.renderConnections(w, r, "Anki connected", err)
+	url, key := formText(r, "url"), strings.TrimSpace(r.FormValue("key"))
+	err := ui.Workspaces.ConnectAnki(ui.user(r), url, key)
+	if err == nil {
+		ui.renderConnections(w, r, "Anki connected", nil)
+		return
+	}
+	view := ui.connectionsView(r)
+	view.Error, view.AnkiTyped, view.AnkiKey = problem.Public(err), url, key
+	w.Header().Set("Cache-Control", "no-store") // it holds their key
+	ui.render(w, "connections-card", view)
 }
 
 func (ui *UI) disconnectAnki(w http.ResponseWriter, r *http.Request) {
