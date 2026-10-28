@@ -3,10 +3,9 @@
 {{define "anki"}}
 <div class="anki-top">
   <div class="chat-badge">{{template "icon-cards"}}</div>
-  <div class="chat-title"><b>Anki</b><span class="chat-status{{if not .Status.Connected}} off{{end}}"><i></i>{{if .Status.Connected}}Connected{{else if .Status.NotSetUp}}Not set up{{else if .Status.Remote}}Not answering{{else if .Status.Running}}AnkiConnect isn't answering{{else}}Anki isn't open{{end}}</span></div>
+  <div class="chat-title"><b>Anki</b><span class="chat-status{{if not .Status.Connected}} off{{end}}"><i></i>{{if .Status.Connected}}Connected{{else if .Status.NotSetUp}}Not set up{{else}}Not answering{{end}}</span></div>
   <span class="chat-tools">
-    <button class="pill" hx-post="/anki/sync" hx-swap="none" hx-disabled-elt="this" title="Sync with AnkiWeb"{{if not .Status.Connected}} disabled{{end}}>↻ Sync</button>
-    <button class="pill" hx-post="/anki/open" hx-swap="none" title="Open the Anki app">Open Anki</button></span>
+    <button class="pill" hx-post="/anki/sync" hx-swap="none" hx-disabled-elt="this" title="Sync with AnkiWeb"{{if not .Status.Connected}} disabled{{end}}>↻ Sync</button></span>
 </div>
 {{template "anki-body" .Body}}
 {{end}}
@@ -35,18 +34,10 @@
 {{end}}
 
 {{define "anki-setup"}}
-{{if .Remote}}
 <div class="mcp-setup"><b>Connect your Anki</b><ol>
   <li>In Anki on your computer, install AnkiConnect (<b>Tools → Add-ons → Get Add-ons…</b>, code <code>{{or .Addon "2055492159"}}</code>).</li>
   <li>In its config, set <code>"webBindAddress": "0.0.0.0"</code> and an <code>"apiKey"</code> of your own, then restart Anki.</li>
   <li>{{if .NotSetUp}}Enter its address and key{{else}}Check the address and key{{end}} on the <a class="link" href="/account?tab=connections">Account page</a>, and keep Anki open while you use this.</li></ol></div>
-{{else}}
-<div class="mcp-setup"><b>Connect Anki</b><ol>
-  {{if .Installed}}{{if not .Running}}<li>Open Anki. <button class="sm primary" hx-post="/anki/open" hx-swap="none">Open Anki</button></li>{{end}}
-  {{else}}<li>Install <a class="link" href="https://apps.ankiweb.net" target="_blank" rel="noopener">Anki</a>.</li>{{end}}
-  <li>In Anki, go to <b>Tools → Add-ons → Get Add-ons…</b>, enter <code>{{or .Addon "2055492159"}}</code> (AnkiConnect) and press OK.</li>
-  <li>Restart Anki, then keep it open while you use this (it's how the dashboard and the Anki MCP reach your cards).</li></ol></div>
-{{end}}
 {{end}}
 
 {{define "review-chart"}}<div class="anki-chart" title="Reviews, last {{len .}} days">{{range .}}<div class="{{if not .Reviews}}zero{{end}}" style="height:{{.Height}}%" title="{{isoDay .Day}}: {{.Reviews}}"></div>{{end}}</div>{{end}}
@@ -117,8 +108,7 @@
 <div class="card" hx-disinherit="*" id="card-anki" hx-get="/cards/anki" hx-trigger="anki-changed from:body, tick-300 from:body" hx-swap="outerHTML">
   <div class="card-head"><h2>Anki</h2><a class="edit-btn" href="/anki">Open tab →</a></div>
   {{if not .Status.Connected}}
-  <p class="small muted flush-top">{{if .Status.NotSetUp}}Connect your Anki on the <a class="link" href="/account?tab=connections">Account page</a>.{{else if .Status.Remote}}Your Anki isn't answering. Is it open?{{else if .Status.Running}}Anki is open, but AnkiConnect isn't answering.{{else}}Anki isn't open.{{end}}</p>
-  {{if .Status.Installed}}<button class="sm primary" hx-post="/anki/open" hx-swap="none">Open Anki</button>{{end}}
+  <p class="small muted flush-top">{{if .Status.NotSetUp}}Connect your Anki on the <a class="link" href="/account?tab=connections">Account page</a>.{{else}}Your Anki isn't answering. Is it open?{{end}}</p>
   {{else}}
   <div class="anki-today"><div><span class="big">{{.Due}}</span> <span class="muted">due</span></div>
     <div class="deck">{{template "deck-counts" .}}</div></div>

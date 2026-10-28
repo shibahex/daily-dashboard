@@ -101,7 +101,7 @@ In Nginx Proxy Manager: a proxy host for `health.example.com` that forwards to `
 **Portainer:** **Stacks → Add stack → Repository**, with the URL `https://github.com/shibahex/daily-dashboard`, reference `refs/heads/main` and compose path `docker-compose.yml`. Add `TZ` under **Environment variables**, deploy, and find the sign-up link in the container's logs. To update, use **Pull and redeploy**; the volume keeps the data.
 
 - Updating with plain Docker: `docker compose pull && docker compose up -d`.
-- Optional settings in `.env`: `ANKI_CONNECT_URL` (and `ANKI_CONNECT_API_KEY`) for AnkiConnect on the computer that runs Anki, `DASHBOARD_PORT` for another port.
+- Optional settings in `.env`: `DASHBOARD_PORT` for another port.
 - `docker-compose.yml` turns off Docker's seccomp and AppArmor filters and its masking of `/proc` for this container (`security_opt`), because the AI's MyFitnessPal and Anki tools run in a bubblewrap sandbox, which makes user namespaces and mounts its own `/proc`. The server itself still runs as an unprivileged user. Remove those lines if you don't use the AI's tools.
 - **Ubuntu 23.10 and later:** add `DASHBOARD_APPARMOR=podman` to `.env` (or Portainer's environment variables) and redeploy. Without it the AI's tools fail with `bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted`: Ubuntu takes the permissions away from user namespaces made by containers without an AppArmor profile, including `apparmor=unconfined`. Ubuntu's own `podman` profile allows everything `unconfined` does plus user namespaces, so nothing on the host changes. Don't set it on other systems: where AppArmor has no `podman` profile (Debian, older Ubuntu), the container won't start.
 - A reset link for a locked-out admin: `docker compose stop`, then `docker compose run --rm dashboard reset-password <username>`.
@@ -144,7 +144,7 @@ The **Nutrition today** card shows what you've eaten against your MyFitnessPal g
 
 ## Anki tab
 
-Works through the [AnkiConnect](https://ankiweb.net/shared/info/2055492159) add-on, so Anki has to be open. To install it: in Anki, **Tools → Add-ons → Get Add-ons…**, code `2055492159`, then restart Anki. The tab shows these steps (and an **Open Anki** button) until it can connect.
+Works through the [AnkiConnect](https://ankiweb.net/shared/info/2055492159) add-on, so Anki has to be open. To install it: in Anki, **Tools → Add-ons → Get Add-ons…**, code `2055492159`, then restart Anki. The tab shows these steps until it can connect.
 
 - **Decks:** new / learning / due counts per deck, cards reviewed today and a 30-day chart. **Study** opens the deck in Anki, where you review.
 - **Add card:** pick a deck (or make a new one) and a note type; the fields follow the note type. Ctrl+Enter adds it. The deck and type are remembered.
@@ -152,7 +152,7 @@ Works through the [AnkiConnect](https://ankiweb.net/shared/info/2055492159) add-
 - **↻ Sync** syncs with AnkiWeb.
 - **Today tab:** an Anki card with cards due (new / learning / due), reviews today, your study streak, the last 14 days, and the decks with the most due cards (Study opens them in Anki). Drag it like the other cards.
 - **History tab:** an **Anki reviews** heatmap mode, and "Reviewed N Anki cards" in the activity feed. The last review history is saved in `site/data/anki-history.json`, so it still shows while Anki is closed.
-- The page only calls the AnkiConnect actions in `site/internal/anki/`. If you set an API key in AnkiConnect, put it in `site/.env` as `ANKI_CONNECT_API_KEY`.
+- The page only calls the AnkiConnect actions in `site/internal/anki/`. Each person's AnkiConnect needs an API key, which they enter on their Account page with its address.
 
 ## MCPs tab
 
@@ -199,11 +199,11 @@ The AI itself runs in your browser. The MCP tools it calls run on the server, ea
 
 ## Accounts and admins
 
-- **First account:** the terminal prints `Create the first (admin) account: …/setup?code=…`. The setup code is also saved in `data/setup-code` (readable only by the server's owner) and deleted once the account exists, so nobody else can claim the server first. This account is the **host**: it keeps the server computer's own Taskwarrior, Timewarrior, MyFitnessPal login and Anki, and gets a one-time copy of the notes and data from before the dashboard had accounts.
+- **First account:** the terminal prints `Create the first (admin) account: …/setup?code=…`. The setup code is also saved in `data/setup-code` (readable only by the server's owner) and deleted once the account exists, so nobody else can claim the server first. This account is the **host**: it works like every other account, and gets a one-time copy of the notes and data from before the dashboard had accounts, and of the server computer's own Taskwarrior, Timewarrior and MyFitnessPal login (the originals stay as a backup).
 - **Inviting people:** **Admin** (top right, admins only) → **Invite someone**: pick a username and role, and send the one-time link (it works once, for 7 days). They choose their own password. Each person gets their own plan, notes, checklist, weigh-ins, tasks, time log, MyFitnessPal, Anki connection, chats and keys, in `site/data/users/<id>/`.
 - **Admins** manage accounts: password-reset links, turning an account off (logged out at once), making someone an admin, and deleting an account with everything in it (type the username to confirm). There's always at least one active admin, and an admin can't do these to their own account. Admins can't see anyone's data, and neither can whoever runs the server while it's locked (see **Encrypted data**).
 - **What each person's AI may use:** on the Admin page, per person: which AIs (Claude, a local model on their own computer), which MCPs, and whether their AI may save notes. **New people start with** sets the default. **Model servers on your network** lists the model servers, besides each person's own computer, that browsers may talk to for the local model.
-- **Anki for other people:** their Anki runs on their own computer. They install AnkiConnect, set `"webBindAddress": "0.0.0.0"` and an `"apiKey"` in its config, and enter the address and key on their Account page. The dashboard refuses an AnkiConnect without a key (anyone on the network could use it) and, for anyone but the host, addresses on the server itself.
+- **Anki:** everyone's Anki runs on their own computer. They install AnkiConnect, set `"webBindAddress": "0.0.0.0"` and an `"apiKey"` in its config, and enter the address and key on their Account page. The dashboard refuses an AnkiConnect without a key (anyone on the network could use it) and addresses on the server itself.
 
 ## Security
 
@@ -254,7 +254,7 @@ Your notes are only as private as the scripts that handle them, and those come f
 
 None of this is tracked by git:
 
-- `site/data/users/<id>/`: one folder per person: `plan.json`, `docs/` (their notes, from `docs/templates/` on first use), checklist history, weigh-ins, routines and workouts (`lifting.json`), the MyFitnessPal cache and login, Anki connection, chat, sealed keys, and their Taskwarrior and Timewarrior (except the host's, which use the computer's own)
+- `site/data/users/<id>/`: one folder per person: `plan.json`, `docs/` (their notes, from `docs/templates/` on first use), checklist history, weigh-ins, routines and workouts (`lifting.json`), the MyFitnessPal cache and login, Anki connection, chat, sealed keys, and their Taskwarrior and Timewarrior
 - `site/data/vaults/<id>/`: everyone else's folder, encrypted (see above); `site/data/users/<id>/` holds only the host's, and older accounts' until they're encrypted
 - `site/data/`: accounts and sessions (hashes only), invites, the server's key, the installed MCP programs
 - `site/.env`: local settings (see `site/.env.example`)

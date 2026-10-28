@@ -27,6 +27,16 @@ func newManager(t *testing.T) (*Manager, config.Paths) {
 	os.WriteFile(filepath.Join(root, "docs", "README.md"), []byte("guide"), 0o600)
 	os.WriteFile(filepath.Join(root, "docs", "templates", "overview.md"), []byte("template"), 0o600)
 	paths := config.NewPaths(site)
+	// The host account copies the server computer's own Taskwarrior and logins from here.
+	home := filepath.Join(root, "home")
+	os.MkdirAll(home, 0o700)
+	t.Setenv("HOME", home)
+	t.Setenv("TASKRC", filepath.Join(home, ".taskrc"))
+	os.WriteFile(filepath.Join(home, ".taskrc"), []byte("data.location="+filepath.Join(home, ".task")+"\n"), 0o600)
+	for _, name := range []string{"XDG_CONFIG_HOME", "XDG_DATA_HOME", "TIMEWARRIORDB", "TASKDATA"} {
+		t.Setenv(name, "") // restored after the test
+		os.Unsetenv(name)  // an empty TASKDATA is the current folder to Taskwarrior
+	}
 	gateway, err := anki.StartGateway()
 	if err != nil {
 		t.Fatal(err)
@@ -35,7 +45,7 @@ func newManager(t *testing.T) (*Manager, config.Paths) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m := NewManager(paths, myfitnesspal.Client{}, anki.NewClient("http://127.0.0.1:8765", ""), gateway, box)
+	m := NewManager(paths, myfitnesspal.Client{}, gateway, box)
 	t.Cleanup(func() {
 		for _, id := range []string{"aaaa", "bbbb", "cccc"} {
 			m.Remove(id)
@@ -158,6 +168,42 @@ func TestTheHostMigratesNotesWithoutAPlan(t *testing.T) {
 	host.Host = true
 	if _, found := m.For(host).Store.Doc("background.md"); !found {
 		t.Fatal("notes should carry over even when there was no plan.json")
+	}
+}
+
+func TestTheHostGetsTheServersServicesOnce(t *testing.T) {
+	m, _ := newManager(t)
+	home := os.Getenv("HOME")
+	write := func(path, content string) {
+		os.MkdirAll(filepath.Dir(path), 0o700)
+		os.WriteFile(path, []byte(content), 0o600)
+	}
+	write(filepath.Join(home, ".task", "taskchampion.sqlite3"), "tasks")
+	write(filepath.Join(home, ".task", "hooks", "on-modify.other"), "hook")
+	write(filepath.Join(home, ".local", "share", "timewarrior", "data", "2026-10.data"), "inc 20261001T090000Z")
+	write(filepath.Join(home, ".config", "myfitnesspal-mcp", "cookies.json"), "{}")
+
+	host := user("cccc")
+	host.Host = true
+	ws := m.For(host)
+	dir := filepath.Dir(ws.Paths.Plan())
+	for _, path := range []string{"task/taskchampion.sqlite3", "timewarrior/data/2026-10.data", "mfp/config/myfitnesspal-mcp/cookies.json"} {
+		if !exists(filepath.Join(dir, path)) {
+			t.Errorf("%s should have been copied into the host's folder", path)
+		}
+	}
+	if exists(filepath.Join(dir, "task", "hooks")) {
+		t.Error("the server's Taskwarrior hooks shouldn't come along")
+	}
+	if !ws.MyFitnessPal.Client().Setup().SignedIn {
+		t.Error("the host should keep its MyFitnessPal login")
+	}
+
+	other := m.For(user("aaaa"))
+	otherDir := filepath.Dir(other.Paths.Plan())
+	if exists(filepath.Join(otherDir, "task", "taskchampion.sqlite3")) ||
+		other.MyFitnessPal.Client().Setup().SignedIn {
+		t.Fatal("other users must not get the server's tasks or logins")
 	}
 }
 

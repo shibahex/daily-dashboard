@@ -15,16 +15,16 @@ import (
 //
 // AnkiConnect without an API key lets anyone who can reach it read and change that Anki, so a
 // user could otherwise point the dashboard at someone else's open AnkiConnect on the network.
-// So the address must answer only with the key. Users other than the host also can't use
-// addresses on the server itself (loopback) or link-local ones, which reach the server's own
+// So the address must answer only with the key. Addresses on the server itself (loopback) and
+// link-local ones are refused too, unless serverOK (for tests): they reach the server's own
 // services rather than the user's computer.
-func CheckConnection(rawURL, apiKey string, host bool) (string, error) {
+func CheckConnection(rawURL, apiKey string, serverOK bool) (string, error) {
 	parsed, err := url.Parse(strings.TrimSpace(rawURL))
 	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Hostname() == "" {
 		return "", problem.Invalidf("Enter AnkiConnect's address, like http://192.168.1.20:8765")
 	}
 	cleaned := (&url.URL{Scheme: parsed.Scheme, Host: parsed.Host}).String()
-	if !host {
+	if !serverOK {
 		if err := checkReachableHost(parsed.Hostname()); err != nil {
 			return "", err
 		}

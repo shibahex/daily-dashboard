@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"os"
 	"os/exec"
 	"time"
 
@@ -17,7 +16,6 @@ import (
 const (
 	AnkiConnectAddon = "2055492159"                      // AnkiConnect's add-on code
 	MCPPackage       = "@ankimcp/anki-mcp-server@0.27.0" // pinned Anki MCP server
-	defaultURL       = "http://127.0.0.1:8765"
 )
 
 // ErrUnreachable means AnkiConnect didn't answer (Anki closed, or the add-on missing).
@@ -35,24 +33,12 @@ func (e ActionError) Unwrap() error { return problem.Failedf(e.Message) }
 type Client struct {
 	URL    string
 	APIKey string // only if one is set in AnkiConnect's config
-	Local  bool   // the Anki on this computer (the host account's): it can be opened from here
 	http   *http.Client
 
 	// Gateway is what the agents' Anki MCP talks to instead of AnkiConnect (see Gateway), and
 	// GatewayKey the key that sends this user's requests to this AnkiConnect.
 	Gateway    *Gateway
 	GatewayKey string
-}
-
-// NewClientFromEnv reads ANKI_CONNECT_URL and ANKI_CONNECT_API_KEY: the Anki on this computer.
-func NewClientFromEnv() Client {
-	url := os.Getenv("ANKI_CONNECT_URL")
-	if url == "" {
-		url = defaultURL
-	}
-	client := NewClient(url, os.Getenv("ANKI_CONNECT_API_KEY"))
-	client.Local = true
-	return client
 }
 
 // NewClient talks to the AnkiConnect at url ("" = not set up yet).
@@ -117,19 +103,4 @@ func (c Client) MCPServer() (mcp.Server, bool) {
 		Args:    append(npx[1:], "-y", MCPPackage, "--stdio"),
 		Env:     map[string]string{"ANKI_CONNECT_URL": c.Gateway.URL, "ANKI_CONNECT_API_KEY": c.GatewayKey},
 	}, true
-}
-
-// ---------- the Anki app ----------
-
-// AppInstalled reports whether the `anki` command exists.
-func AppInstalled() bool { _, err := exec.LookPath("anki"); return err == nil }
-
-// AppRunning reports whether Anki is open (on NixOS its process is ".anki-wrapped").
-func AppRunning() bool {
-	return exec.Command("pgrep", "-x", `anki|\.anki-wrapped`).Run() == nil
-}
-
-// OpenApp starts Anki in the background, detached from the server.
-func OpenApp() error {
-	return startDetached("anki")
 }

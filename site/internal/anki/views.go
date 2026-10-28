@@ -14,22 +14,16 @@ import (
 // Status says whether AnkiConnect answers, and if not, what's missing.
 type Status struct {
 	Connected bool
-	Installed bool // the anki program is on the PATH (this computer's Anki only)
-	Running   bool // it's running (but AnkiConnect may not be installed)
 	Addon     string
-	Remote    bool // the user's own Anki on another computer: set up on the Account page
-	NotSetUp  bool // a remote Anki whose address isn't set yet
+	NotSetUp  bool // its address isn't set yet
 }
 
 func (c Client) Status() Status {
 	var version int
 	if err := c.callInto("version", nil, &version); err == nil {
-		return Status{Connected: true, Installed: true, Running: true, Remote: !c.Local}
+		return Status{Connected: true}
 	}
-	if !c.Local {
-		return Status{Remote: true, NotSetUp: c.URL == "", Addon: AnkiConnectAddon}
-	}
-	return Status{Installed: AppInstalled(), Running: AppRunning(), Addon: AnkiConnectAddon}
+	return Status{NotSetUp: c.URL == "", Addon: AnkiConnectAddon}
 }
 
 // Deck is one deck with today's counts. Parent decks include their subdecks.

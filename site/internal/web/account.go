@@ -285,7 +285,6 @@ type accountView struct {
 type connectionsView struct {
 	Tab           string
 	Admin         bool
-	Host          bool     // uses the server computer's own logins
 	ServerAI      bool     // the user lets the server run an AI for them
 	ServerAIs     []string // the AIs on the server they may pick
 	ServerAllowed bool     // their admin allows at least one AI on the server
@@ -312,7 +311,7 @@ func (ui *UI) accountView(r *http.Request) accountView {
 func (ui *UI) connectionsView(r *http.Request) connectionsView {
 	user, ws := ui.user(r), ui.ws(r)
 	ankiClient := ws.Anki()
-	view := connectionsView{Tab: accountTab(r), Admin: user.IsAdmin(), Host: ws.Host, MyFitnessPal: ws.MyFitnessPal.Client().Setup().SignedIn,
+	view := connectionsView{Tab: accountTab(r), Admin: user.IsAdmin(), MyFitnessPal: ws.MyFitnessPal.Client().Setup().SignedIn,
 		Anki: ankiClient.Status(), AnkiURL: ankiClient.URL, ServerAI: user.ServerAI, ServerAIs: serverAILabels(user),
 		ModelServers: ui.Auth.ModelServers(), Relayed: ui.Auth.RelayedModelServers()}
 	for _, id := range auth.ServerProviders {

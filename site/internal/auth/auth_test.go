@@ -379,7 +379,7 @@ func TestAdminsCantLockEveryoneOut(t *testing.T) {
 		t.Fatal("an admin can't disable themselves")
 	}
 	if err := a.DeleteUser(friend, admin); err == nil {
-		t.Fatal("the host account can't be deleted")
+		t.Fatal("a regular user can't delete accounts")
 	}
 
 	if err := a.SetDisabled(admin, friend, true); err != nil {

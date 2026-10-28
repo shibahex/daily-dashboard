@@ -44,8 +44,8 @@ func TestAccountTemplatesRender(t *testing.T) {
 	views := map[string]any{
 		"sign-in":          signInView{Invite: true, Code: "abc", Username: "friend"},
 		"account":          accountView{Username: "me", Sessions: 2, HasToken: true, Connections: connectionsView{AnkiURL: "http://192.168.1.20:8765"}},
-		"connections-card": connectionsView{Host: true, MyFitnessPal: true, Error: "nope"},
-		"anki-setup":       anki.Status{Remote: true, NotSetUp: true},
+		"connections-card": connectionsView{MyFitnessPal: true, Error: "nope"},
+		"anki-setup":       anki.Status{NotSetUp: true},
 		"admin": adminView{Me: "aaaa", Link: "https://x/invite?code=c", LinkFor: "friend",
 			Users: []auth.User{{ID: "aaaa", Username: "me", Role: auth.Admin, Host: true, Policy: auth.FullPolicy},
 				{ID: "bbbb", Username: "friend", Role: auth.Member, Disabled: true, LastLogin: time.Now()}},

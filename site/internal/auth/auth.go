@@ -55,7 +55,7 @@ type User struct {
 	Password  passwordHash `json:"password"`
 	Role      Role         `json:"role"`
 	Disabled  bool         `json:"disabled,omitempty"`
-	Host      bool         `json:"host,omitempty"` // uses this computer's own Taskwarrior, MyFitnessPal login and Anki
+	Host      bool         `json:"host,omitempty"` // the first account: gets a copy of the server's data from before accounts
 	Policy    Policy       `json:"policy"`
 	Created   time.Time    `json:"created"`
 	LastLogin time.Time    `json:"last_login,omitzero"`
@@ -247,7 +247,7 @@ func (a *Auth) load(dataDir string) error {
 
 // migrateSingleAccount turns the one-account account.json (from before there were several
 // users) into the first admin, keeping its password, plugin token and signed-in browsers.
-// That admin is the host: it keeps this computer's Taskwarrior, MyFitnessPal and Anki.
+// That admin is the host: it gets a copy of the data from before (see workspace.migrateHostData).
 func (a *Auth) migrateSingleAccount(dataDir string) error {
 	oldFile := filepath.Join(dataDir, "account.json")
 	var old struct {
@@ -920,9 +920,6 @@ func (a *Auth) DeleteUser(adminID, userID string) error {
 	user := a.userByID(userID)
 	if user == nil {
 		return problem.NotFoundf("No such user")
-	}
-	if user.Host {
-		return problem.Forbiddenf("The host account uses this computer's own Taskwarrior and logins: it can't be deleted")
 	}
 	if err := a.changeOther(adminID, userID, func(u *User) { u.Disabled = true }); err != nil {
 		return err

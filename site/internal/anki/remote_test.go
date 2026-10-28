@@ -56,7 +56,7 @@ func TestNotSetUp(t *testing.T) {
 	if _, err := NewClient("", "").Call("version", nil); err != ErrNotSetUp {
 		t.Fatalf("got %v", err)
 	}
-	if status := NewClient("", "").Status(); !status.Remote || !status.NotSetUp {
+	if status := NewClient("", "").Status(); !status.NotSetUp {
 		t.Fatalf("a user without an address should be told to set it up: %+v", status)
 	}
 }

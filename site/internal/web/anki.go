@@ -1,7 +1,6 @@
 package web
 
 import (
-	"fmt"
 	"html"
 	"html/template"
 	"net/http"
@@ -107,24 +106,6 @@ func (ui *UI) studyDeck(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	announce(w, say("Opened in Anki"))
-	nothing(w)
-}
-
-func (ui *UI) openAnki(w http.ResponseWriter, r *http.Request) {
-	if !ui.ws(r).Anki().Local {
-		fail(w, problem.Forbiddenf("Only the server computer's own Anki can be opened from here"))
-		return
-	}
-	if anki.AppRunning() {
-		announce(w, say("Anki is already open"))
-		nothing(w)
-		return
-	}
-	if err := anki.OpenApp(); err != nil {
-		fail(w, fmt.Errorf("%w: %v", problem.Failedf("Couldn't open Anki"), err))
-		return
-	}
-	announce(w, say("Opening Anki…"))
 	nothing(w)
 }
 

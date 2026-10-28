@@ -34,7 +34,7 @@ type Client struct {
 	BrowserPath string // MFP_BROWSER_PATH: the browser the MCP renews the login with
 
 	// A user's own folders for the MCP's saved login (config) and browser profile (data).
-	// Empty uses this computer's own (~/.config/myfitnesspal-mcp): the host account.
+	// Empty is this computer's own (~/.config/myfitnesspal-mcp).
 	ConfigHome, DataHome string
 }
 

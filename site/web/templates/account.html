@@ -92,8 +92,8 @@
   <div class="card">
     <h2>MyFitnessPal</h2>
     {{if .MyFitnessPal}}
-    <p>Connected{{if .Host}} (the server computer's own login){{end}}. The Today tab syncs your diary every 10 minutes.</p>
-    {{if not .Host}}<div class="row"><button class="sm ghost" hx-post="/account/myfitnesspal/remove" hx-target="#connections-card" hx-swap="outerHTML" hx-confirm="Disconnect MyFitnessPal?">Disconnect</button></div>{{end}}
+    <p>Connected. The Today tab syncs your diary every 10 minutes.</p>
+    <div class="row"><button class="sm ghost" hx-post="/account/myfitnesspal/remove" hx-target="#connections-card" hx-swap="outerHTML" hx-confirm="Disconnect MyFitnessPal?">Disconnect</button></div>
     {{end}}
     <details class="mfp-setup"{{if or (not .MyFitnessPal) .MFPAskName .Error}} open{{end}}>
     <summary>{{if .MyFitnessPal}}Reconnect or switch accounts{{else}}Connect in four steps (about a minute){{end}}</summary>
@@ -128,9 +128,6 @@
 
   <div class="card">
     <h2>Anki</h2>
-    {{if .Host}}
-    <p class="muted">This account uses the Anki on the server's computer, through AnkiConnect at <code>{{.AnkiURL}}</code>.</p>
-    {{else}}
     {{if .Anki.Connected}}<p>Connected to <code>{{.AnkiURL}}</code>.</p>
     {{else if .AnkiURL}}<p>Set to <code>{{.AnkiURL}}</code>, but it isn't answering. Is Anki open on that computer?</p>{{end}}
     <form hx-post="/account/anki" hx-target="#connections-card" hx-swap="outerHTML" hx-disabled-elt="find button">
@@ -140,7 +137,6 @@
       <div class="row"><button class="sm primary">{{if .AnkiURL}}Save{{else}}Connect{{end}}</button>
       {{if .AnkiURL}}<button type="button" class="sm ghost" hx-post="/account/anki/remove" hx-target="#connections-card" hx-swap="outerHTML" hx-confirm="Disconnect your Anki?">Disconnect</button>{{end}}</div>
     </form>
-    {{end}}
   </div>
 
 </div>

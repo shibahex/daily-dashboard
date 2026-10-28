@@ -11,9 +11,9 @@
 //	agent-home/    the home of the sandbox the AI's MCP tools run in
 //
 // It's encrypted on disk (site/data/vaults/<id>/, see vault.go): while the user is signed in it's
-// decrypted into memory and used from there. The host account (the server's owner) keeps this
-// computer's own Taskwarrior, Timewarrior, MyFitnessPal login and Anki, so the terminal tools
-// keep showing the same tasks: those stay where they are, outside the encrypted folder.
+// decrypted into memory and used from there. The host account (the first one) is no different:
+// it only starts with a copy of this computer's own Taskwarrior, Timewarrior and MyFitnessPal
+// login (migrateHostServices).
 package workspace
 
 import (
@@ -40,7 +40,6 @@ import (
 // Workspace is one user's services, all working on that user's own files.
 type Workspace struct {
 	UserID        string
-	Host          bool
 	Paths         config.Paths
 	Store         *store.Store
 	Lifting       *lifting.Store // routines and workouts
@@ -56,7 +55,7 @@ type Workspace struct {
 	done chan struct{} // closed once it has stopped
 }
 
-// Anki is the user's Anki: this computer's for the host, otherwise their own AnkiConnect.
+// Anki is the user's own AnkiConnect (not set up: an empty URL).
 func (w *Workspace) Anki() anki.Client {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -77,11 +76,10 @@ func (w *Workspace) close() {
 
 // Manager opens each user's workspace once and keeps it.
 type Manager struct {
-	paths    config.Paths        // the server's
-	mfp      myfitnesspal.Client // where the MCP comes from; each user gets their own login folder
-	hostAnki anki.Client         // the Anki on this computer, for the host account
-	gateway  *anki.Gateway
-	box      *secrets.Box
+	paths   config.Paths        // the server's
+	mfp     myfitnesspal.Client // where the MCP comes from; each user gets their own login folder
+	gateway *anki.Gateway
+	box     *secrets.Box
 
 	mu       sync.Mutex
 	open     map[string]*Workspace
@@ -98,11 +96,11 @@ type Manager struct {
 	OnLock func(userID string)
 }
 
-func NewManager(paths config.Paths, mfp myfitnesspal.Client, hostAnki anki.Client, gateway *anki.Gateway,
+func NewManager(paths config.Paths, mfp myfitnesspal.Client, gateway *anki.Gateway,
 	box *secrets.Box) *Manager {
 	os.MkdirAll(paths.UsersDir(), 0o700)
 	memory, memErr := vault.MemoryDir()
-	return &Manager{paths: paths, mfp: mfp, hostAnki: hostAnki, gateway: gateway, box: box,
+	return &Manager{paths: paths, mfp: mfp, gateway: gateway, box: box,
 		open: map[string]*Workspace{}, unlocked: map[string]*unlocked{}, memory: memory, memErr: memErr,
 		Credentials: func(string) []string { return nil }, LockAfter: 30 * time.Minute}
 }
@@ -179,7 +177,7 @@ func (m *Manager) Remove(userID string) error {
 }
 
 // ConnectAnki checks the user's AnkiConnect (see anki.CheckConnection), saves it and points
-// their Anki and their agent's Anki MCP at it. The host keeps this computer's Anki.
+// their Anki and their agent's Anki MCP at it.
 func (m *Manager) ConnectAnki(user auth.User, url, apiKey string) error {
 	cleaned, err := anki.CheckConnection(url, apiKey, false)
 	if err != nil {
@@ -225,29 +223,20 @@ func validID(id string) bool {
 func (m *Manager) openWorkspace(user auth.User, dir string) *Workspace {
 	os.MkdirAll(dir, 0o700)
 	paths := m.paths.ForUser(dir)
+	mfp := m.mfp.ForUser(filepath.Join(dir, "mfp"))
 	if user.Host {
 		migrateHostData(m.paths, paths)
+		migrateHostServices(dir, mfp)
 	}
 	files := store.New(paths)
 	files.SeedDocs()
 
-	ws := &Workspace{UserID: user.ID, Host: user.Host, Paths: paths, Store: files,
+	ws := &Workspace{UserID: user.ID, Paths: paths, Store: files,
 		stop: make(chan struct{}), done: make(chan struct{})}
-	mfp := m.mfp
-	var taskClient *taskwarrior.Client
-	ankiClient := m.hostAnki
-	if user.Host {
-		taskClient, ws.Time = taskwarrior.NewClient(), timewarrior.NewClient()
-		if saved := loadAnki(dir); saved.URL != "" {
-			ankiClient = saved
-		}
-	} else {
-		env := prepareTaskwarrior(dir, filepath.Join(m.paths.Site, ".timew-hook"))
-		taskClient, ws.Time = taskwarrior.NewClientWithEnv(env), timewarrior.NewClientWithEnv(env)
-		mfp = mfp.ForUser(filepath.Join(dir, "mfp"))
-		ankiClient = loadAnki(dir)
-	}
-	m.useAnki(ws, ankiClient)
+	env := prepareTaskwarrior(dir, filepath.Join(m.paths.Site, ".timew-hook"))
+	taskClient := taskwarrior.NewClientWithEnv(env)
+	ws.Time = timewarrior.NewClientWithEnv(env)
+	m.useAnki(ws, loadAnki(dir))
 	ws.Secrets = secrets.NewStore(m.box, dir, user.ID)
 	ws.Tasks = tasks.NewService(taskClient, ws.Time)
 	ws.Lifting = lifting.New(paths.DataFile("lifting.json"))

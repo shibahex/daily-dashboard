@@ -34,7 +34,6 @@
       <div class="person-head">
         <b>{{.Username}}</b>
         <span class="badge">{{if .IsAdmin}}admin{{else}}user{{end}}</span>
-        {{if .Host}}<span class="badge" title="Uses the server computer's own Taskwarrior, MyFitnessPal login and Anki">host</span>{{end}}
         {{if index $view.Encrypted .ID}}<span class="badge" title="Encrypted on the server's disk; opens only with their password while they're signed in">encrypted</span>{{else if .PlainStorage}}<span class="badge off" title="They chose to keep their plan, tasks and food as plain files on the server's disk; their notes stay encrypted">plain files (their choice)</span>{{else}}<span class="badge off" title="Still in plain files: it's encrypted the next time they sign in">not encrypted yet</span>{{end}}
         {{if .Disabled}}<span class="badge off">turned off</span>{{end}}
         {{if eq .ID $view.Me}}<span class="small muted">(you)</span>{{end}}
@@ -56,7 +55,7 @@
           <div><button class="sm primary">Save</button></div>
         </form>
       </details>
-      {{if and (ne .ID $view.Me) (not .Host)}}
+      {{if ne .ID $view.Me}}
       <details>
         <summary>Delete account</summary>
         <form hx-post="/admin/users/{{.ID}}/delete" hx-target="#admin-card" hx-swap="outerHTML">

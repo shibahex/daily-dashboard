@@ -197,7 +197,6 @@ func (ui *UI) Routes(mux *http.ServeMux) {
 	page("/anki", ui.ankiPage)
 	page("/anki/body", ui.ankiBodyPart)
 	page("/anki/decks", ui.ankiDecks)
-	change("/anki/open", ui.openAnki)
 	change("/anki/sync", ui.syncAnki)
 	change("/anki/study", ui.studyDeck)
 	page("/anki/add-form", ui.ankiAddFormPart)
