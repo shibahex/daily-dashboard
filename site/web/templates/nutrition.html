@@ -85,7 +85,7 @@
 
 {{/* The list under the search box reloads as it's typed in and when Recent or Meals is picked.
      It carries those buttons, so they always say what's showing (neither, for a search). */}}
-{{define "food-list-attrs"}}hx-post="/food/list" hx-include="previous form, this" hx-trigger="{{.}}input from:previous form delay:150ms, change" hx-sync="this:replace" hx-swap="outerHTML"{{end}}
+{{define "food-list-attrs"}}hx-post="/food/list" hx-include="previous form, find .fp-tabs" hx-trigger="{{.}}input from:previous form delay:150ms, change" hx-sync="this:replace" hx-swap="outerHTML"{{end}}
 
 {{define "food-tabs"}}
 <div class="seg fp-tabs" role="radiogroup" aria-label="Your foods">
