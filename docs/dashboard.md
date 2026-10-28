@@ -106,6 +106,7 @@ In Nginx Proxy Manager: a proxy host for `health.example.com` that forwards to `
 - **Ubuntu 23.10 and later:** add `DASHBOARD_APPARMOR=podman` to `.env` (or Portainer's environment variables) and redeploy. Without it the AI's tools fail with `bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted`: Ubuntu takes the permissions away from user namespaces made by containers without an AppArmor profile, including `apparmor=unconfined`. Ubuntu's own `podman` profile allows everything `unconfined` does plus user namespaces, so nothing on the host changes. Don't set it on other systems: where AppArmor has no `podman` profile (Debian, older Ubuntu), the container won't start.
 - A reset link for a locked-out admin: `docker compose stop`, then `docker compose run --rm dashboard reset-password <username>`.
 - No image for your machine (it's built for x86-64) or offline? `docker compose up -d --build` builds it from the `Dockerfile`, with Nix, in a few minutes.
+- With Nix, `nix build ./site#image && ./result | docker load` makes the same image GitHub publishes, with a layer per package.
 
 ## MyFitnessPal
 

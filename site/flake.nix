@@ -87,6 +87,37 @@
           exec ${server}/bin/dashboard "$@"
         '';
       };
+
+      # The image GitHub publishes (.github/workflows/docker.yml), the same as ../Dockerfile makes
+      # but with a layer per package, so a new version only pulls what changed. `nix build
+      # .#image` makes a script that writes the image: `./result | docker load`.
+      image = pkgs.dockerTools.streamLayeredImage {
+        name = "daily-dashboard";
+        tag = "latest";
+        fakeRootCommands = ''
+          mkdir -p app/site/data app/docs tmp
+          ln -s ${container}/bin/health-dashboard-container entrypoint
+          ln -s ${timewHook} app/site/.timew-hook
+          cp -r ${./web} app/site/web
+          cp ${./plan.example.json} app/site/plan.example.json
+          cp ${../docs/README.md} app/docs/README.md
+          cp ${../docs/dashboard.md} app/docs/dashboard.md
+          cp ${../docs/noctalia-plugin.md} app/docs/noctalia-plugin.md
+          cp -r ${../docs/templates} app/docs/templates
+          chmod -R u+w app
+          chown -R 1000:1000 app/site/data
+          chmod 1777 tmp
+        '';
+        config = {
+          Entrypoint = [ "/entrypoint" ];
+          Cmd = [ "1628" ];
+          User = "1000:1000";
+          Env = [ "DASHBOARD_SITE=/app/site" "DASHBOARD_LISTEN=0.0.0.0:1628" "HOME=/app/site/data/home" ];
+          Volumes."/app/site/data" = { };
+          ExposedPorts."1628/tcp" = { };
+          Labels."org.opencontainers.image.source" = "https://github.com/shibahex/daily-dashboard";
+        };
+      };
     in
     {
       packages.${system} = {
@@ -94,6 +125,7 @@
         server = server;
         timew-hook = timewHook;
         container = container;
+        image = image;
       };
 
       apps.${system}.default = {
