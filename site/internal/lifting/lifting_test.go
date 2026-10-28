@@ -512,3 +512,24 @@ func TestOneRMAndGoals(t *testing.T) {
 		t.Fatalf("clearing left %v", d.Goals)
 	}
 }
+
+func TestBumpedRestIsKept(t *testing.T) {
+	d := routineData()
+	start(t, &d, monday)
+	reps := 10
+	d.SetTyped(map[[2]int]Typed{{0, 0}: {Reps: &reps}, {0, 1}: {Reps: &reps}})
+	d.Apply(Change{Op: "done", Exercise: 0, Set: 0}, monday)
+	d.Apply(Change{Op: "rest", Seconds: 30}, monday.Add(10*time.Second))
+	if got := d.Active.Exercises[0].Rest; got != 150 {
+		t.Fatalf("rest after +30s: %d, want 150", got)
+	}
+	d.Apply(Change{Op: "done", Exercise: 0, Set: 1}, monday.Add(5*time.Minute))
+	if got := d.Active.RestFor; got != 150 {
+		t.Fatalf("next rest: %d s, want 150", got)
+	}
+	// Once the rest is over, adding time starts a short one and leaves the exercise's rest.
+	d.Apply(Change{Op: "rest", Seconds: 30}, monday.Add(10*time.Minute))
+	if got := d.Active.Exercises[0].Rest; got != 150 {
+		t.Fatalf("rest after a bump once it was over: %d, want 150", got)
+	}
+}

@@ -146,34 +146,35 @@ function readySound() {
 }
 for (const type of ["click", "touchend", "keydown"]) document.addEventListener(type, readySound, { capture: true, passive: true });
 
-// chime plays a soft two-note bell at an audio-clock time (now by default) and answers its
-// tones, so a chime planned ahead can be called off. Planned on the audio clock, it rings on
-// time even while the page's timers are slowed (another tab, a dimmed screen).
+// chime plays a soft two-note bell at an audio-clock time (now by default) and answers the node
+// it plays through, so a chime planned ahead can be called off by disconnecting it (stopping a
+// tone twice throws in some browsers, which left the old chime ringing). Planned on the audio
+// clock, it rings on time even while the page's timers are slowed (another tab, a dimmed screen).
 function chime(at) {
-  if (!sound || sound.state !== "running") return [];
-  const start = Math.max(at ?? 0, sound.currentTime);
-  return [[659.25, 0], [987.77, 0.2]].map(([pitch, delay]) => {
+  if (!sound || sound.state !== "running") return null;
+  const start = Math.max(at ?? 0, sound.currentTime), out = sound.createGain();
+  out.connect(sound.destination);
+  for (const [pitch, delay] of [[659.25, 0], [987.77, 0.2]]) {
     const tone = sound.createOscillator(), volume = sound.createGain(), when = start + delay;
     tone.type = "sine";
     tone.frequency.value = pitch;
     volume.gain.setValueAtTime(0.0001, when);
     volume.gain.exponentialRampToValueAtTime(0.3, when + 0.02);
     volume.gain.exponentialRampToValueAtTime(0.0001, when + 1.4);
-    tone.connect(volume).connect(sound.destination);
+    tone.connect(volume).connect(out);
     tone.start(when);
     tone.stop(when + 1.45);
-    return tone;
-  });
+  }
+  return out;
 }
 
-// The chime planned for the timer showing: which end it's for and its tones.
-let planned = { until: null, tones: [] };
+// The chime planned for the timer showing: which end it's for and what it plays through.
+let planned = { until: null, out: null };
 function planChime(until, left) {
   if (planned.until === until) return;
-  planned.tones.forEach(tone => { try { tone.stop(); } catch {} });
-  planned = { until, tones: [] };
-  if (left > 0) planned.tones = chime(sound ? sound.currentTime + left : 0);
-  if (!planned.tones.length) planned.until = null; // no sound yet: try again on the next tick
+  try { planned.out?.disconnect(); } catch {}
+  planned = { until, out: left > 0 ? chime(sound ? sound.currentTime + left : 0) : null };
+  if (!planned.out) planned.until = null; // no sound yet: try again on the next tick
 }
 
 function tickClocks() {
@@ -191,7 +192,7 @@ function tickClocks() {
       try { navigator.vibrate?.([120, 80, 120]); } catch {}
       // Rung now only if it wasn't planned (the sound wasn't ready) and it just ended.
       if (planned.until !== box.dataset.restUntil && left > -10) chime();
-      planned = { until: box.dataset.restUntil, tones: [] };
+      planned = { until: box.dataset.restUntil, out: null };
       if (box.hasAttribute("data-auto-done")) box.querySelector("[data-timer-done]")?.click();
     }
   });

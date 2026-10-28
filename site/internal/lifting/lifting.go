@@ -194,7 +194,8 @@ type Workout struct {
 	Ended     time.Time  `json:"ended,omitzero"`
 	Minutes   int        `json:"minutes,omitempty"` // how long it took, as confirmed when finishing
 	RestUntil time.Time  `json:"restUntil,omitzero"`
-	RestFor   int        `json:"restFor,omitempty"` // seconds the current rest started with
+	RestFor   int        `json:"restFor,omitempty"`   // seconds the current rest started with
+	RestAfter string     `json:"restAfter,omitempty"` // the exercise whose rest it is
 	Exercises []Exercise `json:"exercises"`
 	Note      string     `json:"note,omitempty"`
 	Sent      bool       `json:"sentToMyFitnessPal,omitempty"` // logged in MyFitnessPal's exercise diary
@@ -643,6 +644,10 @@ func (d *Data) Apply(change Change, now time.Time) error {
 	case "rest":
 		if w.RestUntil.Before(now) {
 			w.RestUntil, w.RestFor = now, 0
+		} else if i := slices.IndexFunc(w.Exercises, func(ex Exercise) bool { return ex.Name == w.RestAfter }); i >= 0 {
+			// Time added to or taken off a rest that's going is kept for that exercise's next rests.
+			ex := &w.Exercises[i]
+			ex.Rest = clamp(ex.Rest+change.Seconds, 15, 3600)
 		}
 		w.RestUntil = w.RestUntil.Add(time.Duration(change.Seconds) * time.Second)
 		left := int(w.RestUntil.Sub(now).Seconds())
@@ -774,7 +779,7 @@ func (d *Data) Apply(change Change, now time.Time) error {
 		if d.pairedWithNext(change.Exercise) {
 			w.RestUntil, w.RestFor = time.Time{}, 0
 		} else if ex.Rest > 0 {
-			w.RestUntil, w.RestFor = now.Add(time.Duration(ex.Rest)*time.Second), ex.Rest
+			w.RestUntil, w.RestFor, w.RestAfter = now.Add(time.Duration(ex.Rest)*time.Second), ex.Rest, ex.Name
 		}
 	case "undo":
 		set.Done = false
@@ -918,7 +923,7 @@ func (d *Data) Finish(now time.Time, minutes int, note string) (Workout, error) 
 		return Workout{}, problem.Invalidf("tick at least one set first (or discard the workout)")
 	}
 	finished.Ended, finished.Minutes = now, minutes
-	finished.RestUntil, finished.RestFor, finished.Hold = time.Time{}, 0, nil
+	finished.RestUntil, finished.RestFor, finished.RestAfter, finished.Hold = time.Time{}, 0, "", nil
 	finished.Note = text.Truncate(text.Collapse(note), 500)
 	d.Workouts = append(d.Workouts, finished)
 	if len(d.Workouts) > maxWorkouts {
