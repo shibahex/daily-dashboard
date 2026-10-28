@@ -121,19 +121,17 @@ func TestFoodPanelTemplatesRender(t *testing.T) {
 	bread := myfitnesspal.Food{FoodID: "11", Name: "Whole wheat bread", Servings: []myfitnesspal.Serving{{WeightID: "5", Label: "1 slice", Multiplier: 1}}}
 	meal := myfitnesspal.Food{FoodID: "22", Name: "Turkey sandwich", SavedMeal: true, Items: []string{"Bread", "Turkey"},
 		Servings: []myfitnesspal.Serving{{WeightID: "9", Label: "1 meal", Multiplier: 1}}}
-	usual := foodResultFor(bread, 0, 2)
-	usual.Note = "4× in 30 days"
 	cases := []struct {
 		name string
 		view any
 		want string
 	}{
-		{"food-search", foodSearchView{Meal: "Lunch", Order: "frequent"}, `hx-post="/food/mine"`},
-		{"food-search", foodSearchView{Meal: "Lunch", Query: "bread", Results: []foodResult{foodResultFor(bread, 0, 1)}}, "MyFitnessPal results"},
-		{"food-mine", myFoodsView{Meal: "Lunch", Usual: []foodResult{usual}, Meals: []foodResult{foodResultFor(meal, 0, 1)}}, "4× in 30 days"},
-		{"food-mine", myFoodsView{Meal: "Lunch", Usual: []foodResult{usual}}, `&#34;quantity&#34;:&#34;2&#34;`},
-		{"food-mine", myFoodsView{Meal: "Lunch", Meals: []foodResult{foodResultFor(meal, 0, 1)}}, "Bread · Turkey"},
-		{"food-mine", myFoodsView{Query: "zzz"}, "Press Search"},
+		{"food-search", foodSearchView{Meal: "Lunch"}, `hx-trigger="load, input from:previous form delay:150ms, change"`},
+		{"food-search", foodSearchView{Meal: "Lunch", Query: "bread", Searched: true, Results: []foodResult{foodResultFor(bread, 0, 1)}}, "Whole wheat bread"},
+		{"food-list", foodListView{Meal: "Lunch", List: "recent", Foods: []foodResult{foodResultFor(bread, 0, 2)}}, `&#34;quantity&#34;:&#34;2&#34;`},
+		{"food-list", foodListView{Meal: "Lunch", List: "meals", Foods: []foodResult{foodResultFor(meal, 0, 1)}}, `value="meals" checked`},
+		{"food-list", foodListView{Meal: "Lunch", List: "meals", Foods: []foodResult{foodResultFor(meal, 0, 1)}}, "Bread · Turkey"},
+		{"food-list", foodListView{Query: "zzz", List: "recent"}, "Press Search"},
 		{"meal-save", mealSaveView{Meal: "Lunch"}, `name="meal" value="Lunch"`},
 	}
 	for _, c := range cases {

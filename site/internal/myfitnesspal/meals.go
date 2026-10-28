@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"time"
 
 	"golang.org/x/net/html"
 
@@ -18,30 +17,12 @@ import (
 // like a food: the classic My Meals tab lists each one with its meal id as the food id and a
 // "1 meal" serving, which /food/add takes.
 
-const (
-	mealsReuse = 10 * time.Minute
-	mealsRetry = time.Minute // after a failure, so typing doesn't ask again every keystroke
-)
-
 // SavedMeals lists the user's saved meals as foods (SavedMeal set), kept for a few minutes.
 func (s *Syncer) SavedMeals() ([]Food, error) {
-	s.mealsMu.Lock()
-	defer s.mealsMu.Unlock()
-	reuse := mealsReuse
-	if s.mealsErr != nil {
-		reuse = mealsRetry
-	}
-	if !s.mealsRead.IsZero() && time.Since(s.mealsRead) < reuse {
-		return s.meals, s.mealsErr
-	}
-	var meals []Food
-	err := s.client.call(lookupTimeout, func(ctx context.Context) (err error) { meals, err = s.client.savedMeals(ctx, today()); return err })
-	if err != nil {
-		err = problem.Unavailablef(err.Error())
-		meals = nil
-	}
-	s.meals, s.mealsErr, s.mealsRead = meals, err, time.Now()
-	return meals, err
+	return s.meals.get(func() (meals []Food, err error) {
+		err = s.client.call(lookupTimeout, func(ctx context.Context) (err error) { meals, err = s.client.savedMeals(ctx, today()); return err })
+		return meals, err
+	})
 }
 
 // SaveMeal saves what's logged in a diary meal on date as a saved meal called name.
@@ -54,9 +35,7 @@ func (s *Syncer) SaveMeal(date, meal, name string) error {
 		return problem.Invalidf("bad day")
 	}
 	err := s.client.call(writeTimeout, func(ctx context.Context) error { return s.client.saveMeal(ctx, date, meal, name) })
-	s.mealsMu.Lock()
-	s.mealsRead = time.Time{}
-	s.mealsMu.Unlock()
+	s.meals.forget()
 	if err != nil {
 		return problem.Unavailablef(err.Error())
 	}

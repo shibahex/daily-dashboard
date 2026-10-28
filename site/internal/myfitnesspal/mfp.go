@@ -74,6 +74,7 @@ type diaryItem struct {
 		Unit  string  `json:"unit"`
 	} `json:"serving_size"`
 	Food struct {
+		ID          string `json:"id"`
 		Description string `json:"description"`
 	} `json:"food"`
 }
@@ -305,8 +306,9 @@ func (c Client) search(ctx context.Context, query string) ([]Food, error) {
 	return foods, nil
 }
 
-// foodDetails adds a search result's macros and serving sizes, which only the API has.
-func (s *session) foodDetails(ctx context.Context, food *Food, result searchResult) {
+// foodDetails adds a search result's macros and serving sizes, which only the API has, and says
+// whether it could; if not, the food gets its one known serving.
+func (s *session) foodDetails(ctx context.Context, food *Food, result searchResult) bool {
 	var answer struct {
 		Item struct {
 			Verified     bool      `json:"verified"`
@@ -334,14 +336,16 @@ func (s *session) foodDetails(ctx context.Context, food *Food, result searchResu
 			}
 		}
 	}
-	if len(food.Servings) == 0 {
-		label := result.serving
-		if label == "" {
-			label = "default serving"
-		}
-		food.Nutrition = FoodNutrition{Calories: result.calories}
-		food.Servings = []Serving{{WeightID: result.weightIDs[0], Label: label, Multiplier: 1}}
+	if len(food.Servings) > 0 {
+		return true
 	}
+	label := result.serving
+	if label == "" {
+		label = "default serving"
+	}
+	food.Nutrition = FoodNutrition{Calories: result.calories}
+	food.Servings = []Serving{{WeightID: result.weightIDs[0], Label: label, Multiplier: 1}}
+	return false
 }
 
 // ---------- changing the diary ----------

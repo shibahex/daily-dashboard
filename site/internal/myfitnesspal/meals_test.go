@@ -1,34 +1,38 @@
 package myfitnesspal
 
-import (
-	"testing"
-	"time"
-)
+import "testing"
 
-func TestUsualFoodsByFrequencyOrRecency(t *testing.T) {
-	now := time.Date(2026, 10, 27, 12, 0, 0, 0, time.Local)
-	at := func(daysAgo int) int64 { return now.AddDate(0, 0, -daysAgo).Unix() }
-	bread := Food{FoodID: "1", Name: "Whole wheat bread", Brand: "Example Bakery"}
-	turkey := Food{FoodID: "2", Name: "Sliced turkey"}
-	oats := Food{FoodID: "3", Name: "Rolled oats"}
-	logs := []Logged{
-		{Food: bread, At: at(3), Quantity: 2},
-		{Food: bread, At: at(2), Quantity: 2},
-		{Food: turkey, At: at(1), Quantity: 1, Serving: 1},
-		{Food: oats, At: at(60)},
-		{Food: oats, At: at(61)},
-		{Food: oats, At: at(62)},
+func TestParseLoadRecent(t *testing.T) {
+	page := `<div id="recent_page_1" class="recent_page"><table class="table0"><tbody>
+  <tr class="favorite">
+    <td><input id="favorites_0_food_id" name="favorites[0][food_id]" type="hidden" value="1234" />
+      <input name="favorites[0][checked]" type="hidden" value="0" />
+      <input class="checkbox" name="favorites[0][checked]" type="checkbox" value="1" data-food-id="1234"
+        data-food-external-id="aaaa-bbbb" data-food-verified="true" data-list-type="recent" /></td>
+    <td>Example Bakery - Whole Wheat Bread</td>
+    <td><strong>Qty:</strong><input class="text" name="favorites[0][quantity]" type="text" value="2" /><label>of</label>
+      <select name="favorites[0][weight_id]">
+        <option value="501">1 slice</option>
+        <option value="502" selected=&quot;selected&quot;>1 g</option>
+      </select></td>
+  </tr>
+  <tr class="favorite">
+    <td><input name="favorites[1][food_id]" type="hidden" value="5678" />
+      <input class="checkbox" type="checkbox" data-food-external-id="cccc" data-food-verified="false" /></td>
+    <td>Rolled oats</td>
+    <td><input name="favorites[1][quantity]" value="0.5" />
+      <select name="favorites[1][weight_id]"><option value="601" selected=&quot;selected&quot;>1 cup</option></select></td>
+  </tr></tbody></table></div>`
+	rows, err := parseLoadRecent([]byte(page))
+	if err != nil || len(rows) != 2 {
+		t.Fatalf("rows %+v, %v", rows, err)
 	}
-	frequent := usual(logs, "", "frequent", now)
-	if len(frequent) != 3 || frequent[0].Food.FoodID != "1" || frequent[0].Times != 2 || frequent[2].Food.FoodID != "3" || frequent[2].Times != 0 {
-		t.Fatalf("frequent: %+v", frequent)
+	if r := rows[0]; r.foodID != "1234" || r.externalID != "aaaa-bbbb" || !r.verified || r.brand != "Example Bakery" || r.name != "Whole Wheat Bread" ||
+		r.quantity != 2 || r.weightID != "502" || r.serving != "1 g" || len(r.weightIDs) != 2 {
+		t.Fatalf("first %+v", r)
 	}
-	recent := usual(logs, "", "recent", now)
-	if recent[0].Food.FoodID != "2" || recent[0].Serving != 1 {
-		t.Fatalf("recent: %+v", recent)
-	}
-	if found := usual(logs, "BAKERY wheat", "frequent", now); len(found) != 1 || found[0].Food.FoodID != "1" {
-		t.Fatalf("search: %+v", found)
+	if r := rows[1]; r.brand != "" || r.name != "Rolled oats" || r.quantity != 0.5 || r.weightID != "601" || r.verified {
+		t.Fatalf("second %+v", r)
 	}
 }
 

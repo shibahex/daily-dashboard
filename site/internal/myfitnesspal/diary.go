@@ -107,6 +107,7 @@ type Food struct {
 	DefaultWeightID string        `json:"default_weight_id"`
 	Servings        []Serving     `json:"servings"`
 	SavedMeal       bool          `json:"saved_meal,omitempty"`
+	NoNutrition     bool          `json:"no_nutrition,omitempty"` // its calories and macros couldn't be read
 	Items           []string      `json:"items,omitempty"`
 }
 
@@ -187,7 +188,11 @@ func (s *Syncer) AddFood(date, foodID, weightID string, quantity float64, meal s
 	if meal == "" || len([]rune(meal)) > 40 {
 		return Cache{}, problem.Invalidf("pick a meal")
 	}
-	return s.change(date, func(ctx context.Context) error { return s.client.addFood(ctx, date, foodID, weightID, quantity, meal) })
+	cache, err := s.change(date, func(ctx context.Context) error { return s.client.addFood(ctx, date, foodID, weightID, quantity, meal) })
+	if err == nil {
+		s.recent.forget()
+	}
+	return cache, err
 }
 
 // EditFood changes an entry's amount, serving size or meal (mealID is the meal's position).
