@@ -1,6 +1,6 @@
 # Daily Dashboard
 
-**Your self-hosted, open-source dashboard for lifting, food and daily habits, with an AI assistant that keeps them up to date for you.**
+**Your self-hosted, open-source dashboard for lifting, food and daily habits, with full MCP support for an optional AI assistant**
 
 <img src="screenshots/mashup.png" alt="The Today, Tasks, Lifting, Anki, History, MCPs and Docs tabs">
 
