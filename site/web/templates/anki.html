@@ -37,6 +37,7 @@
 <div class="mcp-setup"><b>Connect your Anki</b><ol>
   <li>In Anki on your computer, install AnkiConnect (<b>Tools → Add-ons → Get Add-ons…</b>, code <code>{{or .Addon "2055492159"}}</code>).</li>
   <li>In its config, set <code>"webBindAddress": "0.0.0.0"</code> and an <code>"apiKey"</code> of your own, then restart Anki.</li>
+  <li>If that computer has a firewall, let in TCP port 8765 (on NixOS: <code>networking.firewall.allowedTCPPorts = [ 8765 ];</code>). If the dashboard runs in Docker on that same computer, the firewall still has to let the container in.</li>
   <li>{{if .NotSetUp}}Enter its address and key{{else}}Check the address and key{{end}} on the <a class="link" href="/account?tab=connections">Account page</a>, and keep Anki open while you use this.</li></ol></div>
 {{end}}
 

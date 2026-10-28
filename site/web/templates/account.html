@@ -131,7 +131,7 @@
     {{if .Anki.Connected}}<p>Connected to <code>{{.AnkiURL}}</code>.</p>
     {{else if .AnkiURL}}<p>Set to <code>{{.AnkiURL}}</code>, but it isn't answering. Is Anki open on that computer?</p>{{end}}
     <form hx-post="/account/anki" hx-target="#connections-card" hx-swap="outerHTML" hx-disabled-elt="find button">
-      <p class="muted small">On your computer: install AnkiConnect in Anki (<b>Tools → Add-ons → Get Add-ons…</b>, code <code>{{or .Anki.Addon "2055492159"}}</code>), then in its config set <code>"webBindAddress": "0.0.0.0"</code> and an <code>"apiKey"</code> of your own, and restart Anki. The key is required: without it anyone on the network could use your Anki.</p>
+      <p class="muted small">On your computer: install AnkiConnect in Anki (<b>Tools → Add-ons → Get Add-ons…</b>, code <code>{{or .Anki.Addon "2055492159"}}</code>), then in its config set <code>"webBindAddress": "0.0.0.0"</code> and an <code>"apiKey"</code> of your own, and restart Anki. If that computer has a firewall, let in TCP port 8765 (also when the dashboard runs in Docker on the same computer). The key is required: without it anyone on the network could use your Anki.</p>
       <label>AnkiConnect address <input class="txt" name="url" value="{{.AnkiURL}}" placeholder="http://192.168.1.20:8765" required autocomplete="off" spellcheck="false"></label>
       <label>AnkiConnect API key <input class="txt" type="password" name="key" required autocomplete="off" spellcheck="false"></label>
       <div class="row"><button class="sm primary">{{if .AnkiURL}}Save{{else}}Connect{{end}}</button>

@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 )
 
@@ -49,6 +50,20 @@ func TestCheckConnection(t *testing.T) {
 	}
 	if _, err := CheckConnection("http://127.0.0.1:1", "my-key", true); err == nil {
 		t.Error("an address nothing answers on should be refused")
+	}
+}
+
+func TestBaseURL(t *testing.T) {
+	for raw, want := range map[string]string{
+		"http://10.1.0.5":            "http://10.1.0.5:8765",
+		"http://10.1.0.5:9000/x?y=1": "http://10.1.0.5:9000",
+		"https://anki.example":       "https://anki.example:8765",
+		"http://[fd00::1]":           "http://[fd00::1]:8765",
+	} {
+		parsed, _ := url.Parse(raw)
+		if got := baseURL(parsed); got != want {
+			t.Errorf("%s: got %s, want %s", raw, got, want)
+		}
 	}
 }
 

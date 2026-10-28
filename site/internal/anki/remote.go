@@ -23,7 +23,7 @@ func CheckConnection(rawURL, apiKey string, serverOK bool) (string, error) {
 	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Hostname() == "" {
 		return "", problem.Invalidf("Enter AnkiConnect's address, like http://192.168.1.20:8765")
 	}
-	cleaned := (&url.URL{Scheme: parsed.Scheme, Host: parsed.Host}).String()
+	cleaned := baseURL(parsed)
 	if !serverOK {
 		if err := checkReachableHost(parsed.Hostname()); err != nil {
 			return "", err
@@ -35,12 +35,21 @@ func CheckConnection(rawURL, apiKey string, serverOK bool) (string, error) {
 	if _, err := NewClient(cleaned, "").Call("version", nil); err == nil {
 		return "", problem.Invalidf("That AnkiConnect answers without an API key, so anyone could use it. Set \"apiKey\" in its config first")
 	} else if IsUnreachable(err) {
-		return "", problem.Unavailablef("Couldn't reach AnkiConnect at " + cleaned + ". Is Anki open, and does AnkiConnect listen on the network (\"webBindAddress\": \"0.0.0.0\")?")
+		return "", problem.Unavailablef("Couldn't reach AnkiConnect at " + cleaned + ". Is Anki open, and does AnkiConnect listen on the network (\"webBindAddress\": \"0.0.0.0\"), and does that computer's firewall allow port 8765?")
 	}
 	if _, err := NewClient(cleaned, apiKey).Call("version", nil); err != nil {
 		return "", problem.Invalidf("AnkiConnect refused that API key")
 	}
 	return cleaned, nil
+}
+
+// baseURL keeps just the scheme and host, adding AnkiConnect's port 8765 when none is given.
+func baseURL(parsed *url.URL) string {
+	host := parsed.Host
+	if parsed.Port() == "" {
+		host = net.JoinHostPort(parsed.Hostname(), "8765")
+	}
+	return (&url.URL{Scheme: parsed.Scheme, Host: host}).String()
 }
 
 // checkReachableHost refuses names and addresses that point at the server itself.
