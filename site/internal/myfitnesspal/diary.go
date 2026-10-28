@@ -96,7 +96,8 @@ func (n FoodNutrition) Scaled(factor float64) FoodNutrition {
 	return FoodNutrition{Calories: n.Calories * factor, Protein: n.Protein * factor, Carbs: n.Carbs * factor, Fat: n.Fat * factor}
 }
 
-// Food is a search result.
+// Food is a search result, or a saved meal (SavedMeal, logged like a food with its "1 meal"
+// serving; Items are its foods).
 type Food struct {
 	FoodID          string        `json:"food_id"`
 	Name            string        `json:"name"`
@@ -105,6 +106,8 @@ type Food struct {
 	Nutrition       FoodNutrition `json:"nutrition"`
 	DefaultWeightID string        `json:"default_weight_id"`
 	Servings        []Serving     `json:"servings"`
+	SavedMeal       bool          `json:"saved_meal,omitempty"`
+	Items           []string      `json:"items,omitempty"`
 }
 
 // ServingOptions are the food's servings, or one plain serving when it has none listed.

@@ -336,6 +336,18 @@ func (s *session) getJSON(ctx context.Context, path string, out any) error {
 	return json.Unmarshal(resp.body, out)
 }
 
+// getSiteJSON reads a JSON answer from the website (not the API).
+func (s *session) getSiteJSON(ctx context.Context, path string, out any) error {
+	resp, err := s.do(ctx, request{url: siteURL + path, api: true, headers: map[string]string{"Accept": "application/json"}})
+	if err != nil {
+		return err
+	}
+	if resp.status != http.StatusOK {
+		return problem.Failedf(fmt.Sprintf("MyFitnessPal /%s returned HTTP %d", endpoint(path), resp.status))
+	}
+	return json.Unmarshal(resp.body, out)
+}
+
 // getPage reads a web page.
 func (s *session) getPage(ctx context.Context, path string) ([]byte, error) {
 	target, _ := url.Parse(siteURL + path)

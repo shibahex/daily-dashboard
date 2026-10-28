@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log"
+	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -45,13 +46,24 @@ type Syncer struct {
 	pastMu   sync.Mutex
 	past     map[string]Cache // earlier days, by YYYY-MM-DD
 	fetching map[string]bool
+
+	mealsMu   sync.Mutex
+	meals     []Food // saved meals, or why they couldn't be read, at mealsRead
+	mealsErr  error
+	mealsRead time.Time
+
+	history *History
 }
 
 func NewSyncer(client Client, s *store.Store, cachePath string) *Syncer {
-	return &Syncer{client: client, store: s, cachePath: cachePath}
+	return &Syncer{client: client, store: s, cachePath: cachePath,
+		history: &History{path: filepath.Join(filepath.Dir(cachePath), "mfp_history.json")}}
 }
 
 func (s *Syncer) Client() Client { return s.client }
+
+// History is what the user logged from the dashboard.
+func (s *Syncer) History() *History { return s.history }
 
 // Busy reports whether a sync or change is running right now.
 func (s *Syncer) Busy() bool { return s.busy.Load() }

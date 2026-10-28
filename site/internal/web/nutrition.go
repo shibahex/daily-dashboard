@@ -3,9 +3,12 @@ package web
 import (
 	"encoding/json"
 	"html/template"
+	"log"
 	"math"
 	"net/http"
+	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"dashboard/internal/myfitnesspal"
@@ -194,43 +197,148 @@ func (ui *UI) syncNutrition(w http.ResponseWriter, r *http.Request) {
 }
 
 // ---------- logging foods ----------
-// The food panel opens inside the card: search, pick a result, choose servings, add.
+// The food panel opens inside the card: the user's saved meals and usual foods (filtered while
+// they type), a MyFitnessPal search, then pick one, choose servings, add.
 
 type foodSearchView struct {
 	Meal    string
 	Query   string
+	Order   string // how the usual foods are sorted: "frequent" or "recent"
 	Results []foodResult
 	Error   string
 }
 
 type foodResult struct {
-	Food    myfitnesspal.Food
-	Encoded string // the food as JSON, carried to the next step
-	Serving string // the first serving's label
-	Per     myfitnesspal.FoodNutrition
+	Food     myfitnesspal.Food
+	Encoded  string // the food as JSON, carried to the next step
+	Serving  string // the first serving's label
+	Per      myfitnesspal.FoodNutrition
+	Index    int    // the serving to start with
+	Quantity string // the amount to start with
+	Note     string // "4× in 30 days", "last: Mon, Oct 20"
+	rank     int    // place among the usual foods
+}
+
+func foodResultFor(food myfitnesspal.Food, serving int, quantity float64) foodResult {
+	encoded, _ := json.Marshal(food)
+	options := food.ServingOptions()
+	if serving < 0 || serving >= len(options) {
+		serving = 0
+	}
+	if quantity <= 0 {
+		quantity = 1
+	}
+	return foodResult{Food: food, Encoded: string(encoded), Index: serving, Quantity: strconv.FormatFloat(quantity, 'f', -1, 64),
+		Serving: options[serving].Label, Per: food.Nutrition.Scaled(options[serving].Multiplier * quantity)}
+}
+
+func foodOrder(r *http.Request) string {
+	if r.FormValue("order") == "recent" {
+		return "recent"
+	}
+	return "frequent"
 }
 
 func (ui *UI) foodSearchForm(w http.ResponseWriter, r *http.Request) {
-	ui.render(w, "food-search", foodSearchView{Meal: r.URL.Query().Get("meal")})
+	ui.render(w, "food-search", foodSearchView{Meal: r.URL.Query().Get("meal"), Order: foodOrder(r)})
 }
 
 func (ui *UI) searchFood(w http.ResponseWriter, r *http.Request) {
-	view := foodSearchView{Meal: r.FormValue("meal"), Query: formText(r, "query")}
+	view := foodSearchView{Meal: r.FormValue("meal"), Query: formText(r, "query"), Order: foodOrder(r)}
+	if view.Query == "" { // Back from a food picked from the user's own
+		ui.render(w, "food-search", view)
+		return
+	}
 	foods, err := ui.ws(r).MyFitnessPal.Client().Search(view.Query)
 	if err != nil {
 		view.Error = problem.Public(err)
 	}
 	view.Results = []foodResult{}
 	for _, food := range foods {
-		encoded, _ := json.Marshal(food)
-		result := foodResult{Food: food, Encoded: string(encoded), Per: food.Nutrition}
-		if len(food.Servings) > 0 {
-			result.Serving = food.Servings[0].Label
-			result.Per = food.Nutrition.Scaled(food.Servings[0].Multiplier)
-		}
-		view.Results = append(view.Results, result)
+		view.Results = append(view.Results, foodResultFor(food, 0, 1))
 	}
 	ui.render(w, "food-search", view)
+}
+
+type myFoodsView struct {
+	Meal, Query, Order string
+	Meals              []foodResult
+	MealsError         string
+	Usual              []foodResult
+}
+
+// myFoods lists the saved meals and usual foods matching what's typed so far.
+func (ui *UI) myFoods(w http.ResponseWriter, r *http.Request) {
+	ui.render(w, "food-mine", ui.myFoodsView(r))
+}
+
+func (ui *UI) myFoodsView(r *http.Request) myFoodsView {
+	mfp := ui.ws(r).MyFitnessPal
+	view := myFoodsView{Meal: r.FormValue("meal"), Query: formText(r, "query"), Order: foodOrder(r)}
+	words := strings.Fields(strings.ToLower(view.Query))
+	usual := map[string]myfitnesspal.Usual{}
+	for _, u := range mfp.History().Usual(view.Query, view.Order) {
+		usual[u.Food.FoodID] = u
+		if !u.Food.SavedMeal {
+			view.Usual = append(view.Usual, usualResult(u, view.Order))
+		}
+	}
+	meals, err := mfp.SavedMeals()
+	if err != nil {
+		view.MealsError = problem.Public(err)
+	}
+	var eaten, others []foodResult // saved meals logged from here come first, in the same order
+	for _, meal := range meals {
+		if !myfitnesspal.MatchesWords(meal.Name+" "+strings.Join(meal.Items, " "), words) {
+			continue
+		}
+		if u, ok := usual[meal.FoodID]; ok {
+			u.Food = meal // MyFitnessPal's current one
+			eaten = append(eaten, usualResult(u, view.Order))
+		} else {
+			others = append(others, foodResultFor(meal, 0, 1))
+		}
+	}
+	slices.SortStableFunc(eaten, func(a, b foodResult) int { return a.rank - b.rank })
+	view.Meals = append(eaten, others...)
+	return view
+}
+
+func usualResult(u myfitnesspal.Usual, order string) foodResult {
+	result := foodResultFor(u.Food, u.Serving, u.Quantity)
+	result.rank = u.Rank
+	if order == "frequent" && u.Times > 0 {
+		result.Note = strconv.Itoa(u.Times) + "× in 30 days"
+	} else {
+		result.Note = "last: " + dayName(time.Unix(u.At, 0))
+	}
+	return result
+}
+
+// forgetFood takes a food off the usual foods.
+func (ui *UI) forgetFood(w http.ResponseWriter, r *http.Request) {
+	if err := ui.ws(r).MyFitnessPal.History().Forget(r.FormValue("food_id")); err != nil {
+		fail(w, err)
+		return
+	}
+	ui.render(w, "food-mine", ui.myFoodsView(r))
+}
+
+type mealSaveView struct{ Meal string }
+
+// saveMealForm asks what to call a diary meal saved for later.
+func (ui *UI) saveMealForm(w http.ResponseWriter, r *http.Request) {
+	ui.render(w, "meal-save", mealSaveView{Meal: r.URL.Query().Get("meal")})
+}
+
+func (ui *UI) saveMeal(w http.ResponseWriter, r *http.Request) {
+	name := formText(r, "name")
+	if err := ui.ws(r).MyFitnessPal.SaveMeal(shownDay(r).Format(dayLayout), r.FormValue("meal"), name); err != nil {
+		fail(w, err)
+		return
+	}
+	announce(w, say("Saved “"+name+"” in your MyFitnessPal meals"))
+	nothing(w)
 }
 
 type foodPickView struct {
@@ -303,9 +411,14 @@ func (ui *UI) addFood(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	serving := view.Servings[view.Serving]
-	if _, err := ui.ws(r).MyFitnessPal.AddFood(shownDay(r).Format(dayLayout), view.Food.FoodID, serving.WeightID, quantity, view.Meal); err != nil {
+	date := shownDay(r).Format(dayLayout)
+	mfp := ui.ws(r).MyFitnessPal
+	if _, err := mfp.AddFood(date, view.Food.FoodID, serving.WeightID, quantity, view.Meal); err != nil {
 		fail(w, err)
 		return
+	}
+	if err := mfp.History().Add(myfitnesspal.Logged{Food: view.Food, Serving: view.Serving, Quantity: quantity, Meal: view.Meal, Date: date}); err != nil {
+		log.Printf("saving the food history: %v", err)
 	}
 	announce(w, say("Added to "+view.Meal))
 	ui.renderGoalsWith(r, w, false, nil)

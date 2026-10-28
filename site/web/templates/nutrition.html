@@ -49,7 +49,8 @@
         <button class="icon del" hx-post="/food/{{.EntryID}}/delete" hx-target="closest .card" hx-swap="outerHTML" hx-confirm="Remove {{.Name}} from your MyFitnessPal diary for {{$.DayName}}?" title="Remove">✕</button></span>{{end}}
     </div>
     {{end}}
-    <div class="meal-add"><button hx-get="/food/search?meal={{query .Name}}" hx-target="#food-slot-{{$i}}">+ Add to {{.Name}}</button></div>
+    <div class="meal-add"><button hx-get="/food/search?meal={{query .Name}}" hx-target="#food-slot-{{$i}}">+ Add to {{.Name}}</button>
+      {{if .Entries}}<button hx-get="/food/meals/new?meal={{query .Name}}" hx-target="#food-slot-{{$i}}" title="Save these foods as one meal to log again later">Save as meal</button>{{end}}</div>
     <div class="food-slot" id="food-slot-{{$i}}"></div>
   </details>
 {{end}}</div>
@@ -58,20 +59,65 @@
 
 {{define "food-search"}}
 <div class="panel food-panel">
-  <form class="row" hx-post="/food/search" hx-target="closest .food-panel" hx-swap="outerHTML" hx-disabled-elt="find button">
+  <form hx-post="/food/search" hx-target="closest .food-panel" hx-swap="outerHTML" hx-disabled-elt="find button.primary">
     <input type="hidden" name="meal" value="{{.Meal}}">
-    <input class="txt grow" name="query" value="{{.Query}}" placeholder="Search MyFitnessPal foods, e.g. greek yogurt" maxlength="100" required autofocus>
-    <button class="sm primary">Search</button><span class="busy-note">Searching MyFitnessPal…</span>
-    <button type="button" class="sm" hx-get="/panel/close" hx-target="closest .food-panel" hx-swap="outerHTML">Cancel</button>
+    <div class="row">
+      <input class="txt grow" name="query" value="{{.Query}}" placeholder="Type to find your foods, Search for new ones" maxlength="100" required autofocus autocomplete="off">
+      <button class="sm primary">Search</button><span class="busy-note">Searching MyFitnessPal…</span>
+      <button type="button" class="sm" hx-get="/panel/close" hx-target="closest .food-panel" hx-swap="outerHTML">Cancel</button>
+    </div>
+    <div class="fp-order" role="radiogroup" aria-label="Sort your foods">
+      <label><input type="radio" name="order" value="frequent"{{if ne .Order "recent"}} checked{{end}}> Most eaten (30 days)</label>
+      <label><input type="radio" name="order" value="recent"{{if eq .Order "recent"}} checked{{end}}> Recent</label>
+    </div>
   </form>
+  <div class="fp-mine" hx-post="/food/mine" hx-include="previous form" hx-trigger="load, input from:previous form delay:150ms" hx-sync="this:replace" hx-swap="outerHTML"><p class="small muted flush">Loading your foods…</p></div>
   {{if .Error}}<p class="err small flush">{{.Error}}</p>
   {{else if .Results}}
-  <div class="fp-results">{{range .Results}}
-    <button hx-post="/food/pick" hx-vals="{{vals "food" .Encoded "meal" $.Meal "query" $.Query}}" hx-target="closest .food-panel" hx-swap="outerHTML">
-      <span>{{.Food.Name}}{{if .Food.Verified}} ✓{{end}}<small>{{.Food.Brand}}{{if and .Food.Brand .Serving}} · {{end}}{{.Serving}}</small></span>
-      <span class="k">{{template "food-macros" .Per}}</span></button>
+  <div class="fp-head">MyFitnessPal results</div>
+  <div class="fp-results">{{range .Results}}{{template "food-choice" dict "R" . "Meal" $.Meal "Query" $.Query}}{{end}}</div>
+  {{else if .Query}}<p class="small muted flush">Nothing found in MyFitnessPal. Try other words.</p>{{end}}
+</div>
+{{end}}
+
+{{/* One food to pick: R is a foodResult. */}}
+{{define "food-choice"}}{{$r := .R}}
+<button type="button" hx-post="/food/pick" hx-vals="{{vals "food" $r.Encoded "meal" .Meal "query" .Query "serving" $r.Index "quantity" $r.Quantity}}" hx-target="closest .food-panel" hx-swap="outerHTML">
+  <span>{{$r.Food.Name}}{{if $r.Food.Verified}} ✓{{end}}<small>{{if $r.Food.SavedMeal}}{{with $r.Food.Items}}{{join . " · "}}{{else}}Saved meal{{end}}{{else}}{{$r.Food.Brand}}{{if and $r.Food.Brand $r.Serving}} · {{end}}{{if ne $r.Quantity "1"}}{{$r.Quantity}} × {{end}}{{$r.Serving}}{{end}}{{with $r.Note}} · {{.}}{{end}}</small></span>
+  <span class="k">{{if or $r.Per.Calories (not $r.Food.SavedMeal)}}{{template "food-macros" $r.Per}}{{end}}</span></button>
+{{end}}
+
+{{/* The saved meals and usual foods matching the search box, refreshed while typing. */}}
+{{define "food-mine"}}
+<div class="fp-mine" hx-post="/food/mine" hx-include="previous form" hx-trigger="input from:previous form delay:150ms" hx-sync="this:replace" hx-swap="outerHTML">
+  {{if .Meals}}
+  <div class="fp-head">Saved meals</div>
+  <div class="fp-results">{{range .Meals}}{{template "food-choice" dict "R" . "Meal" $.Meal "Query" $.Query}}{{end}}</div>
+  {{end}}
+  {{if .Usual}}
+  <div class="fp-head">Your foods · {{if eq .Order "recent"}}most recent first{{else}}most eaten first{{end}}</div>
+  <div class="fp-results">{{range .Usual}}
+    <div class="fp-usual">{{template "food-choice" dict "R" . "Meal" $.Meal "Query" $.Query}}
+      <button type="button" class="icon del" hx-post="/food/forget" hx-vals="{{vals "food_id" .Food.FoodID}}" hx-include="closest .food-panel" hx-target="closest .fp-mine" hx-swap="outerHTML" title="Take off your foods (the diary keeps it)">✕</button></div>
   {{end}}</div>
-  {{else if .Query}}<p class="small muted flush">Nothing found. Try other words.</p>{{end}}
+  {{else if .Query}}{{if not .Meals}}<p class="small muted flush">None of your foods match. Press Search to look in MyFitnessPal.</p>{{end}}
+  {{else}}<p class="small muted flush">Foods you add here are listed here next time, most eaten first.</p>{{end}}
+  {{with .MealsError}}<p class="small muted flush">Saved meals: {{.}}</p>{{end}}
+</div>
+{{end}}
+
+{{define "meal-save"}}
+<div class="panel food-panel">
+  <form hx-post="/food/meals/save" hx-target="closest .food-panel" hx-swap="outerHTML" hx-disabled-elt="find button">
+    <input type="hidden" name="meal" value="{{.Meal}}">
+    <div class="row">
+      <input class="txt grow" name="name" placeholder="Name this meal, e.g. Turkey sandwich" maxlength="100" required autofocus>
+      <button class="sm primary">Save</button>
+      <button type="button" class="sm" hx-get="/panel/close" hx-target="closest .food-panel" hx-swap="outerHTML">Cancel</button>
+    </div>
+    <p class="small muted flush">Saves the foods in {{.Meal}} as one meal in MyFitnessPal. Log it again from + Log food.</p>
+    <span class="busy-note">Saving in MyFitnessPal…</span>
+  </form>
 </div>
 {{end}}
 
@@ -81,7 +127,7 @@
 <div class="panel food-panel">
   <form hx-post="/food/add" hx-target="closest .card" hx-swap="outerHTML" hx-disabled-elt="find button">
     <input type="hidden" name="food" value="{{.Encoded}}"><input type="hidden" name="query" value="{{.Query}}">
-    <div class="pick-title"><b>{{.Food.Name}}</b>{{with .Food.Brand}} <span class="small muted">{{.}}</span>{{end}}</div>
+    <div class="pick-title"><b>{{.Food.Name}}</b>{{with .Food.Brand}} <span class="small muted">{{.}}</span>{{end}}{{if .Food.SavedMeal}}{{with .Food.Items}}<div class="small muted">{{join . " · "}}</div>{{end}}{{end}}</div>
     <div class="row">
       <input class="txt num" name="quantity" type="number" min="0.01" step="any" value="{{.Quantity}}" title="Number of servings" autofocus> ×
       <select class="txt" name="serving">{{range $i, $s := .Servings}}<option value="{{$i}}"{{if eq $i $.Serving}} selected{{end}}>{{.Label}}</option>{{end}}</select>

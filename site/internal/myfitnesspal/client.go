@@ -193,14 +193,18 @@ var ErrNeedsUsername = problem.Invalidf("Your cookie works, but MyFitnessPal did
 
 var usernamePattern = regexp.MustCompile(`^[A-Za-z0-9_.-]{1,50}$`)
 
-// Connect signs the user in with their browser's MyFitnessPal Cookie header (it must include
-// remember_me; the session token alone doesn't sign in), through the MCP's own `auth`,
+// Connect signs the user in with their browser's MyFitnessPal cookies, from whatever they pasted
+// (CookieFromPaste: they must include remember_me; the session token alone doesn't sign in), through the MCP's own `auth`,
 // which checks it with MyFitnessPal before saving it in the user's folder. username is only
 // needed after ErrNeedsUsername; the MCP saves it with the login.
 func (c Client) Connect(token, username string) error {
-	token, username = strings.TrimSpace(token), strings.TrimSpace(username)
-	if token == "" || len(token) > 32000 || strings.ContainsAny(token, "\r\n") {
-		return problem.Invalidf("Paste the whole Cookie header from a myfitnesspal.com request")
+	username = strings.TrimSpace(username)
+	token, err := CookieFromPaste(token)
+	if err != nil {
+		return err
+	}
+	if len(token) > 32000 {
+		return problem.Invalidf("That's too long to be MyFitnessPal's cookies. Copy just the first request in the Network list.")
 	}
 	if username != "" && !usernamePattern.MatchString(username) {
 		return problem.Invalidf("That doesn't look like a MyFitnessPal username: use the one on your profile, not your email")

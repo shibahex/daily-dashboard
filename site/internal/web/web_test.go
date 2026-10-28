@@ -1,6 +1,7 @@
 package web
 
 import (
+	"dashboard/internal/myfitnesspal"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -111,5 +112,61 @@ func TestFoodPreviewSwapsOnlyItself(t *testing.T) {
 	}
 	if !strings.Contains(string(html), `hx-target="this"`) {
 		t.Errorf("the preview has no target of its own:\n%s", html)
+	}
+}
+
+// The food panel lists the user's saved meals and usual foods, each picked with its last amount.
+func TestFoodPanelTemplatesRender(t *testing.T) {
+	ui := &UI{templates: newTemplateSet("../../web")}
+	bread := myfitnesspal.Food{FoodID: "11", Name: "Whole wheat bread", Servings: []myfitnesspal.Serving{{WeightID: "5", Label: "1 slice", Multiplier: 1}}}
+	meal := myfitnesspal.Food{FoodID: "22", Name: "Turkey sandwich", SavedMeal: true, Items: []string{"Bread", "Turkey"},
+		Servings: []myfitnesspal.Serving{{WeightID: "9", Label: "1 meal", Multiplier: 1}}}
+	usual := foodResultFor(bread, 0, 2)
+	usual.Note = "4× in 30 days"
+	cases := []struct {
+		name string
+		view any
+		want string
+	}{
+		{"food-search", foodSearchView{Meal: "Lunch", Order: "frequent"}, `hx-post="/food/mine"`},
+		{"food-search", foodSearchView{Meal: "Lunch", Query: "bread", Results: []foodResult{foodResultFor(bread, 0, 1)}}, "MyFitnessPal results"},
+		{"food-mine", myFoodsView{Meal: "Lunch", Usual: []foodResult{usual}, Meals: []foodResult{foodResultFor(meal, 0, 1)}}, "4× in 30 days"},
+		{"food-mine", myFoodsView{Meal: "Lunch", Usual: []foodResult{usual}}, `&#34;quantity&#34;:&#34;2&#34;`},
+		{"food-mine", myFoodsView{Meal: "Lunch", Meals: []foodResult{foodResultFor(meal, 0, 1)}}, "Bread · Turkey"},
+		{"food-mine", myFoodsView{Query: "zzz"}, "Press Search"},
+		{"meal-save", mealSaveView{Meal: "Lunch"}, `name="meal" value="Lunch"`},
+	}
+	for _, c := range cases {
+		html, err := ui.renderToHTML(c.name, c.view)
+		if err != nil {
+			t.Errorf("%s: %v", c.name, err)
+			continue
+		}
+		if !strings.Contains(string(html), c.want) {
+			t.Errorf("%s: no %q in\n%s", c.name, c.want, html)
+		}
+	}
+}
+
+// Connecting MyFitnessPal walks a beginner through it; once connected the steps fold away.
+func TestMyFitnessPalConnectSteps(t *testing.T) {
+	ui := &UI{templates: newTemplateSet("../../web")}
+	cases := []struct {
+		view        connectionsView
+		want, avoid string
+	}{
+		{connectionsView{}, `class="mfp-setup" open`, ""},
+		{connectionsView{}, "type <code>remember_me</code> in the filter box", ""},
+		{connectionsView{MyFitnessPal: true}, "Reconnect or switch accounts", `class="mfp-setup" open`},
+		{connectionsView{MFPAskName: true, MFPToken: "remember_me=a"}, `name="username"`, "Open MyFitnessPal"},
+	}
+	for _, c := range cases {
+		html, err := ui.renderToHTML("connections-card", c.view)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(html), c.want) || c.avoid != "" && strings.Contains(string(html), c.avoid) {
+			t.Errorf("%+v: want %q, not %q, in\n%s", c.view, c.want, c.avoid, html)
+		}
 	}
 }

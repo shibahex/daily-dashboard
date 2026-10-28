@@ -361,7 +361,8 @@ func (ui *UI) connectMyFitnessPal(w http.ResponseWriter, r *http.Request) {
 	err := ws.MyFitnessPal.Client().Connect(token, username)
 	if errors.Is(err, myfitnesspal.ErrNeedsUsername) {
 		view := ui.connectionsView(r)
-		view.Error, view.MFPAskName, view.MFPToken = problem.Public(err), true, strings.TrimSpace(token)
+		view.Error, view.MFPAskName = problem.Public(err), true
+		view.MFPToken, _ = myfitnesspal.CookieFromPaste(token)
 		w.Header().Set("Cache-Control", "no-store") // it holds their cookie
 		ui.render(w, "connections-card", view)
 		return

@@ -71,7 +71,7 @@ Each account gets its own private folder with starter notes from `docs/templates
 
 1. **Fill in your notes.** They're in the Docs tab (`overview.md` first); replace the placeholders. The AI uses them for context, and if your admin allows it, it can edit them for you.
 2. **Edit your plan.** On the Today tab, use **Edit** on the training, checklist, weight and reminder cards. Set up your routines on the Lifting tab.
-3. **Connect MyFitnessPal** (optional, for nutrition and the AI): on the **Account** page, paste the Cookie header of a myfitnesspal.com request. The page says where to find it.
+3. **Connect MyFitnessPal** (optional, for nutrition and the AI): on the **Account** page, follow the four steps: log in to MyFitnessPal, open the developer tools → **Application** → **Cookies**, copy the `remember_me` cookie's value, and paste it.
 4. **Connect Anki** (optional, for the Anki tab and the AI): install the AnkiConnect add-on in Anki (**Tools → Add-ons → Get Add-ons…**, code `2055492159`) and restart Anki. On the host's computer that's all; everyone else also sets an address and API key in AnkiConnect's config and enters them on their Account page.
 5. **Set up the AI** (optional, for the MCPs tab): on the Account page, add an Anthropic API key, or point it at Ollama, LM Studio or llama.cpp on your own computer. The key stays encrypted in your browser. People who want Claude Code, Codex or Gemini CLI can turn on **AI on the server** if their admin allows it.
 6. **Invite people** (optional): put the dashboard behind an HTTPS reverse proxy ([Sharing it on a network](dashboard.md#sharing-it-on-a-network)), then use **Admin → Invite someone**.

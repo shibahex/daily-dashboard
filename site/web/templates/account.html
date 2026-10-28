@@ -95,14 +95,35 @@
     <p>Connected{{if .Host}} (the server computer's own login){{end}}. The Today tab syncs your diary every 10 minutes.</p>
     {{if not .Host}}<div class="row"><button class="sm ghost" hx-post="/account/myfitnesspal/remove" hx-target="#connections-card" hx-swap="outerHTML" hx-confirm="Disconnect MyFitnessPal?">Disconnect</button></div>{{end}}
     {{end}}
+    <details class="mfp-setup"{{if or (not .MyFitnessPal) .MFPAskName .Error}} open{{end}}>
+    <summary>{{if .MyFitnessPal}}Reconnect or switch accounts{{else}}Connect in four steps (about a minute){{end}}</summary>
     <form class="mfp-connect" hx-post="/account/myfitnesspal" hx-target="#connections-card" hx-swap="outerHTML" hx-disabled-elt="find button">
-      <p class="muted small">Log in at myfitnesspal.com in a normal (not private) window. Open the developer tools (F12) → <b>Network</b>, reload the page and click the first request. Under <b>Request Headers</b>, right-click <code>cookie</code> → <b>Copy value</b>. MyFitnessPal needs the whole header: its <code>remember_me</code> cookie is what keeps you signed in.</p>
-      <label>{{if .MyFitnessPal}}Replace the cookie header{{else}}Cookie header{{end}}
-        <input class="txt" type="password" name="token" value="{{.MFPToken}}" required autocomplete="off" spellcheck="false"></label>
+      {{if not .MFPAskName}}
+      <p class="muted small">MyFitnessPal doesn't let other apps sign in with your password, so you copy your login from your browser instead. Do this on a computer, not a phone.</p>
+      <ol class="mfp-steps">
+        <li><b>Log in to MyFitnessPal</b> in a normal window (not private or incognito).
+          <a class="sm-button" href="https://www.myfitnesspal.com/food/diary" target="_blank" rel="noopener noreferrer">Open MyFitnessPal ↗</a></li>
+        <li><b>Open the developer tools</b> on that tab: press <kbd>F12</kbd> (Mac: <kbd>⌘</kbd> <kbd>⌥</kbd> <kbd>I</kbd>) and click the <b>Application</b> tab (Firefox and Safari call it <b>Storage</b>; it may hide behind <b>»</b>).</li>
+        <li><b>Copy your login:</b> open <b>Cookies</b> → <b>https://www.myfitnesspal.com</b>, type <code>remember_me</code> in the filter box, then double-click its <b>Value</b> and copy it (<kbd>Ctrl</kbd> <kbd>C</kbd>, Mac: <kbd>⌘</kbd> <kbd>C</kbd>).</li>
+        <li><b>Paste it below</b> and press Connect.</li>
+      </ol>
+      <details class="mfp-help">
+        <summary>Help for your browser</summary>
+        <ul class="small">
+          <li><b>Safari:</b> first turn on the developer tools: Safari → Settings → Advanced → <b>Show features for web developers</b>. Then Develop → Show Web Inspector → <b>Storage</b> → Cookies.</li>
+          <li><b>No remember_me?</b> Log out of MyFitnessPal and log in again in a normal window, then reload the cookie list.</li>
+          <li><b>Another way:</b> in the <b>Network</b> tab, reload the page, right-click the first line and choose <b>Copy</b> → <b>Copy as cURL</b> (Firefox: Copy Value → Copy as cURL). Pasting that works too.</li>
+        </ul>
+      </details>
+      {{end}}
+      <label>{{if .MFPAskName}}Your MyFitnessPal login (kept from before){{else}}Paste here{{end}}
+        <input class="txt" type="password" name="token" value="{{.MFPToken}}" required autocomplete="off" spellcheck="false" placeholder="The remember_me cookie's value"></label>
       {{if .MFPAskName}}<label>MyFitnessPal username <small class="muted">(on your profile page, not your email)</small>
         <input class="txt" name="username" required autofocus autocomplete="off" spellcheck="false" maxlength="50"></label>{{end}}
       <div><button class="sm primary">{{if .MyFitnessPal}}Reconnect{{else}}Connect{{end}}</button> <small class="muted wait-hint">Checking it with MyFitnessPal takes a few seconds.</small><span class="busy-note">Checking with MyFitnessPal…</span></div>
+      <p class="muted small">What you copy works like a password to your MyFitnessPal account, so paste it only here. The dashboard keeps just the login from it, in your own folder on the server.</p>
     </form>
+    </details>
   </div>
 
   <div class="card">
