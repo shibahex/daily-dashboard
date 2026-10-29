@@ -362,51 +362,97 @@ func weighInsBetween(weights []store.Weight, from, to string) []store.Weight {
 type weightAverage struct {
 	Count   int
 	Average float64
-	PerWeek float64 // the trend line's slope, lb a week
+	Weekly  bool    // PerWeek is known: there are weigh-ins in two different weeks
+	PerWeek float64 // the average change a week, lb
+	Change  float64 // without Weekly: the change from the first weigh-in to the last...
+	Days    int     // ...this many days apart
 	Trend   string  // "stable", "losing" or "gaining"; "" with weigh-ins on fewer than two days
 }
 
 // The trend is stable when it moves less than stableWeek lb a week (less than a day's water)
-// and less than stableTotal lb over the whole range (a long one adds up).
-const stableWeek, stableTotal = 0.3, 2.0
+// and less than stableTotal lb over the whole range (a long one adds up); within a week, when
+// it moves less than stableDays lb.
+const stableWeek, stableTotal, stableDays = 0.3, 2.0, 1.0
 
-// weightAverageOf averages the weigh-ins and fits a straight line through them for the trend.
+// weightAverageOf averages the weigh-ins and works out how much they change a week on average.
+// It averages each week's weigh-ins (weeks counted back from the last one) and fits a straight
+// line through those weekly averages, each placed at the average day of its weigh-ins. A week
+// without weigh-ins is left out, not counted as no change, and the time it spans still counts.
+// Within a single week there's no weekly number: it gives the change over those days instead.
 func weightAverageOf(points []store.Weight) weightAverage {
 	view := weightAverage{Count: len(points)}
 	if view.Count == 0 {
 		return view
 	}
-	first, _ := time.ParseInLocation(dayLayout, points[0].Date, time.Local)
-	days, lbs := make([]float64, 0, len(points)), make([]float64, 0, len(points))
-	for _, w := range points {
+	dayOf := func(w store.Weight) time.Time {
 		day, _ := time.ParseInLocation(dayLayout, w.Date, time.Local)
-		days = append(days, day.Sub(first).Hours()/24)
-		lbs = append(lbs, w.LB)
+		return day
 	}
-	meanDay, meanLB := 0.0, 0.0
-	for i := range lbs {
-		meanDay += days[i] / float64(view.Count)
-		meanLB += lbs[i] / float64(view.Count)
+	last := dayOf(points[len(points)-1])
+	daysBefore := func(w store.Weight) int { return int(math.Round(last.Sub(dayOf(w)).Hours() / 24)) }
+	type week struct {
+		days, lbs float64
+		n         int
 	}
-	view.Average = math.Round(meanLB*10) / 10
-	spread, together := 0.0, 0.0
-	for i := range lbs {
-		spread += (days[i] - meanDay) * (days[i] - meanDay)
-		together += (days[i] - meanDay) * (lbs[i] - meanLB)
+	weeks := map[int]*week{}
+	sum := 0.0
+	for _, w := range points {
+		sum += w.LB
+		ago := daysBefore(w)
+		if weeks[ago/7] == nil {
+			weeks[ago/7] = &week{}
+		}
+		wk := weeks[ago/7]
+		wk.days, wk.lbs, wk.n = wk.days-float64(ago), wk.lbs+w.LB, wk.n+1
 	}
-	if spread == 0 { // one day
+	view.Average = math.Round(sum/float64(view.Count)*10) / 10
+
+	if len(weeks) >= 2 {
+		var at, lbs []float64 // each week's place (in weeks) and average weight
+		for _, wk := range weeks {
+			at = append(at, wk.days/float64(wk.n)/7)
+			lbs = append(lbs, wk.lbs/float64(wk.n))
+		}
+		perWeek, span := slope(at, lbs), slices.Max(at)-slices.Min(at)
+		view.Weekly, view.PerWeek = true, math.Round(perWeek*10)/10
+		view.Trend = trendOf(perWeek, math.Abs(perWeek) < stableWeek && math.Abs(perWeek*span) < stableTotal)
 		return view
 	}
-	view.PerWeek = math.Round(together/spread*7*10) / 10
-	switch {
-	case math.Abs(view.PerWeek) < stableWeek && math.Abs(together/spread*(days[len(days)-1]-days[0])) < stableTotal:
-		view.Trend = "stable"
-	case view.PerWeek < 0:
-		view.Trend = "losing"
-	default:
-		view.Trend = "gaining"
+	view.Days = daysBefore(points[0])
+	if view.Days == 0 { // one day
+		return view
 	}
+	view.Change = math.Round((points[len(points)-1].LB-points[0].LB)*10) / 10
+	view.Trend = trendOf(view.Change, math.Abs(view.Change) < stableDays)
 	return view
+}
+
+// slope is the slope of the straight line that best fits the points (least squares).
+func slope(xs, ys []float64) float64 {
+	meanX, meanY := 0.0, 0.0
+	for i := range xs {
+		meanX += xs[i] / float64(len(xs))
+		meanY += ys[i] / float64(len(ys))
+	}
+	spread, together := 0.0, 0.0
+	for i := range xs {
+		spread += (xs[i] - meanX) * (xs[i] - meanX)
+		together += (xs[i] - meanX) * (ys[i] - meanY)
+	}
+	if spread == 0 {
+		return 0
+	}
+	return together / spread
+}
+
+func trendOf(change float64, stable bool) string {
+	switch {
+	case stable:
+		return "stable"
+	case change < 0:
+		return "losing"
+	}
+	return "gaining"
 }
 
 // sparkline is the weight trend over the chart's range.

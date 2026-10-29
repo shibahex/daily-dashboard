@@ -99,7 +99,7 @@
     </span>
     {{with .Average}}{{if .Count}}<span class="w-summary small">
       <span class="muted" title="{{.Count}} {{plural .Count "weigh-in" "weigh-ins"}}">avg</span> <b>{{pounds .Average}}</b>
-      <span class="trend trend-{{or .Trend "none"}}" title="{{if .Trend}}A straight line through these weigh-ins{{else}}Weigh in on another day to see the trend{{end}}">{{if eq .Trend "losing"}}▼ Losing{{else if eq .Trend "gaining"}}▲ Gaining{{else if eq .Trend "stable"}}● Stable{{end}}{{if .Trend}} <span class="muted">{{if gt .PerWeek 0.0}}+{{end}}{{pounds .PerWeek}} lb/wk</span>{{end}}</span>
+      <span class="trend trend-{{or .Trend "none"}}" title="{{if .Weekly}}The average change a week: each week's weigh-ins averaged, weeks without any left out{{else if .Trend}}Weigh-ins in two different weeks give a weekly average{{else}}Weigh in on another day to see the trend{{end}}">{{if eq .Trend "losing"}}▼ Losing{{else if eq .Trend "gaining"}}▲ Gaining{{else if eq .Trend "stable"}}● Stable{{end}}{{if .Weekly}} <span class="muted">{{if gt .PerWeek 0.0}}+{{end}}{{pounds .PerWeek}} lb/wk</span>{{else if .Trend}} <span class="muted">{{if gt .Change 0.0}}+{{end}}{{pounds .Change}} lb in {{.Days}} {{plural .Days "day" "days"}}</span>{{end}}</span>
     </span>{{end}}{{end}}
   </div>
   {{with .Trend}}
