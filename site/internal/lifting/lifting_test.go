@@ -533,3 +533,48 @@ func TestBumpedRestIsKept(t *testing.T) {
 		t.Fatalf("rest after a bump once it was over: %d, want 150", got)
 	}
 }
+
+func TestRenameExercise(t *testing.T) {
+	d := Data{Unit: "lb",
+		Routines: []Routine{{ID: "r", Days: []Day{{ID: "d", Exercises: []Planned{
+			{Name: "Barbell or dumbbell RDL", Options: []string{"Barbell RDL", "Good morning"}},
+			{Name: "Squat", Options: []string{"barbell or dumbbell rdl"}},
+		}}}}},
+		Workouts: []Workout{
+			{ID: "1", Exercises: []Exercise{{Name: "Barbell or dumbbell RDL", Sets: []Set{{LB: 135, Reps: 8, Done: true}}}}},
+			{ID: "2", Exercises: []Exercise{{Name: "Barbell RDL", Instead: "barbell or dumbbell RDL", Sets: []Set{{LB: 155, Reps: 8, Done: true}}}}},
+		},
+		Goals:    []Goal{{Name: "Barbell or dumbbell RDL", LB: 225}},
+		Strength: Strength{Lifts: [ChartSlots]string{"Barbell RDL", "Squat", "Barbell or dumbbell RDL"}},
+	}
+	d.SetMatch("Barbell or dumbbell RDL", Match{ID: "9", Name: "Deadlifts"})
+
+	if err := d.RenameExercise("barbell or dumbbell rdl", "Barbell RDL"); err != nil {
+		t.Fatal(err)
+	}
+	planned := d.Routines[0].Days[0].Exercises
+	if planned[0].Name != "Barbell RDL" || strings.Join(planned[0].Options, ",") != "Good morning" {
+		t.Errorf("routine exercise %+v: want renamed, without itself as an alternative", planned[0])
+	}
+	if strings.Join(planned[1].Options, ",") != "Barbell RDL" {
+		t.Errorf("alternatives %v: want the new name", planned[1].Options)
+	}
+	if d.Workouts[0].Exercises[0].Name != "Barbell RDL" || d.Workouts[1].Exercises[0].Instead != "Barbell RDL" {
+		t.Errorf("past workouts not renamed: %+v", d.Workouts)
+	}
+	if len(d.History("Barbell RDL")) != 2 {
+		t.Errorf("want the two histories merged")
+	}
+	if d.Goal("Barbell RDL") != 225 || len(d.Goals) != 1 {
+		t.Errorf("goals %+v: want the goal moved", d.Goals)
+	}
+	if d.MyFitnessPal.Matches[MatchKey("Barbell RDL")].ID != "9" || len(d.MyFitnessPal.Matches) != 1 {
+		t.Errorf("matches %+v: want the match moved", d.MyFitnessPal.Matches)
+	}
+	if d.Strength.Lifts != [ChartSlots]string{"Barbell RDL", "Squat", ""} {
+		t.Errorf("chart %v: want the lift once", d.Strength.Lifts)
+	}
+	if err := d.RenameExercise("Deadlift", "RDL"); err == nil {
+		t.Error("renaming a lift that isn't there should fail")
+	}
+}

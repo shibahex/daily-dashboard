@@ -178,6 +178,7 @@ func (ui *UI) Routes(mux *http.ServeMux) {
 	change("/lifting/myfitnesspal/match", ui.setMfpMatch)
 	change("/lifting/unit", ui.setLiftingUnit)
 	change("/lifting/goal", ui.saveLiftGoal)
+	change("/lifting/rename", ui.renameLift)
 	page("/lifting/export.csv", ui.exportLifting)
 	page("/lifting/one-rep-max", ui.oneRepMax)
 	page("/cards/strength", ui.strengthCard)

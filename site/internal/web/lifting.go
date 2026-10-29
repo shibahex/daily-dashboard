@@ -968,6 +968,25 @@ func (ui *UI) deleteWorkout(w http.ResponseWriter, r *http.Request) {
 }
 
 // saveLiftGoal sets a lift's one-rep max goal (typed in the shown unit), or clears it when blank.
+// renameLift renames a lift everywhere (lifting.RenameExercise) and answers with the Progress
+// card on its new name. The other cards reload after the swap, so this one asks for the new name.
+func (ui *UI) renameLift(w http.ResponseWriter, r *http.Request) {
+	from, to := formText(r, "exercise"), formText(r, "name")
+	ws := ui.ws(r)
+	if err := ws.Lifting.Update(func(d *lifting.Data) error { return d.RenameExercise(from, to) }); err != nil {
+		fail(w, err)
+		return
+	}
+	data := ws.Lifting.Load()
+	view := progressViewOf(data, to)
+	if i := slices.IndexFunc(view.Names, func(name string) bool { return strings.EqualFold(name, to) }); i >= 0 {
+		view.Name = view.Names[i]
+	}
+	announce(w, say(fmt.Sprintf("Renamed %s to %s", from, view.Name)))
+	w.Header().Set("HX-Trigger-After-Swap", `{"`+liftingChanged+`":true}`)
+	ui.render(w, "lift-progress", view)
+}
+
 func (ui *UI) saveLiftGoal(w http.ResponseWriter, r *http.Request) {
 	name, typed := formText(r, "exercise"), strings.ReplaceAll(formText(r, "goal"), ",", ".")
 	goal := 0.0

@@ -263,6 +263,16 @@
   <div class="card-head"><h2>Progress</h2>
     {{if .Names}}<select class="txt lift-pick" name="exercise" aria-label="Exercise" hx-get="/lifting/progress" hx-trigger="change" hx-target="closest .card" hx-swap="outerHTML">{{range .Names}}<option{{if eq . $.Name}} selected{{end}}>{{.}}</option>{{end}}</select>{{end}}</div>
   {{if .Count}}
+  <details class="lift-rename">
+    <summary class="small muted">Rename</summary>
+    <form hx-post="/lifting/rename" hx-target="closest .card" hx-swap="outerHTML">
+      <input type="hidden" name="exercise" value="{{.Name}}">
+      <input class="txt" name="name" value="{{.Name}}" list="lift-names-rename" maxlength="80" required autocomplete="off" aria-label="New name">
+      <datalist id="lift-names-rename">{{range .Names}}{{if ne . $.Name}}<option value="{{.}}">{{end}}{{end}}</datalist>
+      <button class="sm primary">Rename</button>
+      <p class="small muted flush">Renames it everywhere: your routines, past workouts, its goal and the Strength chart. Use the name of another lift to merge the two.</p>
+    </form>
+  </details>
   <div class="lift-stats">
     <div title="Your heaviest single (one rep){{if .OneRM}}, {{monthDay .OneRMDay}}{{end}}"><b>{{or .OneRM "—"}}</b><span>actual 1RM{{if .OneRM}} ({{.Unit}}){{end}}</span></div>
     <div><b>{{or .Best "—"}}</b><span>best est. 1RM{{if .Best}} ({{.Unit}}){{end}}</span></div>

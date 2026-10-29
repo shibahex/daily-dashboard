@@ -125,6 +125,11 @@ button.tick.timing { background: var(--accent); border-color: var(--accent); col
 
 /* Progress and past workouts */
 .lift-pick { max-width: 60%; font-size: 13px; padding: 4px 8px; }
+.lift-rename { margin: -4px 0 10px; }
+.lift-rename summary { cursor: pointer; width: fit-content; }
+.lift-rename form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }
+.lift-rename .txt { flex: 1; min-width: 160px; }
+.lift-rename p { flex-basis: 100%; }
 .lift-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .lift-stats > div { background: var(--chip); border-radius: 8px; padding: 8px 10px; display: flex; flex-direction: column; }
 .lift-stats b { font-size: 18px; font-variant-numeric: tabular-nums; }

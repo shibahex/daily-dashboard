@@ -1207,6 +1207,76 @@ func (d Data) ExerciseNames() []string {
 	return names
 }
 
+// RenameExercise renames a lift everywhere it's kept: the routines (as an exercise or an
+// alternative), the workout in progress, past workouts, its goal, the Strength chart and its
+// MyFitnessPal match. Renaming it to a lift that already exists merges the two into one history;
+// the existing lift's goal and match win.
+func (d *Data) RenameExercise(from, to string) error {
+	from, to = cleanName(from), cleanName(to)
+	if to == "" {
+		return problem.Invalidf("type the lift's new name")
+	}
+	if !slices.ContainsFunc(d.ExerciseNames(), func(name string) bool { return sameExercise(name, from) }) {
+		return problem.NotFoundf("there's no lift by that name")
+	}
+	rename := func(name *string) {
+		if *name != "" && sameExercise(*name, from) {
+			*name = to
+		}
+	}
+	renameOptions := func(options []string, own string) []string {
+		for i := range options {
+			rename(&options[i])
+		}
+		return cleanOptions(options, own)
+	}
+	for r := range d.Routines {
+		for i := range d.Routines[r].Days {
+			for j := range d.Routines[r].Days[i].Exercises {
+				ex := &d.Routines[r].Days[i].Exercises[j]
+				rename(&ex.Name)
+				ex.Options = renameOptions(ex.Options, ex.Name)
+			}
+		}
+	}
+	workouts := make([]*Workout, 0, len(d.Workouts)+1)
+	for i := range d.Workouts {
+		workouts = append(workouts, &d.Workouts[i])
+	}
+	if d.Active != nil {
+		workouts = append(workouts, d.Active)
+		rename(&d.Active.RestAfter)
+	}
+	for _, w := range workouts {
+		for i := range w.Exercises {
+			ex := &w.Exercises[i]
+			rename(&ex.Name)
+			rename(&ex.Instead)
+			ex.Options = renameOptions(ex.Options, ex.Name)
+		}
+	}
+	if lb := d.Goal(from); lb > 0 {
+		d.Goals = slices.DeleteFunc(d.Goals, func(g Goal) bool { return sameExercise(g.Name, from) })
+		if d.Goal(to) == 0 {
+			d.Goals = append(d.Goals, Goal{Name: to, LB: lb})
+		}
+	}
+	if match, ok := d.MyFitnessPal.Matches[MatchKey(from)]; ok {
+		delete(d.MyFitnessPal.Matches, MatchKey(from))
+		if _, taken := d.MyFitnessPal.Matches[MatchKey(to)]; !taken {
+			d.MyFitnessPal.Matches[MatchKey(to)] = match
+		}
+	}
+	// The chart shows a lift once: a merge frees the second slot.
+	for i := range d.Strength.Lifts {
+		rename(&d.Strength.Lifts[i])
+		if slices.ContainsFunc(d.Strength.Lifts[:i], func(name string) bool { return name != "" && sameExercise(name, d.Strength.Lifts[i]) }) {
+			d.Strength.Lifts[i] = ""
+		}
+	}
+	return nil
+}
+
 // LoggedNames is every exercise of the finished workouts, sorted.
 func (d Data) LoggedNames() []string { return Data{Workouts: d.Workouts}.ExerciseNames() }
 
