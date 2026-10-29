@@ -255,6 +255,41 @@ func (s *session) goals(ctx context.Context, date string) (Nutrients, error) {
 
 // weighIns are the weigh-ins since from, oldest first, in pounds.
 func (s *session) weighIns(ctx context.Context, from string) ([]store.Weight, error) {
+	return s.weighInsBetween(ctx, from, time.Now().Format("2006-01-02"))
+}
+
+// A sync only brings in the last weightLookback days, so the weigh-ins from before are read once
+// (Syncer.importHistory): historyStep days a request, going back until historyGap days in a row
+// have none (or to when MyFitnessPal started).
+const (
+	historyStep  = 90
+	historyGap   = 2 * 365
+	historyStart = 2005
+)
+
+// weightHistory is every weigh-in MyFitnessPal has, oldest first, in pounds.
+func (s *session) weightHistory(ctx context.Context) ([]store.Weight, error) {
+	var all []store.Weight
+	to := time.Now()
+	for empty := 0; empty < historyGap && to.Year() >= historyStart; {
+		from := to.AddDate(0, 0, -(historyStep - 1))
+		found, err := s.weighInsBetween(ctx, from.Format("2006-01-02"), to.Format("2006-01-02"))
+		if err != nil {
+			return nil, err
+		}
+		if len(found) == 0 {
+			empty += historyStep
+		} else {
+			empty = 0
+		}
+		all = append(found, all...)
+		to = from.AddDate(0, 0, -1)
+	}
+	return all, nil
+}
+
+// weighInsBetween are the weigh-ins from one day to another, oldest first, in pounds.
+func (s *session) weighInsBetween(ctx context.Context, from, to string) ([]store.Weight, error) {
 	var answer struct {
 		Items []struct {
 			Date  string  `json:"date"`
@@ -262,7 +297,7 @@ func (s *session) weighIns(ctx context.Context, from string) ([]store.Weight, er
 			Unit  string  `json:"unit"`
 		}
 	}
-	if err := s.getJSON(ctx, "v2/measurements?type=weight&from="+from+"&to="+time.Now().Format("2006-01-02"), &answer); err != nil {
+	if err := s.getJSON(ctx, "v2/measurements?type=weight&from="+from+"&to="+to, &answer); err != nil {
 		return nil, err
 	}
 	seen := map[string]bool{}

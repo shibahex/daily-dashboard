@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"log"
+	"os"
+	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -16,6 +18,8 @@ const (
 	SyncEvery    = 10 * time.Minute // background sync
 	StaleAfter   = 5 * time.Minute  // a page asking for older data starts a sync
 	fetchTimeout = 90 * time.Second
+	// historyTimeout is for reading every older weigh-in once (about 80 requests for 20 years).
+	historyTimeout = 5 * time.Minute
 )
 
 // Cache is today's synced diary (data/mfp.json). Earlier days the Today tab looks at are kept in memory
@@ -41,6 +45,7 @@ type Syncer struct {
 	cachePath string
 	mu        sync.Mutex
 	busy      atomic.Bool
+	importing atomic.Bool // importHistory is running
 
 	pastMu   sync.Mutex
 	past     map[string]Cache // earlier days, by YYYY-MM-DD
@@ -90,7 +95,35 @@ func (s *Syncer) Sync() Cache {
 	defer s.unlock()
 	s.busy.Store(true)
 	data, err := s.client.Fetch(today())
+	if err == nil {
+		go s.importHistory()
+	}
 	return s.save(data, err)
+}
+
+// importHistory brings in every older weigh-in once, after the first sync that works: a sync
+// only covers the last weightLookback days. A marker next to the cache says it's done.
+func (s *Syncer) importHistory() {
+	marker := filepath.Join(filepath.Dir(s.cachePath), "myfitnesspal-weight-history.json")
+	if _, err := os.Stat(marker); err == nil || !s.importing.CompareAndSwap(false, true) {
+		return
+	}
+	defer s.importing.Store(false)
+	var weights []store.Weight
+	err := s.client.call(historyTimeout, func(ctx context.Context) (err error) {
+		weights, err = s.client.session().weightHistory(ctx)
+		return err
+	})
+	if err == nil {
+		err = s.store.MergeWeighIns(weights, today())
+	}
+	if err != nil {
+		log.Printf("importing older MyFitnessPal weigh-ins (tried again on the next sync): %v", err)
+		return
+	}
+	if err := jsonfile.Write(marker, map[string]any{"imported": today(), "weighIns": len(weights)}); err != nil {
+		log.Printf("saving the MyFitnessPal weigh-in import marker: %v", err)
+	}
 }
 
 // SyncInBackground starts a sync unless one is running.
