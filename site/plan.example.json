@@ -7,7 +7,7 @@
     { "label": "Sodium", "value": "≤ 2,300", "unit": "mg" },
     { "label": "Water", "value": "8", "unit": "cups" }
   ],
-  "weight": { "start": 180, "startDate": "2026-01-01", "target": "170", "best": 170 },
+  "weight": { "start": 0, "startDate": "", "target": "", "best": 0 },
   "checklist": [
     "Weigh in",
     "Log meals",

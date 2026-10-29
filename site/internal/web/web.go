@@ -97,6 +97,7 @@ func (ui *UI) Routes(mux *http.ServeMux) {
 	page("/cards/weight", ui.weightCard)
 	change("/cards/weight", ui.saveWeightPlan)
 	change("/weight", ui.logWeight)
+	change("/weight/range", ui.setWeightRange)
 	page("/cards/goals", ui.goalsCard)
 	change("/cards/goals", ui.saveGoals)
 	page("/cards/week", ui.weekCard)

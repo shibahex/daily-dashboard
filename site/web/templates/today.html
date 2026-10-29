@@ -77,18 +77,30 @@
   {{template "card-head" dict "Title" "Weight" "URL" "/cards/weight" "Editing" .Editing}}
   {{if .Editing}}
   <form class="editor" hx-post="/cards/weight" hx-target="closest .card" hx-swap="outerHTML">
-    <label class="lbl">Starting weight (lb)</label><input class="txt" name="start" value="{{pounds .Plan.Start}}">
+    <label class="lbl">Starting weight (lb)</label><input class="txt" name="start" value="{{if .Plan.Start}}{{pounds .Plan.Start}}{{end}}" placeholder="Blank: your first weigh-in on or after the start date">
     <label class="lbl">Start date</label><input class="txt" name="startDate" type="date" value="{{.Plan.StartDate}}">
-    <label class="lbl">Target</label><input class="txt" name="target" value="{{.Plan.Target}}">
-    <label class="lbl">Lowest ever (lb)</label><input class="txt" name="best" value="{{pounds .Plan.Best}}">
+    <label class="lbl">Target</label><input class="txt" name="target" value="{{.Plan.Target}}" placeholder="170, or a range like 165-175">
+    <label class="lbl">Lowest ever (lb)</label><input class="txt" name="best" value="{{if .Plan.Best}}{{pounds .Plan.Best}}{{end}}" placeholder="Blank: your lowest weigh-in">
     <div class="foot"><span></span><span><button type="button" class="sm" hx-get="/cards/weight" hx-target="closest .card" hx-swap="outerHTML">Cancel</button> <button class="sm primary">Save</button></span></div>
   </form>
   {{else}}
-  <div class="w-now{{if .Reached}} reached{{end}}"><span class="big">{{pounds .Current}} lb</span>{{if .Reached}}<span class="badge reached" title="Your latest weigh-in meets your target">✓ goal reached</span>{{end}}{{if .HasWeighIns}}<span class="small muted">weighed {{if .WeighedToday}}today{{else}}{{monthDay .LastWeighIn}}{{end}}</span>{{end}}</div>
+  <div class="w-now{{if .Reached}} reached{{end}}"><span class="big">{{if .Current}}{{pounds .Current}} lb{{else}}—{{end}}</span>{{if .Reached}}<span class="badge reached" title="Your latest weigh-in meets your target">✓ goal reached</span>{{end}}{{if .HasWeighIns}}<span class="small muted">weighed {{if .WeighedToday}}today{{else}}{{monthDay .LastWeighIn}}{{end}}</span>{{end}}</div>
   <div class="w-stats">
-    <div class="goal"><b class="{{if lt .Change 0.0}}delta-down{{else if gt .Change 0.0}}delta-up{{end}}">{{if eq .Change 0.0}}±0{{else if lt .Change 0.0}}▼ {{pounds (abs .Change)}}{{else}}▲ {{pounds .Change}}{{end}}</b><span>since {{monthDay .StartDate}}</span></div>
-    <div class="goal{{if .Reached}} reached{{end}}"><b>{{.Plan.Target}}</b><span>{{if .Reached}}target ✓{{else if .ToGo}}target · {{pounds .ToGo}} to go{{else}}target{{end}}</span></div>
-    <div class="goal"><b>{{pounds .Plan.Best}}</b><span>lowest</span></div>
+    {{if .HasStart}}<div class="goal"><b class="{{if lt .Change 0.0}}delta-down{{else if gt .Change 0.0}}delta-up{{end}}">{{if eq .Change 0.0}}±0{{else if lt .Change 0.0}}▼ {{pounds (abs .Change)}}{{else}}▲ {{pounds .Change}}{{end}}</b><span>since {{monthDay .StartDate}}</span></div>
+    {{else}}<div class="goal"><b>—</b><span>no weigh-ins then</span></div>{{end}}
+    <div class="goal{{if .Reached}} reached{{end}}"><b>{{or .Plan.Target "—"}}</b><span>{{if .Reached}}target ✓{{else if .ToGo}}target · {{pounds .ToGo}} to go{{else}}target{{end}}</span></div>
+    <div class="goal"><b>{{if .Lowest}}{{pounds .Lowest}}{{else}}—{{end}}</b><span>lowest</span></div>
+  </div>
+  <div class="w-range">
+    <span class="w-step">
+      <button type="button" class="icon" title="Shorter" aria-label="Shorter range"{{if .Shorter}} hx-post="/weight/range" hx-vals='{"range": "{{.Shorter}}"}' hx-target="closest .card" hx-swap="outerHTML"{{else}} disabled{{end}}>‹</button>
+      <b>{{.Range.Label}}</b>
+      <button type="button" class="icon" title="Longer" aria-label="Longer range"{{if .Longer}} hx-post="/weight/range" hx-vals='{"range": "{{.Longer}}"}' hx-target="closest .card" hx-swap="outerHTML"{{else}} disabled{{end}}>›</button>
+    </span>
+    {{with .Average}}{{if .Count}}<span class="w-summary small">
+      <span class="muted" title="{{.Count}} {{plural .Count "weigh-in" "weigh-ins"}}">avg</span> <b>{{pounds .Average}}</b>
+      <span class="trend trend-{{or .Trend "none"}}" title="{{if .Trend}}A straight line through these weigh-ins{{else}}Weigh in on another day to see the trend{{end}}">{{if eq .Trend "losing"}}▼ Losing{{else if eq .Trend "gaining"}}▲ Gaining{{else if eq .Trend "stable"}}● Stable{{end}}{{if .Trend}} <span class="muted">{{if gt .PerWeek 0.0}}+{{end}}{{pounds .PerWeek}} lb/wk</span>{{end}}</span>
+    </span>{{end}}{{end}}
   </div>
   {{with .Trend}}
   <div class="spark-wrap">
@@ -97,7 +109,7 @@
   </div>
   <div class="small muted spread"><span>{{monthDay .From}}</span><span>{{monthDay .To}}</span></div>
   {{else}}
-  <p class="small muted note">Log a few weigh-ins to see your trend.</p>
+  <p class="small muted note">Log weigh-ins on two days or more in this range to see the chart.</p>
   {{end}}
   <form class="weight-row w-log" hx-post="/weight" hx-target="closest .card" hx-swap="outerHTML">
     <input class="txt" name="lb" type="number" step="0.1" placeholder="{{capitalize .DayName}}" value="{{if .TodayLB}}{{pounds .TodayLB}}{{end}}"><span class="muted">lb</span>

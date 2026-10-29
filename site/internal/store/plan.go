@@ -34,6 +34,9 @@ type WeightPlan struct {
 	Best      float64  `json:"best"`
 	// NoMyFitnessPal keeps new weigh-ins out of MyFitnessPal (the Weight card's checkbox, unticked).
 	NoMyFitnessPal bool `json:"noMyFitnessPal,omitempty"`
+	// Range is what the card's chart, change, average and trend cover: "7d", "14d", "30d",
+	// "3m" (the default), "6m", "1y", "3y" or "all".
+	Range string `json:"range,omitempty"`
 }
 
 // Session is one kind of training day.
@@ -161,6 +164,32 @@ func (w WeightPlan) TargetRange() (low, high float64, ok bool) {
 		low, high = high, low
 	}
 	return low, high, low > 0
+}
+
+// WithStart fills in the starting weight from the weigh-ins when none is set: the first one on or
+// after the start date (any, without a date). Then "since" counts from a weight you logged.
+func (w WeightPlan) WithStart(weights []Weight) WeightPlan {
+	if w.Start > 0 {
+		return w
+	}
+	for _, weight := range weights {
+		if weight.Date >= w.StartDate {
+			w.Start, w.StartDate = weight.LB, weight.Date
+			break
+		}
+	}
+	return w
+}
+
+// Lowest is the lowest weight: the plan's "lowest ever" or a lower weigh-in, 0 with neither.
+func (w WeightPlan) Lowest(weights []Weight) float64 {
+	lowest := w.Best
+	for _, weight := range weights {
+		if weight.LB > 0 && (lowest == 0 || weight.LB < lowest) {
+			lowest = weight.LB
+		}
+	}
+	return lowest
 }
 
 // TargetReached says whether a weight meets the plan's target: inside a range, or at or past a

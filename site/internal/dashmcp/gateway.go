@@ -403,7 +403,7 @@ func (g *Gateway) overview(typed string) (string, error) {
 		"reminders": plan.Notes, "goals": plan.Goals,
 	}
 	if len(weights) > 0 {
-		answer["weight"].(map[string]any)["target_reached"] = store.TargetReached(weights[len(weights)-1].LB, plan.Weight)
+		answer["weight"].(map[string]any)["target_reached"] = store.TargetReached(weights[len(weights)-1].LB, plan.Weight.WithStart(weights))
 	}
 	if active := g.ws.Lifting.Load().Active; active != nil {
 		answer["workout_in_progress"] = active.Title

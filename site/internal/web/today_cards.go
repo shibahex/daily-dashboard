@@ -6,6 +6,7 @@ import (
 	"math"
 	"net/http"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -304,15 +305,111 @@ type weightCardView struct {
 	WeighedToday bool
 	TodayLB      float64 // the shown day's weigh-in
 	DayName      string  // "today", "yesterday", "Mon, Oct 19"
-	Change       float64 // since the plan's start
-	StartDate    time.Time
+	Change       float64 // from the range's first weigh-in to its last
+	HasStart     bool    // there's a weigh-in in the range
+	Lowest       float64
+	StartDate    time.Time // the range's first weigh-in
 	Trend        *sparkline
+	Range        choice // what the card covers
+	Shorter      string // the ranges the ‹ and › arrows step to ("" at either end)
+	Longer       string
 	Reached      bool    // the latest weight meets the target
 	ToGo         float64 // lb left to the target (0 when reached or there's none)
 	MyFitnessPal bool    // MyFitnessPal is connected, so the card asks whether to send weigh-ins there
+	Average      weightAverage
 }
 
-// sparkline is the weight trend over the last 90 days.
+// weightRanges are what the Weight card covers: its chart, the change, the average and the trend.
+var weightRanges = []choice{{"7d", "Past week"}, {"14d", "Past 2 weeks"}, {"30d", "Last 30 days"},
+	{"3m", "Last 3 months"}, {"6m", "Last 6 months"}, {"1y", "Last year"}, {"3y", "Last 3 years"}, {"all", "All time"}}
+
+// weightRangeDays are the range's first and last days (YYYY-MM-DD; from is "" for all of them).
+// Each ends today: the past week is today and the 6 days before.
+func weightRangeDays(id string, now time.Time) (from, to string) {
+	today := startOfDay(now)
+	start := today.AddDate(0, -3, 0)
+	switch id {
+	case "7d":
+		start = today.AddDate(0, 0, -6)
+	case "14d":
+		start = today.AddDate(0, 0, -13)
+	case "30d":
+		start = today.AddDate(0, 0, -29)
+	case "6m":
+		start = today.AddDate(0, -6, 0)
+	case "1y":
+		start = today.AddDate(-1, 0, 0)
+	case "3y":
+		start = today.AddDate(-3, 0, 0)
+	case "all":
+		return "", today.Format(dayLayout)
+	}
+	return start.Format(dayLayout), today.Format(dayLayout)
+}
+
+// weighInsBetween are the weigh-ins from one day to another, both included.
+func weighInsBetween(weights []store.Weight, from, to string) []store.Weight {
+	var kept []store.Weight
+	for _, w := range weights {
+		if w.Date >= from && w.Date <= to {
+			kept = append(kept, w)
+		}
+	}
+	return kept
+}
+
+// weightAverage is a range's weigh-ins: their average and which way they're heading.
+type weightAverage struct {
+	Count   int
+	Average float64
+	PerWeek float64 // the trend line's slope, lb a week
+	Trend   string  // "stable", "losing" or "gaining"; "" with weigh-ins on fewer than two days
+}
+
+// The trend is stable when it moves less than stableWeek lb a week (less than a day's water)
+// and less than stableTotal lb over the whole range (a long one adds up).
+const stableWeek, stableTotal = 0.3, 2.0
+
+// weightAverageOf averages the weigh-ins and fits a straight line through them for the trend.
+func weightAverageOf(points []store.Weight) weightAverage {
+	view := weightAverage{Count: len(points)}
+	if view.Count == 0 {
+		return view
+	}
+	first, _ := time.ParseInLocation(dayLayout, points[0].Date, time.Local)
+	days, lbs := make([]float64, 0, len(points)), make([]float64, 0, len(points))
+	for _, w := range points {
+		day, _ := time.ParseInLocation(dayLayout, w.Date, time.Local)
+		days = append(days, day.Sub(first).Hours()/24)
+		lbs = append(lbs, w.LB)
+	}
+	meanDay, meanLB := 0.0, 0.0
+	for i := range lbs {
+		meanDay += days[i] / float64(view.Count)
+		meanLB += lbs[i] / float64(view.Count)
+	}
+	view.Average = math.Round(meanLB*10) / 10
+	spread, together := 0.0, 0.0
+	for i := range lbs {
+		spread += (days[i] - meanDay) * (days[i] - meanDay)
+		together += (days[i] - meanDay) * (lbs[i] - meanLB)
+	}
+	if spread == 0 { // one day
+		return view
+	}
+	view.PerWeek = math.Round(together/spread*7*10) / 10
+	switch {
+	case math.Abs(view.PerWeek) < stableWeek && math.Abs(together/spread*(days[len(days)-1]-days[0])) < stableTotal:
+		view.Trend = "stable"
+	case view.PerWeek < 0:
+		view.Trend = "losing"
+	default:
+		view.Trend = "gaining"
+	}
+	return view
+}
+
+// sparkline is the weight trend over the chart's range.
 type sparkline struct {
 	Path     string
 	From, To time.Time
@@ -342,9 +439,23 @@ func (ui *UI) weightView(r *http.Request, editing bool) (weightCardView, error) 
 	weights := ui.ws(r).Store.Weights()
 	today := time.Now().Format("2006-01-02")
 	shown := shownDay(r)
-	view := weightCardView{Editing: editing, Plan: plan.Weight, Current: plan.Weight.Start, DayName: dayName(shown),
-		MyFitnessPal: ui.ws(r).MyFitnessPal.Client().Setup().SignedIn}
-	view.StartDate, _ = time.ParseInLocation("2006-01-02", plan.Weight.StartDate, time.Local)
+	start := plan.Weight.WithStart(weights) // which way the target is
+	view := weightCardView{Editing: editing, Plan: plan.Weight, Current: start.Start, DayName: dayName(shown),
+		MyFitnessPal: ui.ws(r).MyFitnessPal.Client().Setup().SignedIn, Lowest: plan.Weight.Lowest(weights),
+	}
+	at := slices.IndexFunc(weightRanges, func(c choice) bool { return c.ID == plan.Weight.Range })
+	if at < 0 {
+		at = slices.IndexFunc(weightRanges, func(c choice) bool { return c.ID == "3m" })
+	}
+	view.Range = weightRanges[at]
+	if at > 0 {
+		view.Shorter = weightRanges[at-1].ID
+	}
+	if at < len(weightRanges)-1 {
+		view.Longer = weightRanges[at+1].ID
+	}
+	from, to := weightRangeDays(view.Range.ID, time.Now())
+	points := weighInsBetween(weights, from, to)
 	if len(weights) > 0 {
 		last := weights[len(weights)-1]
 		view.Current, view.HasWeighIns = last.LB, true
@@ -356,20 +467,34 @@ func (ui *UI) weightView(r *http.Request, editing bool) (weightCardView, error) 
 			view.TodayLB = w.LB
 		}
 	}
-	view.Change = math.Round((view.Current-plan.Weight.Start)*10) / 10
-	view.Reached, view.ToGo = store.TargetReached(view.Current, plan.Weight), store.ToGo(view.Current, plan.Weight)
-	view.Trend = weightTrend(weights, time.Now().AddDate(0, 0, -90).Format("2006-01-02"))
+	if len(points) > 0 {
+		first, last := points[0], points[len(points)-1]
+		view.HasStart = true
+		view.Change = math.Round((last.LB-first.LB)*10) / 10
+		view.StartDate, _ = time.ParseInLocation(dayLayout, first.Date, time.Local)
+	}
+	view.Reached, view.ToGo = store.TargetReached(view.Current, start), store.ToGo(view.Current, start)
+	view.Trend = weightTrend(points)
+	view.Average = weightAverageOf(points)
 	return view, nil
 }
 
-// weightTrend draws the weigh-ins since `since` as an SVG path (300×60), or nil with fewer than two.
-func weightTrend(weights []store.Weight, since string) *sparkline {
-	var points []store.Weight
-	for _, w := range weights {
-		if w.Date >= since {
-			points = append(points, w)
-		}
+// setWeightRange picks what the Weight card covers, and remembers it.
+func (ui *UI) setWeightRange(w http.ResponseWriter, r *http.Request) {
+	id := formText(r, "range")
+	if !slices.ContainsFunc(weightRanges, func(c choice) bool { return c.ID == id }) {
+		fail(w, problem.Invalidf("pick how far back the card goes"))
+		return
 	}
+	if err := ui.ws(r).Store.UpdatePlan(func(plan *store.Plan) { plan.Weight.Range = id }); err != nil {
+		fail(w, err)
+		return
+	}
+	ui.weightCard(w, r)
+}
+
+// weightTrend draws the weigh-ins as an SVG path (300×60), or nil with fewer than two.
+func weightTrend(points []store.Weight) *sparkline {
 	if len(points) < 2 {
 		return nil
 	}
@@ -381,15 +506,24 @@ func weightTrend(weights []store.Weight, since string) *sparkline {
 	const width, height = 300.0, 60.0
 	var path strings.Builder
 	trend := &sparkline{}
+	// Placed by date, so a stretch without weigh-ins shows as one.
+	dayOf := func(w store.Weight) time.Time {
+		day, _ := time.ParseInLocation(dayLayout, w.Date, time.Local)
+		return day
+	}
+	first, span := dayOf(points[0]), dayOf(points[len(points)-1]).Sub(dayOf(points[0]))
 	for i, p := range points {
+		day := dayOf(p)
 		x := float64(i) / float64(len(points)-1) * width
+		if span > 0 {
+			x = float64(day.Sub(first)) / float64(span) * width
+		}
 		y := height - (p.LB-low)/(high-low)*height
 		command := "L"
 		if i == 0 {
 			command = "M"
 		}
 		fmt.Fprintf(&path, "%s%.1f,%.1f ", command, x, y)
-		day, _ := time.ParseInLocation("2006-01-02", p.Date, time.Local)
 		trend.Points = append(trend.Points, sparkPoint{Left: x / width * 100, Top: y / height * 100, Day: day, LB: p.LB})
 	}
 	trend.Path = strings.TrimSpace(path.String())
@@ -406,19 +540,23 @@ func (ui *UI) weightCard(w http.ResponseWriter, r *http.Request) {
 	ui.render(w, "card-weight", view)
 }
 
-// saveWeightPlan saves the starting weight, start date, target and lowest weight.
+// saveWeightPlan saves the starting weight, start date, target and lowest weight. A blank one is
+// cleared: the card then goes by the weigh-ins.
 func (ui *UI) saveWeightPlan(w http.ResponseWriter, r *http.Request) {
-	err := ui.ws(r).Store.UpdatePlan(func(plan *store.Plan) {
-		if start, err := strconv.ParseFloat(formText(r, "start"), 64); err == nil && start > 0 {
-			plan.Weight.Start = start
+	weight := func(field string) float64 {
+		value, err := strconv.ParseFloat(formText(r, field), 64)
+		if err != nil || value <= 0 {
+			return 0
 		}
-		if date := formText(r, "startDate"); date != "" {
+		return value
+	}
+	err := ui.ws(r).Store.UpdatePlan(func(plan *store.Plan) {
+		plan.Weight.Start, plan.Weight.Best = weight("start"), weight("best")
+		plan.Weight.StartDate = ""
+		if date := formText(r, "startDate"); isDay(date) {
 			plan.Weight.StartDate = date
 		}
 		plan.Weight.Target = store.FlexText(formText(r, "target"))
-		if best, err := strconv.ParseFloat(formText(r, "best"), 64); err == nil && best > 0 {
-			plan.Weight.Best = best
-		}
 	})
 	if err != nil {
 		fail(w, err)
@@ -667,4 +805,10 @@ func (ui *UI) saveNotes(w http.ResponseWriter, r *http.Request) {
 	announce(w, say("Reminders saved"), planChanged)
 	view, _ := ui.notesView(r, false, nil)
 	ui.render(w, "card-notes", view)
+}
+
+// isDay says whether text is a YYYY-MM-DD day.
+func isDay(text string) bool {
+	_, err := time.Parse(dayLayout, text)
+	return err == nil
 }
