@@ -17,6 +17,9 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	// Go finds the TZ zone only in system folders like /usr/share/zoneinfo, which the container
+	// doesn't have; without this copy TZ falls back to UTC and "today" starts at UTC midnight.
+	_ "time/tzdata"
 
 	"dashboard/internal/anki"
 	"dashboard/internal/api"
