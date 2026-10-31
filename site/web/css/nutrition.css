@@ -18,21 +18,35 @@
 .limit span { display: block; font-size: 12px; line-height: 1.35; color: var(--muted); }
 .limit.bad { background: var(--warn-soft); } .limit.bad b { color: var(--warn); }
 .limit.good b { color: var(--accent); }
-.meals details { border-top: 1px solid var(--line); padding: 6px 0; }
-.meals summary { cursor: pointer; display: flex; justify-content: space-between; gap: 8px; font-size: 14px; list-style: none; }
+.meals details { border-top: 1px solid var(--line); padding: 8px 0; }
+.meals summary { cursor: pointer; display: flex; align-items: baseline; gap: 8px; font-size: 14px; list-style: none; border-radius: 6px; }
 .meals summary::-webkit-details-marker { display: none; }
-.meals summary::before { content: "▸"; color: var(--muted); margin-right: 6px; }
+.meals summary::before { content: "▸"; color: var(--muted); width: 12px; flex: none; }
 .meals details[open] summary::before { content: "▾"; }
-.meals summary span:first-child { flex: 1; }
-.meals summary span:last-child, .food .k { color: var(--muted); font-variant-numeric: tabular-nums; }
-.food { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; padding: 3px 0 3px 16px; }
-.food .n { min-width: 0; overflow-wrap: anywhere; } .food .n small { color: var(--muted); display: block; }
-.food .k { white-space: nowrap; text-align: right; }
-.food .n { flex: 1; }
-.food-btns { display: flex; gap: 4px; align-items: flex-start; }
-.food-btns .icon { width: 26px; height: 26px; font-size: 12px; }
-.meal-add { padding: 2px 0 4px 16px; }
-.meal-add button { background: none; border: 0; padding: 2px 0; color: var(--accent); font: inherit; font-size: 13px; cursor: pointer; }
+.meals summary span:first-child { flex: 1; font-weight: 600; }
+.meals summary span:last-child { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+.meals summary span:last-child b { color: var(--ink); font-weight: 600; }
+.meals summary span:last-child small { margin-left: 8px; font-size: 12px; }
+.meals details[open] summary { margin-bottom: 4px; }
+.food { display: flex; align-items: center; gap: 10px; font-size: 13px; padding: 7px 6px 7px 8px; margin-left: 12px; border-radius: 8px; }
+.food { position: relative; }
+.food + .food::before { content: ""; position: absolute; top: 0; left: 8px; right: 6px; border-top: 1px solid var(--line); }
+.food:hover { background: var(--chip); }
+.food:hover::before, .food:hover + .food::before { display: none; }
+.food .n { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: 14px; line-height: 1.35; }
+.food .n small { color: var(--muted); display: block; font-size: 12px; margin-top: 1px; }
+.food .k { white-space: nowrap; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; line-height: 1.35; }
+.food .k b { color: var(--ink); font-weight: 600; font-size: 14px; }
+.food .k small { display: block; font-size: 12px; margin-top: 1px; }
+.food-btns { display: flex; gap: 2px; align-items: center; opacity: .45; transition: opacity .15s; }
+.food:hover .food-btns, .food:focus-within .food-btns { opacity: 1; }
+.food-btns .icon { width: 30px; height: 30px; font-size: 13px; border-color: transparent; background: none; }
+.food-btns .icon:hover { background: var(--panel); border-color: var(--line); }
+.food-btns .icon.del:hover { background: var(--warn-soft); border-color: transparent; }
+@media (hover: none) { .food-btns { opacity: 1; } }
+.meal-add { display: flex; gap: 16px; flex-wrap: wrap; padding: 6px 0 2px 20px; }
+.meal-add button { background: none; border: 0; padding: 2px 0; color: var(--accent); font: inherit; font-size: 13px; font-weight: 500; cursor: pointer; }
+.meal-add button:hover { text-decoration: underline; text-underline-offset: 3px; }
 .food-panel { flex-direction: column; align-items: stretch; gap: 8px; }
 .food-panel [hidden] { display: none !important; }
 .food-panel .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }

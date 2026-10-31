@@ -40,10 +40,10 @@
 {{end}}</div>
 <div class="meals">{{range $i, $meal := .Meals}}
   <details data-meal="{{.Name}}">
-    <summary><span>{{.Name}}</span><span>{{if .Entries}}{{number .Totals.Calories}} kcal · {{number .Totals.Protein}}p {{number .Totals.Carbohydrates}}c {{number .Totals.Fat}}f{{else}}—{{end}}</span></summary>
+    <summary><span>{{.Name}}</span><span>{{if .Entries}}<b>{{number .Totals.Calories}}</b> kcal<small>{{number .Totals.Protein}}p {{number .Totals.Carbohydrates}}c {{number .Totals.Fat}}f</small>{{else}}—{{end}}</span></summary>
     {{range .Entries}}
     <div class="food"><span class="n">{{.Name}}<small>{{.Amount}}</small></span>
-      <span class="k">{{number .Totals.Calories}} kcal<br>{{number .Totals.Protein}}p {{number .Totals.Carbohydrates}}c {{number .Totals.Fat}}f</span>
+      <span class="k"><b>{{number .Totals.Calories}}</b> kcal<small>{{number .Totals.Protein}}p {{number .Totals.Carbohydrates}}c {{number .Totals.Fat}}f</small></span>
       {{if .EntryID}}<span class="food-btns">
         <button class="icon" hx-get="/food/{{.EntryID}}/edit" hx-target="#food-slot-{{$i}}" title="Change amount, serving or meal">✎</button>
         <button class="icon del" hx-post="/food/{{.EntryID}}/delete" hx-target="closest .card" hx-swap="outerHTML" hx-confirm="Remove {{.Name}} from your MyFitnessPal diary for {{$.DayName}}?" title="Remove">✕</button></span>{{end}}
