@@ -1,6 +1,13 @@
 // The little the server can't do: toasts, keyboard shortcuts, dragging Today's cards, the
 // workout clocks, and remembering which meals are open. Everything else is HTMX (see web/templates).
 
+// ---------- installing as an app ----------
+// Chrome and Samsung Internet offer "Install app" once a service worker is running (web/js/sw.js).
+
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("/sw.js").catch(() => {});
+}
+
 // ---------- toasts ----------
 // The server sends {"toast": {message, bad, undo}} in HX-Trigger; errors come back as plain text.
 

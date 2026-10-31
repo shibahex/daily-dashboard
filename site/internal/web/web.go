@@ -45,6 +45,8 @@ func (ui *UI) Routes(mux *http.ServeMux) {
 	change := func(pattern string, handler http.HandlerFunc) { mux.HandleFunc("POST "+pattern, fromHTMX(handler)) }
 
 	mux.Handle("GET /static/", http.StripPrefix("/static/", staticFiles(ui.Paths.Web)))
+	page("/manifest.webmanifest", ui.webManifest)
+	page("/sw.js", ui.serviceWorker)
 
 	// Account: setup and login are plain forms (signed out, outside the page frame).
 	page("/setup", ui.setupPage)

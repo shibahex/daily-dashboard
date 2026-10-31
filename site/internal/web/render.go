@@ -149,9 +149,9 @@ func (ui *UI) renderPage(r *http.Request, w http.ResponseWriter, tab, title, con
 
 // ---------- static files ----------
 
-var staticName = regexp.MustCompile(`^(css|js)/[\w-]+\.(css|js)$`)
+var staticName = regexp.MustCompile(`^(css/[\w-]+\.css|js/[\w-]+\.js|icons/[\w-]+\.(png|svg))$`)
 
-// staticFiles serves web/css and web/js, and nothing else.
+// staticFiles serves web/css, web/js and web/icons, and nothing else.
 func staticFiles(webDir string) http.Handler {
 	files := http.FileServer(http.Dir(webDir))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

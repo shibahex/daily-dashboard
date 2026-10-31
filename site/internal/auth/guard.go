@@ -95,10 +95,11 @@ func tokenFrom(r *http.Request) string {
 	return strings.TrimSpace(token)
 }
 
-// isPublic is what can be seen signed out: the login, setup and invite pages and the styles
-// they use.
+// isPublic is what can be seen signed out: the login, setup and invite pages, the styles and
+// icons they use, and what installing the dashboard as an app needs.
 func isPublic(path string) bool {
-	return path == "/login" || path == "/setup" || path == "/invite" || strings.HasPrefix(path, "/static/")
+	return path == "/login" || path == "/setup" || path == "/invite" || strings.HasPrefix(path, "/static/") ||
+		path == "/manifest.webmanifest" || path == "/sw.js"
 }
 
 // Guard lets a request through when it's public, has a session, or (for /api/) has a plugin

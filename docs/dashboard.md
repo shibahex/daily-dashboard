@@ -108,6 +108,16 @@ In Nginx Proxy Manager: a proxy host for `health.example.com` that forwards to `
 - No image for your machine (it's built for x86-64) or offline? `docker compose up -d --build` builds it from the `Dockerfile`, with Nix, in a few minutes.
 - With Nix, `nix build ./site#image && ./result | docker load` makes the same image GitHub publishes, with a layer per package.
 
+## Installing it as an app
+
+On a phone or computer the dashboard can be installed like an app, with its own icon and window. It needs HTTPS (or `localhost`), like any web app.
+
+- **Chrome (Android, including Samsung phones):** open the dashboard, then **⋮ → Add to home screen → Install** (or **Install app**).
+- **Samsung Internet:** open the dashboard, then the **download icon** in the address bar, or **≡ → Add page to → Apps screen** (or **Home screen**).
+- **Chrome on a computer:** the install icon at the right of the address bar.
+
+The app shows the same pages from the server. It keeps nothing offline: without a connection it says so instead.
+
 ## MyFitnessPal
 
 The **Nutrition today** card shows what you've eaten against your MyFitnessPal goals: calories (goal − food + exercise), protein/carbs/fat, where the calories came from, the cholesterol-related limits (sat fat, fiber, sodium, cholesterol, sugar, potassium) and each meal's foods.
