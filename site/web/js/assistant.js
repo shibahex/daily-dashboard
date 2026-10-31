@@ -22,7 +22,9 @@
   // A PDF (only Claude reads them): one a message. The AI keeps the last one while the page is
   // open; the saved chat has a note in its place, since a PDF would take most of the room it has.
   const MAX_PDF = 10 * 1024 * 1024;
-  const SERVER_FILE_TEXT = 60 * 1024; // characters of files in one message to an AI on the server, which gets it as one argument
+  const SERVER_FILE_TEXT = 60 * 1024; // characters of text files in one message to an AI on the server
+  // What the AIs on the server can take besides text files (assistant.AttachmentKinds on the server).
+  const SERVER_ATTACH = { "claude-code": ["image", "pdf"], codex: ["image"], gemini: [] };
 
   let root, setup, tools = [], chat = { messages: [], api: [] }, version = 0, key = null, busy = null, saving = null;
   // answering is the answer under way (it settles once it has stopped and saved); current is its reply.
@@ -245,14 +247,18 @@
 
   // answerOnServer sends the message, the notes and the key to the server, which runs the AI and
   // streams its answer back as JSON lines.
-  async function answerOnServer(question, files = []) {
+  async function answerOnServer(question, items = []) {
     const reply = current = { role: "assistant", text: "", tools: [] };
     const same = chat.server?.provider === setup.provider;
     const history = same ? "" : historyText();
-    chat.messages.push({ role: "user", text: question, ...shownFiles(files) }, reply);
-    // The files go in the message, as text.
-    const message = [...files.map(f => fileText(f.name, f.text + (f.cut ? "\n[The file goes on: only its start was sent.]" : ""))),
-      question || "(The user sent the files above without a message.)"].join("\n\n");
+    const images = items.filter(i => i.kind === "image"), files = items.filter(i => i.kind !== "image");
+    const texts = files.filter(f => f.kind === "text"), pdfs = files.filter(f => f.kind === "pdf");
+    chat.messages.push({ role: "user", text: question, ...(images.length ? { images: images.map(i => i.thumb) } : {}), ...shownFiles(files) }, reply);
+    // Text files go in the message; images and PDFs alongside it, for the CLI to take in.
+    const message = [...texts.map(f => fileText(f.name, f.text + (f.cut ? "\n[The file goes on: only its start was sent.]" : ""))),
+      question || "(The user sent what's attached without a message.)"].join("\n\n");
+    const attachments = [...images.map((i, n) => ({ kind: "image", name: `image ${n + 1}.jpg`, mediaType: i.mediaType, data: i.data })),
+      ...pdfs.map(f => ({ kind: "pdf", name: f.name, mediaType: "application/pdf", data: f.data }))];
     busy = new AbortController();
     renderAll();
     let changedNotes = [], newParagraph = false, drawing = false;
@@ -266,7 +272,7 @@
       const fields = {
         provider: setup.provider, model: setup.model || "", message, history, now: nowText(),
         session: same ? chat.server.session || "" : "", key: serverKeys[setup.provider][0]() || "",
-        notes: JSON.stringify(notes),
+        notes: JSON.stringify(notes), attachments: attachments.length ? JSON.stringify(attachments) : "",
       };
       for (const [k, v] of Object.entries(fields)) body.set(k, v);
       const response = await fetch("/assistant/run", { method: "POST", body, signal: busy.signal, headers: { "HX-Request": "true" } });
@@ -307,7 +313,8 @@
     } catch (e) {
       reply.error = e.name === "AbortError" ? "Stopped" : e.message;
     } finally {
-      chat.api.push({ role: "user", content: files.length ? [...files.map(fileBlock), { type: "text", text: question || "(The files above.)" }] : question });
+      chat.api.push({ role: "user", content: items.length
+        ? [...images.map(imageBlock), ...files.map(fileBlock), { type: "text", text: question || "(What's attached.)" }] : question });
       if (reply.text) chat.api.push({ role: "assistant", content: reply.text });
       chat.api = validHistory(chat.api);
       busy = current = null;
@@ -466,8 +473,13 @@
   function whyNot(item) {
     if (!setup) return "";
     const ai = shortNames[setup.provider];
-    if (item.kind === "image" && onServer()) return `${ai} can't see images: pick Claude API or a local model`;
-    if (item.kind === "pdf" && setup.provider !== "claude") return `${ai} can't read PDFs: pick Claude API, or send the text`;
+    if (item.kind === "text") return "";
+    if (onServer()) {
+      if ((SERVER_ATTACH[setup.provider] || []).includes(item.kind)) return "";
+      return item.kind === "image" ? `${ai} can't see images: pick Claude Code, Codex, Claude API or a local model`
+        : `${ai} can't read PDFs: pick Claude Code or Claude API, or send the text`;
+    }
+    if (item.kind === "pdf" && setup.provider !== "claude") return `${ai} can't read PDFs: pick Claude API or Claude Code, or send the text`;
     return "";
   }
 
@@ -807,8 +819,8 @@
   const shownFiles = files => files.length ? { files: files.map(f => ({ name: f.name, size: f.size, ...(f.cut ? { cut: true } : {}) })) } : {};
 
   async function answer(question, items = []) {
+    if (onServer()) return answerOnServer(question, items);
     const images = items.filter(i => i.kind === "image"), files = items.filter(i => i.kind !== "image");
-    if (onServer()) return answerOnServer(question, files);
     const reply = current = { role: "assistant", text: "", tools: [] };
     chat.messages.push({ role: "user", text: question, ...(images.length ? { images: images.map(i => i.thumb) } : {}), ...shownFiles(files) }, reply);
     chat.api.push({ role: "user", content: items.length
@@ -1175,7 +1187,7 @@
       const problem = attached.map(whyNot).find(Boolean);
       if (problem) return toast(problem, { bad: true });
       if (onServer()) {
-        const size = attached.reduce((sum, f) => sum + f.text.length, 0);
+        const size = attached.filter(f => f.kind === "text").reduce((sum, f) => sum + f.text.length, 0);
         if (size > SERVER_FILE_TEXT) return toast(`${shortNames[setup.provider]} takes up to ${Math.round(SERVER_FILE_TEXT / 1024)}K characters of files a message: send fewer or smaller files`, { bad: true });
       }
       const items = attached;

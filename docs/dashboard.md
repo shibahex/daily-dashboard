@@ -174,9 +174,10 @@ A chat with an AI that knows your notes, plan and data and can use your MyFitnes
 
 **Images and files:** add them to a message with the paperclip, by pasting or by dropping them on the message box, up to 6 a message. They go straight from your browser to the AI like the rest of the chat.
 
-- **Images** (a photo of a meal or a label, a screenshot), with Claude or a local model: your browser shrinks them to 1568 pixels a side. The chat keeps the last 4 so the AI can look at them again; older ones stay only as small previews. A local model needs to understand images (a vision model).
+- **Images** (a photo of a meal or a label, a screenshot), with Claude, a local model, Claude Code or Codex: your browser shrinks them to 1568 pixels a side. The chat keeps the last 4 so the AI can look at them again; older ones stay only as small previews. A local model needs to understand images (a vision model).
 - **Text files** (code, CSV, Markdown, JSON, logs…), with any AI: up to 100,000 characters each; past that only the start goes. The AIs on the server get them in the message, up to 60,000 characters in all. The chat keeps the last 3.
-- **PDFs**, with Claude only: one a message, up to 10 MB. Claude keeps the last one while the page is open, so you can ask more about it; the saved chat keeps only its name, so after a reload send it again.
+- **PDFs**, with Claude or Claude Code: one a message, up to 10 MB. Claude keeps the last one while the page is open, so you can ask more about it (Claude Code keeps it in its own record of the conversation); the saved chat keeps only its name, so after a reload send it again to Claude.
+- The AIs on the server get images and PDFs alongside the message: Claude Code in its input, Codex as image files in its sandbox, deleted when it has answered. Gemini CLI takes text files only.
 - Other files (Word documents, spreadsheets, zips) can't go: save them as text, CSV or PDF first.
 
 **Allow first:** the AI in your browser asks before every tool call that changes something (logging food, adding a card or task, ticking the checklist, saving a note…): a card under its reply shows what it wants to do, with **Allow**, **Allow all for this answer** and **Deny**. Tools that only read run without asking. Stop counts as Deny. The AIs on the server (Claude Code, Codex, Gemini CLI) don't ask yet.

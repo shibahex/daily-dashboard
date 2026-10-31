@@ -18,6 +18,7 @@ import (
 	"dashboard/internal/problem"
 	"dashboard/internal/sandbox"
 	"dashboard/internal/taskwarrior"
+	"dashboard/internal/text"
 	"dashboard/internal/workspace"
 )
 
@@ -68,7 +69,53 @@ type sealedNote struct {
 	Text  string `json:"text"`
 }
 
-const maxRunBody = 8 << 20
+// maxRunBody is a message with its notes and attachments: a PDF can be 10 MB, which is 13 MB
+// once the browser has written it as base64.
+const maxRunBody = 32 << 20
+
+// Attachments to a message to an AI on the server: up to 6, an image up to 5 MB, a PDF up to 10 MB
+// (what web/js/assistant.js sends).
+const (
+	maxAttachments = 6
+	maxImageBytes  = 5 << 20
+	maxPDFBytes    = 10 << 20
+)
+
+// attachmentTypes are the media types each kind may have.
+var attachmentTypes = map[string][]string{
+	"image": {"image/jpeg", "image/png", "image/gif", "image/webp"},
+	"pdf":   {"application/pdf"},
+}
+
+// readAttachments reads the attachments the browser sent (JSON: [{kind, name, mediaType, data}],
+// data in base64) and checks the AI can take them.
+func readAttachments(raw string, provider assistant.Provider) ([]assistant.Attachment, error) {
+	if raw == "" {
+		return nil, nil
+	}
+	var sent []struct {
+		Kind, Name, MediaType string
+		Data                  []byte // base64 in the JSON
+	}
+	if err := json.Unmarshal([]byte(raw), &sent); err != nil || len(sent) > maxAttachments {
+		return nil, problem.Invalidf("bad attachments")
+	}
+	var out []assistant.Attachment
+	for _, a := range sent {
+		limit := maxImageBytes
+		if a.Kind == "pdf" {
+			limit = maxPDFBytes
+		}
+		switch {
+		case !slices.Contains(attachmentTypes[a.Kind], a.MediaType) || len(a.Data) == 0 || len(a.Data) > limit:
+			return nil, problem.Invalidf("bad attachments")
+		case !slices.Contains(assistant.AttachmentKinds[provider.ID()], a.Kind):
+			return nil, problem.Invalidf(provider.Label() + " can't take " + map[string]string{"image": "images", "pdf": "PDFs"}[a.Kind])
+		}
+		out = append(out, assistant.Attachment{Kind: a.Kind, Name: text.Collapse(a.Name), MediaType: a.MediaType, Data: a.Data})
+	}
+	return out, nil
+}
 
 // assistantRun answers one message with a server-side AI and streams the answer as JSON lines:
 // {"type":"session","id"}, {"type":"text","text"}, {"type":"break"}, {"type":"tool","label","detail"},
@@ -106,6 +153,11 @@ func (ui *UI) assistantRun(w http.ResponseWriter, r *http.Request) {
 		fail(w, problem.Invalidf("bad notes"))
 		return
 	}
+	attachments, err := readAttachments(r.FormValue("attachments"), provider)
+	if err != nil {
+		fail(w, err)
+		return
+	}
 
 	runningAI.Lock()
 	if runningAI.users[user.ID] {
@@ -130,6 +182,10 @@ func (ui *UI) assistantRun(w http.ResponseWriter, r *http.Request) {
 	run := &serverRun{ui: ui, ws: ws, user: user, box: &toolSandbox{ui: ui, ws: ws, workspace: "agent-workspace"}}
 	defer run.box.cleanUp()
 	req, err := run.prepare(provider, message, session, model, r.FormValue("history"), r.FormValue("key"), userNow(r), notes)
+	if req.WorkDir != "" {
+		defer os.RemoveAll(filepath.Join(req.WorkDir, assistant.AttachmentDir))
+	}
+	req.Attachments = attachments
 	if err != nil {
 		send(map[string]any{"type": "error", "text": problem.Public(err)})
 		send(map[string]any{"type": "done"})

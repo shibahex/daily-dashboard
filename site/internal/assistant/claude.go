@@ -2,6 +2,7 @@ package assistant
 
 import (
 	"dashboard/internal/problem"
+	"encoding/base64"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -72,9 +73,26 @@ func (c *claude) Invocation(req Request) (Invocation, error) {
 	if req.SessionID != "" {
 		args = append(args, "--resume", req.SessionID)
 	}
-	// After --, a message that starts with "-" is still the message, not a flag.
-	args = append(args, "--", req.Message)
-	return Invocation{Args: args, Dir: req.WorkDir, Env: req.Env}, nil
+	// The message goes in on stdin as a stream-json user message, which can carry images and PDFs
+	// and has no length limit (a command-line argument can't pass 128 KB).
+	args = append(args, "--input-format", "stream-json")
+	return Invocation{Args: args, Dir: req.WorkDir, Env: req.Env, Stdin: claudeInput(req)}, nil
+}
+
+// claudeInput is the message as Claude Code's stream-json input: the attachments, then the text.
+func claudeInput(req Request) string {
+	content := []map[string]any{}
+	for _, a := range req.Attachments {
+		block := map[string]any{"type": "image", "source": map[string]any{
+			"type": "base64", "media_type": a.MediaType, "data": base64.StdEncoding.EncodeToString(a.Data)}}
+		if a.Kind == "pdf" {
+			block["type"], block["title"] = "document", a.Name
+		}
+		content = append(content, block)
+	}
+	content = append(content, map[string]any{"type": "text", "text": req.Message})
+	line, _ := json.Marshal(map[string]any{"type": "user", "message": map[string]any{"role": "user", "content": content}})
+	return string(line) + "\n"
 }
 
 // claudeTools are the built-in tools the capabilities allow (none at all by default).

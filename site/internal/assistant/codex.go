@@ -55,12 +55,21 @@ func (c *codex) Invocation(req Request) (Invocation, error) {
 		args = append(args, "--model", req.Model)
 	}
 	args = append(args, overrides...)
+	// Images go as files, named with --image=… so none is taken for the message.
+	images, err := saveAttachments(req)
+	if err != nil {
+		return Invocation{}, err
+	}
+	var imageArgs []string
+	for _, path := range images {
+		imageArgs = append(imageArgs, "--image="+path)
+	}
 	// The message goes in on stdin ("-"): Codex reads one that starts with "-" as a flag even
 	// after "--".
 	if req.SessionID != "" && !strings.HasPrefix(req.SessionID, "-") {
-		args = append(args, "resume", req.SessionID, "-")
+		args = append(append(append(args, "resume"), imageArgs...), req.SessionID, "-")
 	} else {
-		args = append(args, "-")
+		args = append(append(args, imageArgs...), "-")
 	}
 	return Invocation{Args: args, Dir: req.WorkDir, Stdin: firstMessage(req), Env: req.Env}, nil
 }

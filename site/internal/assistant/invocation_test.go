@@ -33,7 +33,7 @@ func afterFlag(args []string, flag string) string {
 	return "(missing)"
 }
 
-func TestClaudeGetsNoBuiltInToolsAndTheMessageLast(t *testing.T) {
+func TestClaudeGetsNoBuiltInToolsAndTheMessageOnStdin(t *testing.T) {
 	c := newClaude()
 	c.program = "sh" // any program on the PATH
 	req := testRequest(t)
@@ -50,8 +50,19 @@ func TestClaudeGetsNoBuiltInToolsAndTheMessageLast(t *testing.T) {
 			t.Errorf("missing %s", flag)
 		}
 	}
-	if args[len(args)-2] != "--" || args[len(args)-1] != req.Message {
-		t.Errorf("the message must come last, after --: %q", args[len(args)-2:])
+	if afterFlag(args, "--input-format") != "stream-json" || slices.Contains(args, req.Message) {
+		t.Errorf("the message must go on stdin, not in the arguments: %q", args)
+	}
+	var input struct {
+		Type    string
+		Message struct {
+			Role    string
+			Content []map[string]any
+		}
+	}
+	if err := json.Unmarshal([]byte(inv.Stdin), &input); err != nil || input.Type != "user" || input.Message.Role != "user" ||
+		len(input.Message.Content) != 1 || input.Message.Content[0]["text"] != req.Message {
+		t.Errorf("stdin %q: %v", inv.Stdin, err)
 	}
 	if !slices.Contains(args, "mcp__anki__storeMediaFile") || slices.Contains(args, "Read") {
 		t.Errorf("tool lists wrong: %q", args)
@@ -100,6 +111,45 @@ func TestGeminiGetsNoBuiltInToolsAndAnInlinePrompt(t *testing.T) {
 	inv, _ = g.Invocation(req)
 	if afterFlag(inv.Args, "--allowed-mcp-server-names") != "none" {
 		t.Errorf("with no servers on, the user's own must stay off: %q", inv.Args)
+	}
+}
+
+func TestAttachmentsReachClaudeAndCodex(t *testing.T) {
+	req := testRequest(t)
+	req.InnerWorkDir = "/home/agent/run-config"
+	req.Attachments = []Attachment{
+		{Kind: "image", Name: "meal.jpg", MediaType: "image/jpeg", Data: []byte("jpeg")},
+		{Kind: "pdf", Name: "label.pdf", MediaType: "application/pdf", Data: []byte("%PDF")},
+	}
+	c := newClaude()
+	c.program = "sh"
+	inv, err := c.Invocation(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`"type":"image"`, `"media_type":"image/jpeg","type":"base64"`, `"title":"label.pdf"`, `"type":"document"`, `"data":"anBlZw=="`} {
+		if !strings.Contains(inv.Stdin, want) {
+			t.Errorf("claude input lacks %s: %s", want, inv.Stdin)
+		}
+	}
+
+	req.Attachments = req.Attachments[:1]
+	x := newCodex()
+	x.program = "sh"
+	inv, err = x.Invocation(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := inv.Args[len(inv.Args)-2:]; !slices.Equal(got, []string{"--image=/home/agent/run-config/attachments/1.jpg", "-"}) {
+		t.Errorf("codex image: %q", got)
+	}
+	if data, _ := os.ReadFile(filepath.Join(req.WorkDir, AttachmentDir, "1.jpg")); string(data) != "jpeg" {
+		t.Errorf("image file holds %q", data)
+	}
+	req.SessionID = "01a15a87"
+	inv, _ = x.Invocation(req)
+	if got := inv.Args[len(inv.Args)-4:]; !slices.Equal(got, []string{"resume", "--image=/home/agent/run-config/attachments/1.jpg", "01a15a87", "-"}) {
+		t.Errorf("codex resume with an image: %q", got)
 	}
 }
 

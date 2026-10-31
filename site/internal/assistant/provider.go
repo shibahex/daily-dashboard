@@ -6,6 +6,8 @@ package assistant
 
 import (
 	"context"
+	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -40,6 +42,7 @@ type Request struct {
 	InnerWorkDir string       // WorkDir as the CLI sees it inside the sandbox
 	Workspace    string       // the folder the CLI works in, as it sees it
 	Env          []string     // extra environment for the CLI: the user's API key (see KeyEnv)
+	Attachments  []Attachment // images and PDFs sent with the message (see AttachmentKinds)
 
 	// Wrap puts the CLI in the user's sandbox. The Runner refuses to run without it.
 	Wrap func(Invocation) (Invocation, error)
@@ -62,6 +65,47 @@ func (r Request) inside(hostPath string) string {
 		return hostPath
 	}
 	return filepath.Join(r.InnerWorkDir, rel)
+}
+
+// Attachment is an image or a PDF sent with a message.
+type Attachment struct {
+	Kind      string // "image" or "pdf"
+	Name      string
+	MediaType string // image/jpeg, image/png, image/gif, image/webp or application/pdf
+	Data      []byte
+}
+
+// AttachmentKinds are what each CLI can take with a message: Claude Code reads images and PDFs
+// in its input, Codex images given as files. Gemini CLI has no way in without its file tools,
+// which stay off. web/js/assistant.js keeps the same list.
+var AttachmentKinds = map[string][]string{"claude-code": {"image", "pdf"}, "codex": {"image"}}
+
+// attachmentExtensions name the files a CLI is given.
+var attachmentExtensions = map[string]string{"image/jpeg": ".jpg", "image/png": ".png", "image/gif": ".gif", "image/webp": ".webp", "application/pdf": ".pdf"}
+
+// AttachmentDir is where a run's attachments are written, under its WorkDir. The server removes
+// it once the run is over.
+const AttachmentDir = "attachments"
+
+// saveAttachments writes the attachments into WorkDir for a CLI that reads them from files, and
+// gives their paths as the CLI sees them.
+func saveAttachments(req Request) ([]string, error) {
+	dir := filepath.Join(req.WorkDir, AttachmentDir)
+	if err := os.RemoveAll(dir); err != nil || len(req.Attachments) == 0 {
+		return nil, err
+	}
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return nil, err
+	}
+	var paths []string
+	for i, a := range req.Attachments {
+		path := filepath.Join(dir, fmt.Sprintf("%d%s", i+1, attachmentExtensions[a.MediaType]))
+		if err := os.WriteFile(path, a.Data, 0o600); err != nil {
+			return nil, err
+		}
+		paths = append(paths, req.inside(path))
+	}
+	return paths, nil
 }
 
 // NamedServer is an MCP server under the name the agent will know it by.
