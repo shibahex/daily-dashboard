@@ -2,11 +2,15 @@
   description = "Health dashboard: local server + Taskwarrior/Timewarrior integration";
 
   inputs.nixpkgs.url = "nixpkgs";
+  # Builds the published image and pushes only the layers the registry doesn't have yet.
+  inputs.nix2container.url = "github:nlewo/nix2container";
+  inputs.nix2container.inputs.nixpkgs.follows = "nixpkgs";
 
-  outputs = { self, nixpkgs }:
+  outputs = { self, nixpkgs, nix2container }:
     let
       system = "x86_64-linux";
       pkgs = nixpkgs.legacyPackages.${system};
+      n2c = nix2container.packages.${system}.nix2container;
       # Claude Code is unfree; allow just that one package.
       unfreePkgs = import nixpkgs {
         inherit system;
@@ -20,11 +24,15 @@
         exec python3 ${pkgs.timewarrior}/share/doc/timew/ext/on-modify.timewarrior "$@"
       '';
 
-      # The Go server (cmd/dashboard). Its one dependency is goldmark, for Markdown.
+      # The Go server (cmd/dashboard). Its one dependency is goldmark, for Markdown. Built from the
+      # Go files only, so a change to the pages doesn't build it again.
       server = pkgs.buildGoModule {
         pname = "health-dashboard-server";
         version = "0.1.0";
-        src = ./.;
+        src = pkgs.lib.fileset.toSource {
+          root = ./.;
+          fileset = pkgs.lib.fileset.unions [ ./go.mod ./go.sum ./cmd ./internal ];
+        };
         vendorHash = "sha256-ZAeN2uupjG5trOKZs69/FazUXWYSLq7I7vFTl1uGcJM=";
         subPackages = [ "cmd/dashboard" ];
       };
@@ -88,26 +96,35 @@
         '';
       };
 
+      # What the image has outside /nix/store: the entrypoint, the pages, the guides and the data folder.
+      imageRoot = pkgs.runCommand "daily-dashboard-root" { } ''
+        mkdir -p $out/app/site/data $out/app/docs $out/tmp
+        ln -s ${container}/bin/health-dashboard-container $out/entrypoint
+        ln -s ${timewHook} $out/app/site/.timew-hook
+        cp -r ${./web} $out/app/site/web
+        cp ${./plan.example.json} $out/app/site/plan.example.json
+        cp ${../docs/README.md} $out/app/docs/README.md
+        cp ${../docs/dashboard.md} $out/app/docs/dashboard.md
+        cp ${../docs/noctalia-plugin.md} $out/app/docs/noctalia-plugin.md
+        cp -r ${../docs/templates} $out/app/docs/templates
+      '';
+
       # The image GitHub publishes (.github/workflows/docker.yml), the same as ../Dockerfile makes
-      # but with a layer per package, so a new version only pulls what changed. `nix build
-      # .#image` makes a script that writes the image: `./result | docker load`.
-      image = pkgs.dockerTools.streamLayeredImage {
+      # but with a layer per package, so a new version only pulls what changed. nix2container
+      # pushes it straight from the Nix store, skipping the layers the registry already has:
+      # `nix run .#image.copyTo -- docker://<name>:<tag>`, or `.#image.copyToDockerDaemon`.
+      image = n2c.buildImage {
         name = "daily-dashboard";
         tag = "latest";
-        fakeRootCommands = ''
-          mkdir -p app/site/data app/docs tmp
-          ln -s ${container}/bin/health-dashboard-container entrypoint
-          ln -s ${timewHook} app/site/.timew-hook
-          cp -r ${./web} app/site/web
-          cp ${./plan.example.json} app/site/plan.example.json
-          cp ${../docs/README.md} app/docs/README.md
-          cp ${../docs/dashboard.md} app/docs/dashboard.md
-          cp ${../docs/noctalia-plugin.md} app/docs/noctalia-plugin.md
-          cp -r ${../docs/templates} app/docs/templates
-          chmod -R u+w app
-          chown -R 1000:1000 app/site/data
-          chmod 1777 tmp
-        '';
+        # Every package the server needs gets its own layer (95 of them), and the pages one more,
+        # so an update only pushes and pulls the layers that changed.
+        layers = [ (n2c.buildLayer { deps = [ container ]; maxLayers = 110; }) ];
+        copyToRoot = [ imageRoot ];
+        perms = [
+          { path = imageRoot; regex = ".*"; orMode = "0200"; }
+          { path = imageRoot; regex = "/app/site/data$"; mode = "0755"; uid = 1000; gid = 1000; }
+          { path = imageRoot; regex = "/tmp$"; mode = "1777"; }
+        ];
         config = {
           Entrypoint = [ "/entrypoint" ];
           Cmd = [ "1628" ];

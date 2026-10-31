@@ -44,26 +44,26 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=sha
-      # site#image (site/flake.nix) writes the image with a layer per package; skopeo pushes it,
-      # skipping the layers the registry already has.
+      # skopeo compresses a layer to push it, and remembers which compressed layer each one became:
+      # kept between runs, that lets it see the registry already has a layer without compressing
+      # it again.
+      - uses: actions/cache@v4
+        with:
+          path: ~/.local/share/containers/cache
+          key: skopeo-blobs-${{ github.run_id }}
+          restore-keys: skopeo-blobs-
+      # site#image (site/flake.nix) is the image with a layer per package. nix2container pushes it
+      # straight from the Nix store: a layer the registry already has is skipped without being
+      # written out again, so usually only the pages and the server go up.
       - name: Build and push
         working-directory: site
         env:
           TAGS: ${{ steps.meta.outputs.tags }}
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          nix build .#image
-          ./result > "$RUNNER_TEMP/image.tar"
-          skopeo() { nix run nixpkgs#skopeo -- "$@"; }
-          echo "$TOKEN" | skopeo login ghcr.io -u "${{ github.actor }}" --password-stdin
-          first=
+          nix build .#image.copyTo --out-link copy-to
           for tag in $TAGS; do
-            if [ -z "$first" ]; then
-              skopeo copy "docker-archive:$RUNNER_TEMP/image.tar" "docker://$tag"
-              first=$tag
-            else
-              skopeo copy "docker://$first" "docker://$tag"
-            fi
+            ./copy-to/bin/copy-to --dest-creds "${{ github.actor }}:$TOKEN" "docker://$tag"
           done
       - if: startsWith(github.ref, 'refs/tags/v')
         run: gh release create "$GITHUB_REF_NAME" --generate-notes --verify-tag
