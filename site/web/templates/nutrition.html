@@ -96,7 +96,7 @@
 
 {{/* One food to pick: R is a foodResult. */}}
 {{define "food-choice"}}{{$r := .R}}
-<button type="button" hx-post="/food/pick" hx-vals="{{vals "food" $r.Encoded "meal" .Meal "query" .Query "serving" $r.Index "quantity" $r.Quantity}}" hx-target="closest .food-panel" hx-swap="outerHTML">
+<button type="button" class="fp-choice" hx-post="/food/pick" hx-vals="{{vals "food" $r.Encoded "meal" .Meal "query" .Query "serving" $r.Index "quantity" $r.Quantity}}" hx-target="closest .food-panel" hx-swap="outerHTML">
   <span>{{$r.Food.Name}}{{if $r.Food.Verified}} ✓{{end}}<small>{{if $r.Food.SavedMeal}}{{with $r.Food.Items}}{{join . " · "}}{{else}}Saved meal{{end}}{{else}}{{$r.Food.Brand}}{{if and $r.Food.Brand $r.Serving}} · {{end}}{{if ne $r.Quantity "1"}}{{$r.Quantity}} × {{end}}{{$r.Serving}}{{end}}</small></span>
   <span class="k">{{if $r.Food.NoNutrition}}{{else if or $r.Per.Calories (not $r.Food.SavedMeal)}}{{template "food-macros" $r.Per}}{{end}}</span></button>
 {{end}}
@@ -106,7 +106,11 @@
 <div class="fp-list" {{template "food-list-attrs" ""}}>
   {{template "food-tabs" .List}}
   {{if .Error}}<p class="err small flush">{{.Error}}</p>
-  {{else if .Foods}}<div class="fp-results">{{range .Foods}}{{template "food-choice" dict "R" . "Meal" $.Meal "Query" $.Query}}{{end}}</div>
+  {{else if .Foods}}<div class="fp-results">{{range .Foods}}{{if .Food.SavedMeal}}
+    <div class="fp-row">{{template "food-choice" dict "R" . "Meal" $.Meal "Query" $.Query}}
+      <button type="button" class="icon del" hx-post="/food/meals/{{.Food.FoodID}}/delete" hx-vals="{{vals "list" "meals" "meal" $.Meal "query" $.Query "name" .Food.Name}}"
+        hx-target="closest .fp-list" hx-swap="outerHTML" hx-confirm="Delete the saved meal {{.Food.Name}} from MyFitnessPal?" title="Delete this saved meal">✕</button></div>
+    {{else}}{{template "food-choice" dict "R" . "Meal" $.Meal "Query" $.Query}}{{end}}{{end}}</div>
   {{else if .Query}}<p class="small muted flush">{{if eq .List "meals"}}None of your saved meals match.{{else}}None of your recent foods match.{{end}} Press Search to look in MyFitnessPal.</p>
   {{else if eq .List "meals"}}<p class="small muted flush">No saved meals yet. Save one with Save as meal under a meal.</p>
   {{else}}<p class="small muted flush">Nothing logged in MyFitnessPal lately. Search for a food to add.</p>{{end}}

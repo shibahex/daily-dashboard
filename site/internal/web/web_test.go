@@ -131,6 +131,7 @@ func TestFoodPanelTemplatesRender(t *testing.T) {
 		{"food-list", foodListView{Meal: "Lunch", List: "recent", Foods: []foodResult{foodResultFor(bread, 0, 2)}}, `&#34;quantity&#34;:&#34;2&#34;`},
 		{"food-list", foodListView{Meal: "Lunch", List: "meals", Foods: []foodResult{foodResultFor(meal, 0, 1)}}, `value="meals" checked`},
 		{"food-list", foodListView{Meal: "Lunch", List: "meals", Foods: []foodResult{foodResultFor(meal, 0, 1)}}, "Bread · Turkey"},
+		{"food-list", foodListView{Meal: "Lunch", List: "meals", Foods: []foodResult{foodResultFor(meal, 0, 1)}}, `hx-post="/food/meals/22/delete"`},
 		{"food-list", foodListView{Query: "zzz", List: "recent"}, "Press Search"},
 		{"meal-save", mealSaveView{Meal: "Lunch"}, `name="meal" value="Lunch"`},
 	}

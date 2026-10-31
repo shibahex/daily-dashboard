@@ -118,6 +118,7 @@ func (ui *UI) Routes(mux *http.ServeMux) {
 	change("/food/list", ui.foodList)
 	page("/food/meals/new", ui.saveMealForm)
 	change("/food/meals/save", ui.saveMeal)
+	change("/food/meals/{meal}/delete", ui.deleteSavedMeal)
 	change("/food/pick", ui.pickFood)
 	change("/food/preview", ui.previewFood)
 	change("/food/add", ui.addFood)

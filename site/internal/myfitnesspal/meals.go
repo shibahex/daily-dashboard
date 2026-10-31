@@ -42,6 +42,29 @@ func (s *Syncer) SaveMeal(date, meal, name string) error {
 	return nil
 }
 
+// DeleteSavedMeal deletes one of the user's saved meals (its id is the meal's FoodID).
+func (s *Syncer) DeleteSavedMeal(id string) error {
+	if err := checkIDs(id); err != nil {
+		return err
+	}
+	err := s.client.call(writeTimeout, func(ctx context.Context) error { return s.client.deleteSavedMeal(ctx, id) })
+	s.meals.forget()
+	if err != nil {
+		return problem.Unavailablef(err.Error())
+	}
+	return nil
+}
+
+// deleteSavedMeal makes the call the web site's My Meals page makes.
+func (c Client) deleteSavedMeal(ctx context.Context, id string) error {
+	resp, err := c.session().do(ctx, request{method: http.MethodDelete, url: siteURL + "api/services/users/meals/delete/" + id,
+		api: true, headers: map[string]string{"Accept": "application/json"}})
+	if err != nil {
+		return err
+	}
+	return accepted(resp.status, "/api/services/users/meals/delete", http.StatusOK, http.StatusNoContent)
+}
+
 func (c Client) savedMeals(ctx context.Context, date string) ([]Food, error) {
 	s := c.session()
 	var (

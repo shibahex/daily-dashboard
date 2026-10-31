@@ -305,6 +305,16 @@ func (ui *UI) saveMeal(w http.ResponseWriter, r *http.Request) {
 	nothing(w)
 }
 
+// deleteSavedMeal deletes a saved meal and shows the Meals list again.
+func (ui *UI) deleteSavedMeal(w http.ResponseWriter, r *http.Request) {
+	if err := ui.ws(r).MyFitnessPal.DeleteSavedMeal(r.PathValue("meal")); err != nil {
+		fail(w, err)
+		return
+	}
+	announce(w, say("Deleted “"+r.FormValue("name")+"” from your MyFitnessPal meals"))
+	ui.foodList(w, r)
+}
+
 type foodPickView struct {
 	Food     myfitnesspal.Food
 	Encoded  string

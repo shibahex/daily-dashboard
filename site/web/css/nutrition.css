@@ -38,9 +38,12 @@
 .food-panel .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .food-panel .row .txt.grow { flex: 1 1 160px; min-width: 0; }
 .fp-results { display: flex; flex-direction: column; max-height: 320px; overflow-y: auto; }
-.fp-results button { display: flex; justify-content: space-between; gap: 8px; text-align: left; background: none; border: 0; border-top: 1px solid var(--line);
+.fp-choice { display: flex; justify-content: space-between; gap: 8px; text-align: left; background: none; border: 0; border-top: 1px solid var(--line);
   padding: 7px 2px; font: inherit; font-size: 13px; color: var(--ink); cursor: pointer; }
-.fp-results button:hover { background: var(--chip); }
+.fp-choice:hover { background: var(--chip); }
+.fp-row { display: flex; align-items: center; gap: 6px; border-top: 1px solid var(--line); }
+.fp-row .fp-choice { flex: 1; min-width: 0; border-top: 0; }
+.fp-row .icon { width: 26px; height: 26px; font-size: 12px; flex: none; }
 .fp-results small { color: var(--muted); display: block; }
 .fp-results .k { color: var(--muted); white-space: nowrap; text-align: right; }
 .fp-list { display: flex; flex-direction: column; gap: 8px; }
