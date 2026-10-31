@@ -122,7 +122,7 @@ func parseLoadMeals(page []byte) ([]Food, error) {
 }
 
 // saveMeal posts the diary's "Remember Meal" form. MyFitnessPal takes the foods from the diary
-// meal the form was opened for (the meal and date in its address), so the form is read first.
+// meal the form was opened for, so the form is read first and its fields sent back with the day.
 func (c Client) saveMeal(ctx context.Context, date, meal, name string) error {
 	s := c.session()
 	page, err := s.diaryPage(ctx, date, true)
@@ -138,40 +138,55 @@ func (c Client) saveMeal(ctx context.Context, date, meal, name string) error {
 	if err != nil {
 		return err
 	}
-	token, items, err := parseMealForm(body)
+	form, items, err := parseMealForm(body)
 	if err != nil {
 		return err
 	}
 	if items == 0 {
 		return problem.Invalidf("Nothing is logged in " + meal + " that day, so there's no meal to save")
 	}
-	resp, err := s.do(ctx, request{method: http.MethodPost, url: siteURL + "meal/create", form: url.Values{
-		"authenticity_token": {token},
-		"meal_id":            {mealID},
-		"meal[description]":  {name},
-	}, headers: legacyFormHeaders(siteURL + formPath)})
+	// The form's own fields say which day's foods to take; without them MyFitnessPal uses today.
+	if form.Get("date") == "" {
+		form.Set("date", date)
+	}
+	form.Set("meal_id", mealID)
+	form.Set("meal[description]", name)
+	resp, err := s.do(ctx, request{method: http.MethodPost, url: siteURL + "meal/create", form: form,
+		headers: legacyFormHeaders(siteURL + formPath)})
 	if err != nil {
 		return err
 	}
 	return accepted(resp.status, "/meal/create", http.StatusOK, http.StatusFound)
 }
 
-// parseMealForm reads the Remember Meal form's token and how many foods it would save.
-func parseMealForm(page []byte) (token string, items int, err error) {
+// parseMealForm reads the Remember Meal form's fields (its token and the meal and day it was
+// opened for) and how many foods it would save.
+func parseMealForm(page []byte) (form url.Values, items int, err error) {
 	doc, err := parseHTML(page)
 	if err != nil {
-		return "", 0, err
+		return nil, 0, err
 	}
-	for _, form := range find(doc, tag("form")) {
-		if action, _ := attr(form, "action"); action != "/meal/create" {
+	form = url.Values{}
+	for _, f := range find(doc, tag("form")) {
+		if action, _ := attr(f, "action"); action != "/meal/create" {
 			continue
 		}
-		for _, input := range find(form, named("input", "authenticity_token")) {
-			token, _ = attr(input, "value")
+		for _, input := range find(f, tag("input")) {
+			name, _ := attr(input, "name")
+			kind, _ := attr(input, "type")
+			if name == "" || kind == "submit" || kind == "button" {
+				continue
+			}
+			if _, checked := attr(input, "checked"); (kind == "checkbox" || kind == "radio") && !checked {
+				continue
+			}
+			value, _ := attr(input, "value")
+			form.Add(name, value)
 		}
 	}
+	token := form.Get("authenticity_token")
 	if token == "" {
-		return "", 0, problem.Failedf("Couldn't open MyFitnessPal's save-meal form")
+		return nil, 0, problem.Failedf("Couldn't open MyFitnessPal's save-meal form")
 	}
 	for _, table := range find(doc, func(n *html.Node) bool { id, _ := attr(n, "id"); return n.Data == "table" && id == "meal-table" }) {
 		for _, body := range find(table, tag("tbody")) {
@@ -182,5 +197,5 @@ func parseMealForm(page []byte) (token string, items int, err error) {
 			}
 		}
 	}
-	return token, items, nil
+	return form, items, nil
 }

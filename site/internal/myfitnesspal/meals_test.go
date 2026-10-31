@@ -61,12 +61,15 @@ func TestParseLoadMeals(t *testing.T) {
 func TestParseMealForm(t *testing.T) {
 	page := `<html><body><form action="/meal/create" method="post">
   <input type="hidden" name="authenticity_token" value="meal-form-token">
+  <input type="hidden" name="date" value="2026-10-28"><input type="hidden" name="meal_id" value="2">
+  <input type="text" name="meal[description]"><input type="submit" name="commit" value="Save">
   <table id="meal-table"><thead><tr><td>Items in this meal</td></tr></thead>
     <tbody><tr><td>Canned Chicken, 12 oz</td><td>280</td></tr><tr><td>Noodle Soup</td><td>150</td></tr></tbody></table>
 </form></body></html>`
-	token, items, err := parseMealForm([]byte(page))
-	if err != nil || token != "meal-form-token" || items != 2 {
-		t.Fatalf("token %q items %d err %v", token, items, err)
+	form, items, err := parseMealForm([]byte(page))
+	if err != nil || form.Get("authenticity_token") != "meal-form-token" || form.Get("date") != "2026-10-28" ||
+		form.Get("meal_id") != "2" || form.Has("commit") || items != 2 {
+		t.Fatalf("form %v items %d err %v", form, items, err)
 	}
 	if _, _, err := parseMealForm([]byte(`<html><body>Sign in</body></html>`)); err == nil {
 		t.Fatal("a page without the form should fail")
