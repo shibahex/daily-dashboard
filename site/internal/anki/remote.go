@@ -32,12 +32,12 @@ func CheckConnection(rawURL, apiKey string, serverOK bool) (string, error) {
 	if strings.TrimSpace(apiKey) == "" {
 		return "", problem.Invalidf("Set an API key in AnkiConnect's config (Tools → Add-ons → AnkiConnect → Config: \"apiKey\") and enter it here")
 	}
-	if _, err := NewClient(cleaned, "").Call("version", nil); err == nil {
+	if _, err := newClient(cleaned, "", serverOK).Call("version", nil); err == nil {
 		return "", problem.Invalidf("That AnkiConnect answers without an API key, so anyone could use it. Set \"apiKey\" in its config first")
 	} else if IsUnreachable(err) {
 		return "", problem.Unavailablef("Couldn't reach AnkiConnect at " + cleaned + ". Is Anki open, and does AnkiConnect listen on the network (\"webBindAddress\": \"0.0.0.0\"), and does that computer's firewall allow port 8765?")
 	}
-	if _, err := NewClient(cleaned, apiKey).Call("version", nil); err != nil {
+	if _, err := newClient(cleaned, apiKey, serverOK).Call("version", nil); err != nil {
 		return "", problem.Invalidf("AnkiConnect refused that API key")
 	}
 	return cleaned, nil
@@ -62,11 +62,14 @@ func checkReachableHost(hostname string) error {
 	}
 	for _, addr := range addrs {
 		if forbiddenAddr(addr) {
-			return problem.Forbiddenf("That address is the server itself. Use your own computer's network address")
+			return errServerAddress
 		}
 	}
 	return nil
 }
+
+// errServerAddress is a connection refused because it would reach the server itself.
+var errServerAddress = problem.Forbiddenf("That address is the server itself. Use your own computer's network address")
 
 func forbiddenAddr(addr netip.Addr) bool {
 	addr = addr.Unmap()

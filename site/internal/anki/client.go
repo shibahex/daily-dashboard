@@ -5,8 +5,12 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net"
 	"net/http"
+	"net/netip"
 	"os/exec"
+	"syscall"
 	"time"
 
 	"dashboard/internal/mcp"
@@ -42,8 +46,30 @@ type Client struct {
 }
 
 // NewClient talks to the AnkiConnect at url ("" = not set up yet).
-func NewClient(url, apiKey string) Client {
-	return Client{URL: url, APIKey: apiKey, http: &http.Client{Timeout: 30 * time.Second}}
+func NewClient(url, apiKey string) Client { return newClient(url, apiKey, false) }
+
+// maxAnswer caps what AnkiConnect may send back: a big cardsInfo is a few MB.
+const maxAnswer = 64 << 20
+
+// newClient's connections are checked as they're made, not only when the address was saved: a
+// name can later point somewhere else, and redirects aren't followed, so the address can't lead
+// to the server's own services or cloud metadata (CheckConnection). serverOK allows the server
+// itself, for tests.
+func newClient(url, apiKey string, serverOK bool) Client {
+	dialer := &net.Dialer{Timeout: 10 * time.Second, Control: func(_, address string, _ syscall.RawConn) error {
+		host, _, err := net.SplitHostPort(address)
+		if err != nil {
+			return err
+		}
+		addr, err := netip.ParseAddr(host)
+		if err != nil || (!serverOK && forbiddenAddr(addr)) {
+			return errServerAddress
+		}
+		return nil
+	}}
+	transport := &http.Transport{DialContext: dialer.DialContext, TLSHandshakeTimeout: 10 * time.Second}
+	return Client{URL: url, APIKey: apiKey, http: &http.Client{Timeout: 30 * time.Second, Transport: transport,
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}
 }
 
 // Call runs one AnkiConnect action. params may be nil, a map, or raw JSON.
@@ -69,7 +95,10 @@ func (c Client) Call(action string, params any) (json.RawMessage, error) {
 		Result json.RawMessage `json:"result"`
 		Error  *string         `json:"error"`
 	}
-	if err := json.NewDecoder(response.Body).Decode(&answer); err != nil {
+	if response.StatusCode >= 300 && response.StatusCode < 400 {
+		return nil, fmt.Errorf("%w (it answered with a redirect, which isn't followed)", ErrUnreachable)
+	}
+	if err := json.NewDecoder(io.LimitReader(response.Body, maxAnswer)).Decode(&answer); err != nil {
 		return nil, fmt.Errorf("%w (bad answer: %v)", ErrUnreachable, err)
 	}
 	if answer.Error != nil {

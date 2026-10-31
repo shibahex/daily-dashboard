@@ -72,18 +72,21 @@ func SessionFrom(r *http.Request) string {
 	return ""
 }
 
-// SetSessionCookie gives the browser its session. HttpOnly keeps it out of page scripts and
-// SameSite=Strict out of requests other sites start.
+// SetSessionCookie gives the browser its session. HttpOnly keeps it out of page scripts.
+// SameSite=Lax keeps it out of other sites' forms, scripts and frames, but sends it when the user
+// opens the dashboard from outside, as a home-screen app that isn't a WebAPK (Brave, Firefox) is
+// launched: Strict left those on the sign-in page every time. Changes are POSTs, which Lax never
+// sends cross-site, and they need the HX-Request header too.
 func SetSessionCookie(w http.ResponseWriter, secret string) {
 	http.SetCookie(w, &http.Cookie{
 		Name: SessionCookie, Value: secret, Path: "/", Secure: secureCookies,
-		MaxAge: int(SessionLength / time.Second), HttpOnly: true, SameSite: http.SameSiteStrictMode,
+		MaxAge: int(SessionLength / time.Second), HttpOnly: true, SameSite: http.SameSiteLaxMode,
 	})
 }
 
 func ClearSessionCookie(w http.ResponseWriter) {
 	http.SetCookie(w, &http.Cookie{Name: SessionCookie, Value: "", Path: "/", Secure: secureCookies, MaxAge: -1,
-		HttpOnly: true, SameSite: http.SameSiteStrictMode})
+		HttpOnly: true, SameSite: http.SameSiteLaxMode})
 }
 
 // tokenFrom is the token in "Authorization: Bearer <token>".

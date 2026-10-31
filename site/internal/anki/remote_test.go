@@ -75,3 +75,24 @@ func TestNotSetUp(t *testing.T) {
 		t.Fatalf("a user without an address should be told to set it up: %+v", status)
 	}
 }
+
+func TestConnectionsStayOffTheServer(t *testing.T) {
+	reached := false
+	inside := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		reached = true
+		w.Write([]byte(`{"result":"secret","error":null}`))
+	}))
+	defer inside.Close()
+	// A saved address that later points at the server itself is refused when connecting.
+	if _, err := NewClient(inside.URL, "key").Call("version", nil); err == nil || reached {
+		t.Errorf("reached the server itself: %v", err)
+	}
+	// A redirect is never followed, so it can't lead there either.
+	redirect := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, inside.URL, http.StatusTemporaryRedirect)
+	}))
+	defer redirect.Close()
+	if _, err := newClient(redirect.URL, "key", true).Call("version", nil); err == nil || reached {
+		t.Errorf("followed the redirect: %v", err)
+	}
+}

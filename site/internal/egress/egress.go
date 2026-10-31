@@ -24,12 +24,14 @@ import (
 // AllowedPorts are the ports an agent may connect to.
 var AllowedPorts = map[int]bool{80: true, 443: true}
 
-// blocked are the ranges that aren't the public internet.
+// blocked are the ranges that aren't the public internet. NAT64 (64:ff9b::) and 6to4 (2002::)
+// addresses carry an IPv4 address inside, which may be a private one.
 var blocked = mustPrefixes(
 	"0.0.0.0/8", "10.0.0.0/8", "100.64.0.0/10", "127.0.0.0/8", "169.254.0.0/16", "172.16.0.0/12",
 	"192.0.0.0/24", "192.0.2.0/24", "192.168.0.0/16", "198.18.0.0/15", "198.51.100.0/24",
 	"203.0.113.0/24", "224.0.0.0/3",
-	"::/128", "::1/128", "::ffff:0:0/96", "64:ff9b::/96", "100::/64", "2001:db8::/32", "fc00::/7", "fe80::/10", "ff00::/8",
+	"::/128", "::1/128", "::ffff:0:0/96", "64:ff9b::/96", "64:ff9b:1::/48", "100::/64", "2001:db8::/32", "2002::/16",
+	"fc00::/7", "fe80::/10", "ff00::/8",
 )
 
 func mustPrefixes(cidrs ...string) []netip.Prefix {

@@ -228,7 +228,7 @@ The AI itself runs in your browser. The MCP tools it calls run on the server, ea
 ## Security
 
 - **Passwords:** at least 12 characters, and they never reach the server: the sign-in page sends a proof made from them (PBKDF2-SHA256, 600,000 rounds), which the server hashes again before keeping it in `data/accounts.json`.
-- **Sessions:** logging in gives the browser a random cookie. It's `HttpOnly`, `SameSite=Strict` and, over HTTPS, `Secure`; the server keeps only a hash of it in `data/sessions.json`. It lasts 30 days, or until it goes unused for 7. The Account page lists your signed-in browsers and logs out any one of them, or all but this one; changing your password logs out the others.
+- **Sessions:** logging in gives the browser a random cookie. It's `HttpOnly`, `SameSite=Lax` and, over HTTPS, `Secure`; the server keeps only a hash of it in `data/sessions.json`. It lasts 30 days, or until it goes unused for 7. The Account page lists your signed-in browsers and logs out any one of them, or all but this one; changing your password logs out the others.
 - **Wrong passwords:** after 5 wrong tries in a row for a username, or from one address, each try waits twice as long as the last (1 s, 2 s, 4 s… up to 15 minutes), and a restart doesn't reset it. A wrong username and a wrong password look the same.
 - **Bar plugin:** each person makes their own token on the Account page; it only works for the plugin's API (`/api/…`), only shows that person's data, and only its hash is stored.
 - **Keys:** AI keys and the local model's address are encrypted in each person's browser, like their notes: the server never has them.
