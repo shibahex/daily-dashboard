@@ -250,7 +250,7 @@ Your notes are only as private as the scripts that handle them, and those come f
 
 | Script | Hash |
 |---|---|
-| `app.js` | `sha384-ErYXD4De+RdttRbpsar3b9xYjfIn4Ong0uYfwWmAf+wrYBePUsibvs7YosstwdcT` |
+| `app.js` | `sha384-IJWjgHd3lhv2QYw0VgBPBGzsubgQQhMO0AFaYd3UOEdeBiN1AmNbXrIQrOKf/t+h` |
 | `keys.js` | `sha384-nwe1d2+ABaJt3Q/12zr1QRW8BolKLItadMXGeqOorCsyP4qfCfXFCb1JdeSaVU2g` |
 | `notes.js` | `sha384-UWscNZxtDd4IRrRR+hHR+DwTyw0BV5aks0lQnveKJvaDyoGVsPnEFe03oV5wCQ4c` |
 | `backup.js` | `sha384-Y/pu3exPYWdYgVyNW/qbSljWfBE5nxJTGCj/X/XM4YXwnnbu3HvijZaMlMKshMIJ` |
@@ -259,6 +259,7 @@ Your notes are only as private as the scripts that handle them, and those come f
 | `htmx-sse.js` | `sha384-fw+eTlCc7suMV/1w/7fr2/PmwElUIt5i82bi+qTiLXvjRXZ2/FkiTNA/w0MhXnGI` |
 | `marked.js` | `sha384-IvVdUXkhyoD0shbjhiiOnuiTbervTaB0VJcnEcg3shUAMVOOF6lKj4ozJrCwvz6s` |
 | `purify.js` | `sha384-a7SzOxErzJ3ZpQz0zJ32d67dSitNzPcbfybc/ykU9KJhMgZkwqfSxlhhdJRS+XGL` |
+| `sw.js` | `sha384-DUscTfMtpf90v3vR4JeIieNqKqeIm/KaROU1NJCG2Ai9CgAUPb6sJZuN2dBBwJz0` |
 
 ## Your data
 
