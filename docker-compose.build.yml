@@ -1,0 +1,8 @@
+# Builds the image here from the Dockerfile (with Nix, a few minutes) instead of downloading the
+# one GitHub publishes: for a machine that isn't x86-64, or offline.
+#   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+services:
+  dashboard:
+    image: daily-dashboard:local
+    build: .
+    pull_policy: build

@@ -2,9 +2,10 @@
 # Portainer's environment variables. See "Docker" in docs/dashboard.md.
 services:
   dashboard:
-    # The image GitHub builds from main; without it (or offline), compose builds it here.
+    # The image GitHub builds from main. To build it here instead (offline, or not x86-64), add
+    # docker-compose.build.yml: see "Docker" in docs/dashboard.md.
     image: ${DASHBOARD_IMAGE:-ghcr.io/shibahex/daily-dashboard:latest}
-    build: .
+    pull_policy: always
     container_name: daily-dashboard
     restart: unless-stopped
     ports:
