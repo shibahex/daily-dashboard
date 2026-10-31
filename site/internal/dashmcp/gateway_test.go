@@ -9,6 +9,7 @@ import (
 
 	"dashboard/internal/config"
 	"dashboard/internal/lifting"
+	"dashboard/internal/myfitnesspal"
 	"dashboard/internal/store"
 	"dashboard/internal/workspace"
 )
@@ -18,6 +19,7 @@ func testGateway(t *testing.T) *Gateway {
 	site, _ := filepath.Abs("../..")
 	paths := config.NewPaths(site).ForUser(t.TempDir())
 	ws := &workspace.Workspace{Paths: paths, Store: store.New(paths), Lifting: lifting.New(paths.DataFile("lifting.json"))}
+	ws.MyFitnessPal = myfitnesspal.NewSyncer(myfitnesspal.Client{}.ForUser(t.TempDir()), ws.Store, paths.DataFile("mfp.json"))
 	ws.Store.LoadPlan() // makes plan.json from the example
 	now := time.Date(2026, 10, 27, 18, 30, 0, 0, time.Local)
 	return &Gateway{ws: ws, now: func() time.Time { return now }}
@@ -104,6 +106,48 @@ func TestLiftingTools(t *testing.T) {
 	}
 	if history := call(t, g, "lifting_history", `{"exercise":"Bench press"}`); !strings.Contains(history, `"lb": 225`) {
 		t.Errorf("history: %s", history)
+	}
+}
+
+func TestFinishingAndPastWorkouts(t *testing.T) {
+	g := testGateway(t)
+	if !g.Call("lifting_finish", json.RawMessage(`{}`)).IsError {
+		t.Error("finishing with nothing going should fail")
+	}
+	call(t, g, "lifting_start", `{}`)
+	call(t, g, "lifting_log", `{"exercise":"Squat","sets":[{"weight":185,"reps":5}]}`)
+	if !g.Call("lifting_finish", json.RawMessage(`{"minutes":0,"myfitnesspal":true}`)).IsError {
+		t.Error("sending to MyFitnessPal without it connected should fail")
+	}
+	out := call(t, g, "lifting_finish", `{"minutes":0,"note":"felt strong"}`)
+	data := g.ws.Lifting.Load()
+	if data.Active != nil || len(data.Workouts) != 1 || data.Workouts[0].Note != "felt strong" || !strings.Contains(out, "1 set done") {
+		t.Fatalf("%s\n%+v", out, data)
+	}
+	id := data.Workouts[0].ID
+	if !g.Call("lifting_send_myfitnesspal", json.RawMessage(`{"id":"`+id+`"}`)).IsError {
+		t.Error("sending without MyFitnessPal connected should fail")
+	}
+
+	call(t, g, "lifting_rename", `{"exercise":"squat","name":"Back squat"}`)
+	if name := g.ws.Lifting.Load().Workouts[0].Exercises[0].Name; name != "Back squat" {
+		t.Errorf("renamed to %q", name)
+	}
+	call(t, g, "lifting_workout_delete", `{"id":"`+id+`"}`)
+	if len(g.ws.Lifting.Load().Workouts) != 0 {
+		t.Error("the workout should be gone")
+	}
+	if !g.Call("lifting_workout_delete", json.RawMessage(`{"id":"`+id+`"}`)).IsError {
+		t.Error("deleting it again should fail")
+	}
+
+	call(t, g, "lifting_start", `{}`)
+	call(t, g, "lifting_discard", `{}`)
+	if data := g.ws.Lifting.Load(); data.Active != nil || len(data.Workouts) != 0 {
+		t.Errorf("discarded: %+v", data)
+	}
+	if !g.Call("lifting_discard", json.RawMessage(`{}`)).IsError {
+		t.Error("discarding with nothing going should fail")
 	}
 }
 

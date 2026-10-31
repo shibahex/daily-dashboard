@@ -19,7 +19,7 @@ const (
 	templateUUID = "9d8c7b6a-5f4e-4d3c-8b2a-1f0e9d8c7b6a"
 )
 
-// A gateway on a stand-in for `task`: a script that writes down every call, answers `export` with
+// A gateway on stand-ins for `task` and `timew`: scripts that write down every call, answers `export` with
 // the given JSON, and answers `add` with a new task's uuid. It returns what was called.
 func gatewayWithFakeTask(t *testing.T, exported string) (*Gateway, func() string) {
 	t.Helper()
@@ -37,6 +37,10 @@ func gatewayWithFakeTask(t *testing.T, exported string) (*Gateway, func() string
 		"  esac\n" +
 		"done\n"
 	if err := os.WriteFile(filepath.Join(dir, "task"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// Logging time writes down the call too, so a test never reaches the real Timewarrior.
+	if err := os.WriteFile(filepath.Join(dir, "timew"), []byte("#!/bin/sh\necho \"timew $*\" >> '"+calls+"'\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
@@ -129,24 +133,40 @@ func TestAddAndModifyRunTaskwarrior(t *testing.T) {
 	}
 }
 
+func TestDoneAtLogsTheTime(t *testing.T) {
+	g, calls := gatewayWithFakeTask(t, oneTask)
+	done := g.Call("tasks_done", json.RawMessage(`{"uuid":"`+taskUUID+`","minutes":30,"done_at":"2026-10-20T20:00"}`))
+	if done.IsError || !strings.Contains(done.Text, "Logged 30 minutes") {
+		t.Fatalf("tasks_done = %+v", done)
+	}
+	for _, want := range []string{taskUUID + " done end:2026-10-20T20:00", "timew track 2026-10-20T19:30 - 2026-10-20T20:00"} {
+		if !strings.Contains(calls(), want) {
+			t.Errorf("missing %q: %s", want, calls())
+		}
+	}
+}
+
 func TestMistakesNeverReachTaskwarrior(t *testing.T) {
 	g, calls := gatewayWithFakeTask(t, oneTask)
 	for name, call := range map[string][2]string{
-		"unknown tool":      {"tasks_nope", `{}`},
-		"no description":    {"tasks_add", `{"description":""}`},
-		"long description":  {"tasks_add", `{"description":"` + strings.Repeat("x", 301) + `"}`},
-		"bad priority":      {"tasks_add", `{"description":"x","priority":"urgent"}`},
-		"bad date":          {"tasks_add", `{"description":"x","due":"tomorrow; rm -rf"}`},
-		"bad tag":           {"tasks_add", `{"description":"x","tags":["a b"]}`},
-		"bad project":       {"tasks_add", `{"description":"x","project":"a b"}`},
-		"repeat needs due":  {"tasks_add", `{"description":"x","recur":"daily"}`},
-		"unknown field":     {"tasks_add", `{"description":"x","dueDate":"tomorrow"}`},
-		"bad uuid":          {"tasks_modify", `{"uuid":"not-a-uuid","due":"friday"}`},
-		"nothing to change": {"tasks_modify", `{"uuid":"` + taskUUID + `"}`},
-		"uuid with a flag":  {"tasks_done", `{"uuid":"` + taskUUID + ` rc.hooks=0"}`},
-		"empty note":        {"tasks_annotate", `{"uuid":"` + taskUUID + `","note":" "}`},
-		"bad status":        {"tasks_list", `{"status":"everything"}`},
-		"bad due_by":        {"tasks_list", `{"due_by":"someday"}`},
+		"unknown tool":       {"tasks_nope", `{}`},
+		"no description":     {"tasks_add", `{"description":""}`},
+		"long description":   {"tasks_add", `{"description":"` + strings.Repeat("x", 301) + `"}`},
+		"bad priority":       {"tasks_add", `{"description":"x","priority":"urgent"}`},
+		"bad date":           {"tasks_add", `{"description":"x","due":"tomorrow; rm -rf"}`},
+		"bad tag":            {"tasks_add", `{"description":"x","tags":["a b"]}`},
+		"bad project":        {"tasks_add", `{"description":"x","project":"a b"}`},
+		"repeat needs due":   {"tasks_add", `{"description":"x","recur":"daily"}`},
+		"unknown field":      {"tasks_add", `{"description":"x","dueDate":"tomorrow"}`},
+		"bad uuid":           {"tasks_modify", `{"uuid":"not-a-uuid","due":"friday"}`},
+		"nothing to change":  {"tasks_modify", `{"uuid":"` + taskUUID + `"}`},
+		"uuid with a flag":   {"tasks_done", `{"uuid":"` + taskUUID + ` rc.hooks=0"}`},
+		"empty note":         {"tasks_annotate", `{"uuid":"` + taskUUID + `","note":" "}`},
+		"bad status":         {"tasks_list", `{"status":"everything"}`},
+		"bad due_by":         {"tasks_list", `{"due_by":"someday"}`},
+		"done in the future": {"tasks_done", `{"uuid":"` + taskUUID + `","done_at":"2999-01-01T09:00"}`},
+		"bad done_at":        {"tasks_done", `{"uuid":"` + taskUUID + `","done_at":"yesterday"}`},
+		"too many minutes":   {"tasks_done", `{"uuid":"` + taskUUID + `","minutes":1441}`},
 	} {
 		if result := g.Call(call[0], json.RawMessage(call[1])); !result.IsError || result.Text == "" {
 			t.Errorf("%s: %s %s answered %+v", name, call[0], call[1], result)

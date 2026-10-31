@@ -3,6 +3,7 @@ package taskmcp
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -128,7 +129,20 @@ func (g *Gateway) run(tool string, arguments json.RawMessage) (string, error) {
 			return "", err
 		}
 		return g.delete(in.UUID, in.Reason)
-	case "tasks_done", "tasks_reopen", "tasks_start", "tasks_stop":
+	case "tasks_done":
+		var in struct {
+			UUID    string `json:"uuid"`
+			Minutes int    `json:"minutes"`
+			DoneAt  string `json:"done_at"`
+		}
+		if err := decode(&in); err != nil {
+			return "", err
+		}
+		if in.Minutes == 0 && in.DoneAt == "" {
+			return g.change(tool, in.UUID)
+		}
+		return g.doneAt(in.UUID, in.Minutes, in.DoneAt)
+	case "tasks_reopen", "tasks_start", "tasks_stop":
 		var in struct {
 			UUID string `json:"uuid"`
 		}
@@ -416,7 +430,43 @@ func (g *Gateway) modify(in modifyInput) (string, error) {
 	return g.show("Changed the task.", in.UUID)
 }
 
-// change is done, reopen, start and stop.
+// doneAt completes a task at a given time and logs the minutes it took (tasks.CompleteAt).
+func (g *Gateway) doneAt(uuid string, minutes int, typed string) (string, error) {
+	task, err := g.tasks.Find(uuid)
+	if err != nil {
+		return "", err
+	}
+	if task.IsRecurringTemplate() {
+		return "", problem.Invalidf("that's a repeating schedule, not a task: change it on the Tasks tab")
+	}
+	if task.IsFinished() {
+		return "", problem.Invalidf("that task is already " + task.Status())
+	}
+	end := time.Now().Truncate(time.Minute)
+	if typed != "" {
+		var ok bool
+		if end, ok = tasks.ParseLocalMinute(strings.TrimSpace(typed)); !ok {
+			return "", problem.Invalidf("done_at must look like 2026-10-27T20:00")
+		}
+		if end.After(time.Now()) {
+			return "", problem.Invalidf("done_at is in the future")
+		}
+	}
+	warning, err := g.tasks.CompleteAt(uuid, end, minutes)
+	if err != nil {
+		return "", err
+	}
+	message := "Marked the task done at " + end.Format("Mon, Jan 2 15:04") + "."
+	switch {
+	case warning != "":
+		message += " " + warning
+	case minutes > 0:
+		message += fmt.Sprintf(" Logged %d minutes.", minutes)
+	}
+	return g.show(message, uuid)
+}
+
+// change is done (now, logging no time), reopen, start and stop.
 func (g *Gateway) change(tool, uuid string) (string, error) {
 	task, err := g.tasks.Find(uuid)
 	if err != nil {

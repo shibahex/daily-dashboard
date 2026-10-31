@@ -117,8 +117,11 @@ var Tools = []Tool{
 	},
 	{
 		Name:        "tasks_done",
-		Description: "Mark a pending task done (now).",
-		InputSchema: schema(`{"uuid":`+uuidProperty+`}`, "uuid"),
+		Description: "Mark a pending task done, now or at an earlier time, and optionally log how long it took in Timewarrior (with the tags its Start button gives it), like the Tasks tab's Done.",
+		InputSchema: schema(`{"uuid":`+uuidProperty+`,
+"minutes":{"type":"integer","minimum":0,"maximum":1440,"description":"How long it took, logged as ending when it was done. Leave out (or 0) to log no time."},
+"done_at":{"type":"string","description":"When it was done, local time to the minute (2026-10-27T20:00), not in the future. Default now."}
+}`, "uuid"),
 	},
 	{
 		Name:        "tasks_reopen",

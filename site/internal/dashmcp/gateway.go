@@ -260,6 +260,73 @@ func (g *Gateway) run(tool string, arguments json.RawMessage) (string, error) {
 			return "", err
 		}
 		return "Started the workout: it's on the Lifting tab.", nil
+	case "lifting_finish":
+		var in struct {
+			Minutes      *int
+			Note         *string
+			MyFitnessPal *bool
+		}
+		if err := decode(arguments, &in); err != nil {
+			return "", err
+		}
+		return g.liftingFinish(in.Minutes, in.Note, in.MyFitnessPal)
+	case "lifting_discard":
+		if err := decode(arguments, &struct{}{}); err != nil {
+			return "", err
+		}
+		err := g.ws.Lifting.Update(func(d *lifting.Data) error {
+			if d.Active == nil {
+				return problem.Conflictf("no workout is going")
+			}
+			d.Discard()
+			return nil
+		})
+		return "Discarded the workout in progress.", err
+	case "lifting_workout_delete":
+		var in struct{ ID string }
+		if err := decode(arguments, &in); err != nil {
+			return "", err
+		}
+		title := ""
+		err := g.ws.Lifting.Update(func(d *lifting.Data) error {
+			workout, ok := d.Workout(in.ID)
+			if !ok {
+				return problem.NotFoundf("no finished workout has that id: see lifting_overview")
+			}
+			title = workout.Title
+			d.DeleteWorkout(in.ID)
+			return nil
+		})
+		return "Deleted the workout “" + title + "”.", err
+	case "lifting_send_myfitnesspal":
+		var in struct{ ID string }
+		if err := decode(arguments, &in); err != nil {
+			return "", err
+		}
+		workout, ok := g.ws.Lifting.Load().Workout(in.ID)
+		if !ok {
+			return "", problem.NotFoundf("no finished workout has that id: see lifting_overview")
+		}
+		if workout.Sent {
+			return "", problem.Conflictf("that workout is already in MyFitnessPal")
+		}
+		if !g.ws.MyFitnessPal.Client().Setup().SignedIn {
+			return "", problem.Conflictf("MyFitnessPal isn't connected: the user connects it on the Account page")
+		}
+		left, err := g.ws.SendWorkout(workout)
+		if err != nil {
+			return "", err
+		}
+		return "Sent “" + workout.Title + "” to MyFitnessPal." + leftOut(left), nil
+	case "lifting_rename":
+		var in struct{ Exercise, Name string }
+		if err := decode(arguments, &in); err != nil {
+			return "", err
+		}
+		if err := g.ws.Lifting.Update(func(d *lifting.Data) error { return d.RenameExercise(in.Exercise, in.Name) }); err != nil {
+			return "", err
+		}
+		return "Renamed " + in.Exercise + " to " + in.Name + " everywhere.", nil
 	case "time_list":
 		var in struct{ From, To string }
 		if err := decode(arguments, &in); err != nil {
@@ -574,6 +641,71 @@ func (g *Gateway) liftingOverview(count int) (string, error) {
 	}
 	return asJSON(map[string]any{"unit": data.Unit, "weights_are_in": "lb", "routines": data.Routines,
 		"workout_in_progress": data.Active, "recent_workouts": recent, "goals": goals})
+}
+
+// liftingFinish finishes the workout in progress as the Finish panel does (workspace.FinishWorkout).
+func (g *Gateway) liftingFinish(minutes *int, note *string, toMyFitnessPal *bool) (string, error) {
+	data := g.ws.Lifting.Load()
+	if data.Active == nil {
+		return "", problem.Conflictf("no workout is going")
+	}
+	now := g.now().Truncate(time.Minute)
+	took := max(1, min(int(math.Round(now.Sub(data.Active.Started).Minutes())), 24*60))
+	if minutes != nil {
+		if *minutes < 0 || *minutes > 24*60 {
+			return "", problem.Invalidf("minutes must be between 0 and 1440")
+		}
+		took = *minutes
+	}
+	text := data.Active.Note
+	if note != nil {
+		text = *note
+	}
+	var send *bool
+	connected := g.ws.MyFitnessPal.Client().Setup().SignedIn
+	switch {
+	case toMyFitnessPal != nil && *toMyFitnessPal && !connected:
+		return "", problem.Conflictf("MyFitnessPal isn't connected: finish without myfitnesspal, or the user connects it on the Account page first")
+	case toMyFitnessPal != nil:
+		send = toMyFitnessPal
+	case connected:
+		yes := !data.MyFitnessPal.Off
+		send = &yes
+	}
+	done, err := g.ws.FinishWorkout(now, took, text, send)
+	if err != nil {
+		return "", err
+	}
+	sets := done.Workout.DoneSets()
+	unit := "sets"
+	if sets == 1 {
+		unit = "set"
+	}
+	parts := []string{fmt.Sprintf("Saved the workout “%s” (%d %s done).", done.Workout.Title, sets, unit)}
+	for _, name := range done.Goals {
+		parts = append(parts, name+" reached its one-rep max goal.")
+	}
+	if done.Ticked {
+		parts = append(parts, "Ticked the task “"+done.Workout.Task+"”.")
+	}
+	if done.Logged {
+		parts = append(parts, fmt.Sprintf("Logged %d minutes.", took))
+	}
+	if done.Sent {
+		parts = append(parts, "Sent it to MyFitnessPal."+leftOut(done.LeftOut))
+	}
+	if done.Warning != "" {
+		parts = append(parts, done.Warning)
+	}
+	return strings.Join(parts, " "), nil
+}
+
+// leftOut names the lifts a workout went to MyFitnessPal without.
+func leftOut(left []string) string {
+	if len(left) == 0 {
+		return ""
+	}
+	return " These had no match there and were left out: " + strings.Join(left, ", ") + " (the user can match them on the Lifting tab)."
 }
 
 func (g *Gateway) liftingHistory(name string, limit int) (string, error) {

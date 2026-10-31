@@ -16,7 +16,6 @@ import (
 	"dashboard/internal/problem"
 	"dashboard/internal/store"
 	"dashboard/internal/text"
-	"dashboard/internal/timewarrior"
 )
 
 // The Lifting tab: routines (days of planned exercises), the workout in progress with its rest
@@ -511,83 +510,45 @@ func (ui *UI) finishPanel(w http.ResponseWriter, r *http.Request) {
 	view.NoneDone = view.Sets == 0
 	view.MyFitnessPal, view.Send = ui.myFitnessPalConnected(r), !data.MyFitnessPal.Off
 	if view.Task != "" {
-		_, view.TaskDue = ui.dueTaskNamed(r, view.Task)
+		_, view.TaskDue = ui.ws(r).Tasks.DueNamed(view.Task, time.Now())
 	}
 	ui.render(w, "lift-finish", view)
 }
 
-// dueTaskNamed is the due (or overdue) task with this description: the copy that Done ticks.
-func (ui *UI) dueTaskNamed(r *http.Request, description string) (string, bool) {
-	data, err := ui.loadTaskData(r)
-	if err != nil {
-		return "", false
-	}
-	for _, row := range data.pendingRows() {
-		if (row.Bucket == "overdue" || row.Bucket == "today") && strings.EqualFold(row.Description(), description) {
-			return row.UUID(), true
-		}
-	}
-	return "", false
-}
-
-// finishWorkout saves the workout, then ticks its task (which logs the time with the task's
-// tags) or, without one due, logs the time as "Lifting" plus the workout's name. When the panel
-// asked (mfp), it goes to MyFitnessPal too, and the answer is kept for next time.
+// finishWorkout saves the workout, ticks its task or logs its time (workspace.FinishWorkout), and
+// when the panel asked (mfp), sends it to MyFitnessPal too.
 func (ui *UI) finishWorkout(w http.ResponseWriter, r *http.Request) {
-	ws := ui.ws(r)
 	minutes, err := parseTook(r.FormValue("took"))
 	if err != nil {
 		fail(w, err)
 		return
 	}
-	end := time.Now().Truncate(time.Minute)
-	var finished lifting.Workout
-	asked, send := r.FormValue("mfpAsked") != "", r.FormValue("mfp") != ""
-	err = ws.Lifting.Update(func(d *lifting.Data) error {
-		var err error
-		if finished, err = d.Finish(end, minutes, r.FormValue("note")); err == nil && asked {
-			d.MyFitnessPal.Off = !send
-		}
-		return err
-	})
+	var send *bool
+	if r.FormValue("mfpAsked") != "" {
+		yes := r.FormValue("mfp") != ""
+		send = &yes
+	}
+	done, err := ui.ws(r).FinishWorkout(time.Now().Truncate(time.Minute), minutes, r.FormValue("note"), send)
 	if err != nil {
 		fail(w, err)
 		return
 	}
-	message := fmt.Sprintf("Workout saved ✓ · %d %s", finished.DoneSets(), plural(finished.DoneSets(), "set", "sets"))
-	for _, name := range ws.Lifting.Load().GoalsReached(finished) {
+	sets := done.Workout.DoneSets()
+	message := fmt.Sprintf("Workout saved ✓ · %d %s", sets, plural(sets, "set", "sets"))
+	for _, name := range done.Goals {
 		message += " · " + name + " 1RM goal reached 🎉"
 	}
-	warning := ""
-	uuid, due := "", false
-	if finished.Task != "" {
-		uuid, due = ui.dueTaskNamed(r, finished.Task)
+	if done.Ticked {
+		message += " · task ticked"
 	}
-	if due {
-		if warning, err = ws.Tasks.CompleteAt(uuid, end, minutes); err != nil {
-			warning = "Saved, but the task wasn't ticked: " + problem.Public(err)
-		} else {
-			message += " · task ticked"
-		}
-	} else if minutes > 0 {
-		start := end.Add(-time.Duration(minutes) * time.Minute)
-		if err := ws.Time.Track(start.Format(localMinuteLayout), end.Format(localMinuteLayout),
-			timewarrior.TaskTags([]string{"Lifting", finished.Title})); err != nil {
-			warning = "Saved, but the time wasn't logged: " + problem.Public(err)
-		}
-	}
-	if minutes > 0 && warning == "" {
+	if done.Logged {
 		message += " · " + minutesText(minutes) + " logged"
 	}
-	if asked && send {
-		if left, err := ui.sendWorkout(r, finished); err != nil {
-			warning = strings.TrimSpace(warning + " Saved, but not in MyFitnessPal: " + problem.Public(err) + " (send it from Workouts).")
-		} else {
-			message += " · sent to MyFitnessPal" + leftOutText(left)
-		}
+	if done.Sent {
+		message += " · sent to MyFitnessPal" + leftOutText(done.LeftOut)
 	}
-	if warning != "" {
-		announce(w, &notice{Message: warning, Bad: true}, liftingChanged, tasksChanged, timeChanged, nutritionChanged)
+	if done.Warning != "" {
+		announce(w, &notice{Message: done.Warning, Bad: true}, liftingChanged, tasksChanged, timeChanged, nutritionChanged)
 	} else {
 		announce(w, say(message), liftingChanged, tasksChanged, timeChanged, nutritionChanged)
 	}

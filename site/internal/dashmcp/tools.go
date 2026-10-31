@@ -1,6 +1,6 @@
 // Package dashmcp lets the chat's AI read and change the user's dashboard: the Today tab (its
 // checklist and skip reasons, weigh-ins and weight plan, this week's training, reminders and
-// goals), the Lifting tab (routines, logging sets, starting a workout) and Timewarrior.
+// goals), the Lifting tab (routines, logging sets, starting and finishing a workout, past workouts) and Timewarrior.
 //
 // It works like the Taskwarrior tools (taskmcp): the browser's AI calls the Gateway in the
 // dashboard directly, and an AI on the server runs `dashboard dashboard-mcp` in its sandbox, which
@@ -154,6 +154,37 @@ var Tools = []taskmcp.Tool{
 		Name:        "lifting_start",
 		Description: "Start a workout: a routine's day (ids from lifting_overview), or an empty one without them.",
 		InputSchema: schema(`{"routine":{"type":"string"},"day":{"type":"string"}}`),
+	},
+	{
+		Name: "lifting_finish",
+		Description: "Finish the workout in progress, like the Lifting tab's Finish button: it's saved to the history, " +
+			"then its routine day's task is ticked when that task is due (logging the time with it), or else the time is " +
+			"logged in Timewarrior as Lifting. Read lifting_overview first so nothing the user did is missing.",
+		InputSchema: schema(`{
+"minutes":{"type":"integer","minimum":0,"maximum":1440,"description":"How long it took. Default: the time since it started. 0 logs no time."},
+"note":{"type":"string","description":"A note for the workout. Default: the note it already has."},
+"myfitnesspal":{"type":"boolean","description":"Also log it in MyFitnessPal's exercise diary (kept as the user's choice). Leave out to use their last choice."}
+}`),
+	},
+	{
+		Name:        "lifting_discard",
+		Description: "Throw away the workout in progress without saving it. Only when the user asks to discard or cancel it.",
+		InputSchema: schema(`{}`),
+	},
+	{
+		Name:        "lifting_workout_delete",
+		Description: "Delete a finished workout from the history by its id (from lifting_overview). Only when the user asks. It stays in MyFitnessPal if it was sent there.",
+		InputSchema: schema(`{"id":{"type":"string"}}`, "id"),
+	},
+	{
+		Name:        "lifting_send_myfitnesspal",
+		Description: "Send a finished workout that isn't in MyFitnessPal yet (no sentToMyFitnessPal in lifting_overview) to its exercise diary: each lift as its heaviest set, the time as strength training.",
+		InputSchema: schema(`{"id":{"type":"string"}}`, "id"),
+	},
+	{
+		Name:        "lifting_rename",
+		Description: "Rename a lift everywhere: past workouts, routines, the workout in progress and its goal (\"call bench Bench Press\"). Naming it like another lift merges the two.",
+		InputSchema: schema(`{"exercise":{"type":"string","description":"Its name now."},"name":{"type":"string","description":"The new name."}}`, "exercise", "name"),
 	},
 	{
 		Name: "time_list", Annotations: taskmcp.ReadOnly,

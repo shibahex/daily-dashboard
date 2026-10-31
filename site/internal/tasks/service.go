@@ -45,6 +45,25 @@ func (s *Service) Export() ([]byte, error) {
 	return []byte(result.Stdout), nil
 }
 
+// DueNamed is the pending task with this description (ignoring case) that's due today or
+// overdue: of a repeating task's copies, the one due first, which is the copy Done ticks.
+func (s *Service) DueNamed(description string, now time.Time) (string, bool) {
+	pending, err := s.Pending()
+	if err != nil {
+		return "", false
+	}
+	y, m, d := now.Date()
+	tomorrow := time.Date(y, m, d+1, 0, 0, 0, 0, now.Location())
+	uuid, first := "", time.Time{}
+	for _, task := range pending {
+		due, ok := task.DueTime()
+		if ok && due.Before(tomorrow) && strings.EqualFold(task.Description(), description) && (uuid == "" || due.Before(first)) {
+			uuid, first = task.UUID(), due
+		}
+	}
+	return uuid, uuid != ""
+}
+
 func (s *Service) Find(uuid string) (taskwarrior.Task, error) {
 	if !taskwarrior.IsUUID(uuid) {
 		return nil, problem.Invalidf("bad uuid")
