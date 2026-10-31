@@ -1,5 +1,6 @@
 /* Colour tokens (light/dark), page layout, cards, shared panels */
 :root {
+  color-scheme: light;
   --bg: #f6f5f2; --panel: #ffffff; --ink: #1d1d1b; --muted: #6b6a66; --line: #e4e2dc;
   --accent: #2f6f5e; --accent-soft: #e3efe9; --warn: #b4472f; --warn-soft: #f7e6e1; --chip: #efede8;
   --skip: #8a6d1f; --skip-soft: #f5edd6;
@@ -10,6 +11,7 @@
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
+    color-scheme: dark;
     --bg: #151614; --panel: #1e1f1c; --ink: #ecebe6; --muted: #9b9a94; --line: #2f302c;
     --accent: #6fbfa4; --accent-soft: #23332d; --warn: #e5826b; --warn-soft: #3a2621; --chip: #2a2b27;
     --skip: #d8b45a; --skip-soft: #352e1c;

@@ -97,8 +97,9 @@
 {{/* One food to pick: R is a foodResult. */}}
 {{define "food-choice"}}{{$r := .R}}
 <button type="button" class="fp-choice" hx-post="/food/pick" hx-vals="{{vals "food" $r.Encoded "meal" .Meal "query" .Query "serving" $r.Index "quantity" $r.Quantity}}" hx-target="closest .food-panel" hx-swap="outerHTML">
-  <span>{{$r.Food.Name}}{{if $r.Food.Verified}} ✓{{end}}<small>{{if $r.Food.SavedMeal}}{{with $r.Food.Items}}{{join . " · "}}{{else}}Saved meal{{end}}{{else}}{{$r.Food.Brand}}{{if and $r.Food.Brand $r.Serving}} · {{end}}{{if ne $r.Quantity "1"}}{{$r.Quantity}} × {{end}}{{$r.Serving}}{{end}}</small></span>
-  <span class="k">{{if $r.Food.NoNutrition}}{{else if or $r.Per.Calories (not $r.Food.SavedMeal)}}{{template "food-macros" $r.Per}}{{end}}</span></button>
+  <span class="n">{{$r.Food.Name}}{{if $r.Food.Verified}} ✓{{end}}{{if $r.Food.SavedMeal}}{{if not $r.Food.Items}}<small>Saved meal</small>{{end}}{{else}}<small>{{$r.Food.Brand}}{{if and $r.Food.Brand $r.Serving}} · {{end}}{{if ne $r.Quantity "1"}}{{$r.Quantity}} × {{end}}{{$r.Serving}}</small>{{end}}</span>
+  <span class="k">{{if $r.Food.NoNutrition}}{{else if or $r.Per.Calories (not $r.Food.SavedMeal)}}<b>{{number $r.Per.Calories}}</b> kcal<small>{{number $r.Per.Protein}}p {{number $r.Per.Carbs}}c {{number $r.Per.Fat}}f</small>{{end}}</span>
+  {{if $r.Food.SavedMeal}}{{with $r.Food.Items}}<span class="fp-items">{{range .}}<span>{{.}}</span>{{end}}</span>{{end}}{{end}}</button>
 {{end}}
 
 {{/* The recent foods or saved meals matching the search box. */}}
