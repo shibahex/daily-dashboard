@@ -3,6 +3,7 @@ package myfitnesspal
 import (
 	"bytes"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -178,6 +179,10 @@ func (d *diaryPage) match(meal, description string, calories float64) string {
 	id := d.rows[best].entryID
 	d.rows = append(d.rows[:best], d.rows[best+1:]...)
 	return id
+}
+
+func (d diaryPage) has(entryID string) bool {
+	return slices.ContainsFunc(d.rows, func(row pageRow) bool { return row.entryID == entryID })
 }
 
 var defaultMealPositions = map[string]int{"breakfast": 0, "lunch": 1, "dinner": 2, "snacks": 3}

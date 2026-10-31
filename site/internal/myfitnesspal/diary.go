@@ -3,6 +3,7 @@ package myfitnesspal
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"regexp"
 	"strings"
 	"time"
@@ -215,8 +216,21 @@ func (s *Syncer) DeleteFood(date, entryID string) (Cache, error) {
 	if err := checkIDs(entryID); err != nil {
 		return Cache{}, err
 	}
-	return s.change(date, func(ctx context.Context) error { return s.client.deleteFood(ctx, date, entryID) })
+	gone := false
+	cache, err := s.change(date, func(ctx context.Context) error {
+		err := s.client.deleteFood(ctx, date, entryID)
+		gone = errors.Is(err, ErrEntryGone)
+		return err
+	})
+	if gone {
+		return s.FetchDay(date), ErrEntryGone
+	}
+	return cache, err
 }
+
+// ErrEntryGone means a food to delete wasn't in the diary any more: the card showing it was out
+// of date.
+var ErrEntryGone error = problem.Error{Kind: problem.Invalid, Message: "That food had changed in MyFitnessPal since the card loaded. The card is up to date now."}
 
 // LogWeight sends a weigh-in (lb) to MyFitnessPal.
 func (s *Syncer) LogWeight(day string, lb float64) error {

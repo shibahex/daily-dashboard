@@ -2,6 +2,7 @@ package web
 
 import (
 	"encoding/json"
+	"errors"
 	"html/template"
 	"math"
 	"net/http"
@@ -415,7 +416,12 @@ func (ui *UI) saveFood(w http.ResponseWriter, r *http.Request) {
 
 func (ui *UI) deleteFood(w http.ResponseWriter, r *http.Request) {
 	if _, err := ui.ws(r).MyFitnessPal.DeleteFood(shownDay(r).Format(dayLayout), r.PathValue("entry")); err != nil {
-		fail(w, err)
+		if !errors.Is(err, myfitnesspal.ErrEntryGone) {
+			fail(w, err)
+			return
+		}
+		announce(w, &notice{Message: problem.Public(err), Bad: true})
+		ui.renderGoalsWith(r, w, false, nil)
 		return
 	}
 	announce(w, say("Removed from MyFitnessPal"))

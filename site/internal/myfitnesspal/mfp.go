@@ -455,13 +455,33 @@ func (c Client) editFood(ctx context.Context, date, entryID, weightID string, qu
 	return nil
 }
 
+// deleteFood removes a diary entry. MyFitnessPal answers the same whether or not it removed
+// anything (even for an entry that isn't there), so the diary is read before and after.
 func (c Client) deleteFood(ctx context.Context, date, entryID string) error {
 	s := c.session()
-	return s.withPage(ctx, date, func(page diaryPage) (int, error) {
-		resp, err := s.do(ctx, request{method: http.MethodPost, url: siteURL + "food/remove/" + entryID,
-			form: url.Values{"_method": {"delete"}, "authenticity_token": {page.csrf}}, headers: legacyFormHeaders(siteURL + "food/diary")})
-		return resp.status, err
-	}, "/food/remove", http.StatusOK, http.StatusNoContent, http.StatusFound)
+	page, err := s.diaryPage(ctx, date, false)
+	if err != nil {
+		return err
+	}
+	if !page.has(entryID) {
+		return ErrEntryGone
+	}
+	resp, err := s.do(ctx, request{method: http.MethodPost, url: siteURL + "food/remove/" + entryID,
+		form: url.Values{"_method": {"delete"}, "authenticity_token": {page.csrf}}, headers: legacyFormHeaders(siteURL + "food/diary")})
+	if err != nil {
+		return err
+	}
+	if err := accepted(resp.status, "/food/remove", http.StatusOK, http.StatusNoContent, http.StatusFound); err != nil {
+		return err
+	}
+	after, err := s.diaryPage(ctx, date, false)
+	if err != nil {
+		return err
+	}
+	if after.has(entryID) {
+		return problem.Failedf("MyFitnessPal didn't remove it. Try again.")
+	}
+	return nil
 }
 
 // withPage posts a diary form with the diary page's token, reusing the page a sync just read.
