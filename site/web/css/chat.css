@@ -82,6 +82,14 @@
   background: var(--ink); color: var(--panel); font-size: 14px; line-height: 20px; cursor: pointer; }
 .msg-images { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 6px; }
 .msg-images img { max-width: 160px; max-height: 160px; border-radius: 10px; display: block; }
+.attached figure.file { display: flex; align-items: center; height: 64px; padding: 0 12px 0 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); max-width: 240px; }
+.file-chip { display: flex; align-items: center; gap: 9px; min-width: 0; font-size: 13px; line-height: 1.3; }
+.file-chip > b { flex: none; font-size: 10px; letter-spacing: .04em; padding: 3px 5px; border-radius: 5px; background: var(--accent-soft); color: var(--accent); }
+.file-chip > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-chip small { display: block; color: var(--muted); font-size: 11px; }
+.msg-files { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; margin-bottom: 6px; }
+.msg-files .file-chip { max-width: 260px; padding: 7px 11px 7px 8px; border-radius: 10px; background: var(--panel); border: 1px solid var(--line); color: var(--ink); }
+.msg.user.only-images .msg-files { margin-bottom: 0; }
 .msg.user.only-images { background: none; padding: 0; }
 .msg.user.only-images .msg-images { margin-bottom: 0; justify-content: flex-end; }
 .composer:focus-within { border-color: var(--accent); }

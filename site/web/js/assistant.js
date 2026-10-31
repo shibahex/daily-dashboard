@@ -15,13 +15,21 @@
   const ANTHROPIC = "https://api.anthropic.com/v1/messages";
   const MAX_TURNS = 20; // tool rounds in one answer
   const MAX_NOTES = 192 * 1024;
-  const MAX_IMAGES = 4;  // images in one message
-  const KEEP_IMAGES = 4; // images the chat keeps for the AI to see again; older ones become a note, so the saved chat stays small
+  const MAX_ATTACHED = 6; // images and files in one message
+  const KEEP_IMAGES = 4;  // images the chat keeps for the AI to see again; older ones become a note, so the saved chat stays small
+  const KEEP_FILES = 3;   // the same for text files
+  const MAX_FILE_TEXT = 100 * 1024;  // characters of a text file the AI reads; the rest is left off
+  // A PDF (only Claude reads them): one a message. The AI keeps the last one while the page is
+  // open; the saved chat has a note in its place, since a PDF would take most of the room it has.
+  const MAX_PDF = 10 * 1024 * 1024;
+  const SERVER_FILE_TEXT = 60 * 1024; // characters of files in one message to an AI on the server, which gets it as one argument
 
   let root, setup, tools = [], chat = { messages: [], api: [] }, version = 0, key = null, busy = null, saving = null;
   // answering is the answer under way (it settles once it has stopped and saved); current is its reply.
   let answering = null, current = null;
-  // attached are the images waiting to go with the next message: { mediaType, data (base64), thumb (a small data: URL) }.
+  // attached are the images and files waiting to go with the next message:
+  // { kind: "image", mediaType, data (base64), thumb (a small data: URL) },
+  // { kind: "text", name, size, text, cut (only the start was read) } or { kind: "pdf", name, size, data (base64) }.
   let attached = [];
   // The sealed settings: { anthropicKey, claudeCodeKey, openaiKey, geminiKey, localURL (".../v1"), localModel, localKey,
   // relayOK (the model server the user agreed to reach through the dashboard's server) }.
@@ -90,7 +98,9 @@
   }
 
   async function sendChat(sealed) {
-    const fields = { version, blob: await Keys.sealBlob(key, "chat", chat) };
+    const kept = { ...chat, api: withFewAttachments([...chat.api], 0) }; // without PDFs
+    const fields = { version, blob: await Keys.sealBlob(key, "chat", kept) };
+    chat.seq = kept.seq;
     if (sealed) fields.sealed = "1";
     try {
       version = (await post("/assistant/chat", fields)).version;
@@ -235,11 +245,14 @@
 
   // answerOnServer sends the message, the notes and the key to the server, which runs the AI and
   // streams its answer back as JSON lines.
-  async function answerOnServer(question) {
+  async function answerOnServer(question, files = []) {
     const reply = current = { role: "assistant", text: "", tools: [] };
     const same = chat.server?.provider === setup.provider;
     const history = same ? "" : historyText();
-    chat.messages.push({ role: "user", text: question }, reply);
+    chat.messages.push({ role: "user", text: question, ...shownFiles(files) }, reply);
+    // The files go in the message, as text.
+    const message = [...files.map(f => fileText(f.name, f.text + (f.cut ? "\n[The file goes on: only its start was sent.]" : ""))),
+      question || "(The user sent the files above without a message.)"].join("\n\n");
     busy = new AbortController();
     renderAll();
     let changedNotes = [], newParagraph = false, drawing = false;
@@ -251,7 +264,7 @@
       const notes = (await SealedNotes.all() || []).map(n => ({ title: n.title, text: n.text || "" }));
       const body = new FormData();
       const fields = {
-        provider: setup.provider, model: setup.model || "", message: question, history, now: nowText(),
+        provider: setup.provider, model: setup.model || "", message, history, now: nowText(),
         session: same ? chat.server.session || "" : "", key: serverKeys[setup.provider][0]() || "",
         notes: JSON.stringify(notes),
       };
@@ -294,7 +307,7 @@
     } catch (e) {
       reply.error = e.name === "AbortError" ? "Stopped" : e.message;
     } finally {
-      chat.api.push({ role: "user", content: question });
+      chat.api.push({ role: "user", content: files.length ? [...files.map(fileBlock), { type: "text", text: question || "(The files above.)" }] : question });
       if (reply.text) chat.api.push({ role: "assistant", content: reply.text });
       chat.api = validHistory(chat.api);
       busy = current = null;
@@ -376,17 +389,23 @@
         last.content = [...asBlocks(last.content), ...asBlocks(m.content)];
       } else merged.push({ ...m });
     }
-    return withFewImages(merged);
+    return withFewAttachments(merged);
   }
 
-  // withFewImages keeps the last KEEP_IMAGES images and puts a short note in place of older ones.
-  function withFewImages(api) {
-    let kept = 0;
+  // withFewAttachments keeps the last KEEP_IMAGES images and KEEP_FILES files, and puts a short
+  // note in place of older ones.
+  function withFewAttachments(api, keepPDFs = 1) {
+    let images = 0, files = 0, pdfs = 0;
+    const gone = b => ({ type: "text", text: `(A file the user sent earlier, ${b.title || "unnamed"}, no longer kept: ask for it again if you need it.)` });
     for (let i = api.length - 1; i >= 0; i--) {
       const m = api[i];
-      if (typeof m.content === "string" || !m.content.some(b => b.type === "image")) continue;
-      api[i] = { ...m, content: m.content.map(b => b.type !== "image" ? b
-        : ++kept <= KEEP_IMAGES ? b : { type: "text", text: "(An image the user sent earlier, no longer kept.)" }) };
+      if (typeof m.content === "string" || !m.content.some(b => b.type === "image" || b.type === "document")) continue;
+      api[i] = { ...m, content: m.content.map(b => {
+        if (b.type === "image") return ++images <= KEEP_IMAGES ? b : { type: "text", text: "(An image the user sent earlier, no longer kept.)" };
+        if (b.type !== "document") return b;
+        if (b.source.type === "base64") return ++pdfs <= keepPDFs ? b : gone(b);
+        return ++files <= KEEP_FILES ? b : gone(b);
+      }) };
     }
     return api;
   }
@@ -410,31 +429,88 @@
     };
     const full = draw(1568, 0.82), thumb = draw(240, 0.7);
     bitmap.close();
-    return { mediaType: "image/jpeg", data: full.slice(full.indexOf(",") + 1), thumb };
+    return { kind: "image", mediaType: "image/jpeg", data: full.slice(full.indexOf(",") + 1), thumb };
   }
 
-  async function addImages(files) {
+  // ---------- files ----------
+
+  const isPDF = file => file.type === "application/pdf" || /\.pdf$/i.test(file.name || "");
+  const sizeText = bytes => bytes < 1024 ? `${bytes} B` : bytes < 1 << 20 ? `${Math.round(bytes / 1024)} KB` : `${(bytes / (1 << 20)).toFixed(1)} MB`;
+  const extension = name => (/\.([a-z0-9]{1,5})$/i.exec(name || "")?.[1] || "file").toUpperCase();
+
+  // readFile reads a PDF as it is, or anything else as text: code, CSV, Markdown, JSON, logs.
+  // A file that isn't text (a Word document, a zip) can't go.
+  async function readFile(file) {
+    const name = file.name || "that file";
+    if (isPDF(file)) {
+      if (file.size > MAX_PDF) throw new Error(`${name} is ${sizeText(file.size)}: PDFs can be up to ${sizeText(MAX_PDF)}`);
+      const url = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => reject(new Error(`Couldn't read ${name}`));
+        reader.readAsDataURL(file);
+      });
+      return { kind: "pdf", name, size: file.size, data: url.slice(url.indexOf(",") + 1) };
+    }
+    const bytes = new Uint8Array(await file.slice(0, MAX_FILE_TEXT * 4).arrayBuffer());
+    let text;
+    try { text = new TextDecoder("utf-8", { fatal: true }).decode(bytes); }
+    catch { text = new TextDecoder("utf-8").decode(bytes); }
+    const odd = (text.match(/[\u0000-\u0008\u000e-\u001f\ufffd]/g) || []).length;
+    if (odd > text.length / 100 + 2) throw new Error(`Can't read ${name}: send text (code, CSV, Markdown…), a PDF or an image`);
+    const cut = file.size > bytes.length || text.length > MAX_FILE_TEXT;
+    return { kind: "text", name, size: file.size, text: text.slice(0, MAX_FILE_TEXT), cut };
+  }
+
+  // whyNot says why the chosen AI can't take an attachment, or "".
+  function whyNot(item) {
+    if (!setup) return "";
+    const ai = shortNames[setup.provider];
+    if (item.kind === "image" && onServer()) return `${ai} can't see images: pick Claude API or a local model`;
+    if (item.kind === "pdf" && setup.provider !== "claude") return `${ai} can't read PDFs: pick Claude API, or send the text`;
+    return "";
+  }
+
+  async function addAttachments(files) {
     for (const file of files) {
-      if (attached.length >= MAX_IMAGES) return toast(`Up to ${MAX_IMAGES} images a message`, { bad: true });
-      try { attached.push(await readImage(file)); }
-      catch (e) { toast(e.message, { bad: true }); }
+      if (attached.length >= MAX_ATTACHED) return toast(`Up to ${MAX_ATTACHED} images and files a message`, { bad: true });
+      if (isPDF(file) && attached.some(i => i.kind === "pdf")) { toast("One PDF a message", { bad: true }); continue; }
+      try {
+        const item = file.type.startsWith("image/") ? await readImage(file) : await readFile(file);
+        const problem = whyNot(item);
+        if (problem) throw new Error(problem);
+        attached.push(item);
+      } catch (e) { toast(e.message, { bad: true }); }
       renderAttached();
     }
   }
 
-  // renderAttached shows the waiting images over the message box, each with a button to take it off.
+  // fileChip shows a file by its name, type and size.
+  const fileChip = file => el("span", { className: "file-chip", title: file.name },
+    el("b", {}, extension(file.name)), el("span", {}, file.name, el("small", {}, sizeText(file.size) + (file.cut ? " · only the start" : ""))));
+
+  // renderAttached shows what's waiting over the message box, each with a button to take it off.
   function renderAttached() {
     const strip = $("attached");
     strip.hidden = !attached.length;
-    strip.replaceChildren(...attached.map(image => {
-      const remove = el("button", { type: "button", className: "remove", title: "Remove", ariaLabel: "Remove image" }, "×");
-      remove.onclick = () => { attached = attached.filter(i => i !== image); renderAttached(); };
-      return el("figure", {}, el("img", { src: image.thumb, alt: "" }), remove);
+    strip.replaceChildren(...attached.map(item => {
+      const remove = el("button", { type: "button", className: "remove", title: "Remove", ariaLabel: "Remove " + (item.name || "image") }, "×");
+      remove.onclick = () => { attached = attached.filter(i => i !== item); renderAttached(); };
+      return item.kind === "image"
+        ? el("figure", {}, el("img", { src: item.thumb, alt: "" }), remove)
+        : el("figure", { className: "file" }, fileChip(item), remove);
     }));
   }
 
-  // imageBlock is an image in Anthropic's shape, which the chat keeps.
+  // imageBlock and fileBlock are an image and a file in Anthropic's shape, which the chat keeps.
   const imageBlock = image => ({ type: "image", source: { type: "base64", media_type: image.mediaType, data: image.data } });
+  const fileBlock = file => file.kind === "pdf"
+    ? { type: "document", title: file.name, source: { type: "base64", media_type: "application/pdf", data: file.data } }
+    : { type: "document", title: file.name, source: { type: "text", media_type: "text/plain",
+        data: file.text + (file.cut ? "\n\n[The file goes on: only its start was sent.]" : "") } };
+
+  // fileText is a text file written into a message, for the AIs that take only text.
+  const fileText = (name, text) => `<file name="${name.replace(/"/g, "'")}">\n${text}\n</file>`;
 
   // ---------- the prompt ----------
 
@@ -672,7 +748,10 @@
       for (const b of blocks.filter(b => b.type === "tool_result")) {
         out.push({ role: "tool", tool_call_id: b.tool_use_id, content: String(b.content ?? "") });
       }
-      const text = blocks.filter(b => b.type === "text").map(b => b.text).join("\n\n");
+      const text = blocks.map(b => b.type === "text" ? b.text
+        : b.type !== "document" ? ""
+        : b.source.type === "text" ? fileText(b.title || "file", b.source.data)
+        : `(A PDF the user sent, ${b.title || "unnamed"}, which this model can't read.)`).filter(Boolean).join("\n\n");
       const images = blocks.filter(b => b.type === "image")
         .map(b => ({ type: "image_url", image_url: { url: `data:${b.source.media_type};base64,${b.source.data}` } }));
       if (images.length) out.push({ role: "user", content: [...images, ...(text ? [{ type: "text", text }] : [])] });
@@ -724,12 +803,16 @@
     return { content, stop: usedTools || finish === "tool_calls" ? "tool_use" : "end_turn" };
   }
 
-  async function answer(question, images = []) {
-    if (onServer()) return answerOnServer(question);
+  // shownFiles is what the chat shows of the files sent with a message.
+  const shownFiles = files => files.length ? { files: files.map(f => ({ name: f.name, size: f.size, ...(f.cut ? { cut: true } : {}) })) } : {};
+
+  async function answer(question, items = []) {
+    const images = items.filter(i => i.kind === "image"), files = items.filter(i => i.kind !== "image");
+    if (onServer()) return answerOnServer(question, files);
     const reply = current = { role: "assistant", text: "", tools: [] };
-    chat.messages.push({ role: "user", text: question, ...(images.length ? { images: images.map(i => i.thumb) } : {}) }, reply);
-    chat.api.push({ role: "user", content: images.length
-      ? [...images.map(imageBlock), ...(question ? [{ type: "text", text: question }] : [])] : question });
+    chat.messages.push({ role: "user", text: question, ...(images.length ? { images: images.map(i => i.thumb) } : {}), ...shownFiles(files) }, reply);
+    chat.api.push({ role: "user", content: items.length
+      ? [...images.map(imageBlock), ...files.map(fileBlock), ...(question ? [{ type: "text", text: question }] : [])] : question });
     chat.api = validHistory(chat.api);
     busy = new AbortController();
     renderAll();
@@ -802,7 +885,8 @@
   function bubble(m) {
     if (m.role === "user") {
       const images = m.images?.length ? el("div", { className: "msg-images" }, ...m.images.map(src => el("img", { src, alt: "Image you sent" }))) : null;
-      return el("div", { className: "msg user" + (images && !m.text ? " only-images" : "") }, images, m.text || null);
+      const files = m.files?.length ? el("div", { className: "msg-files" }, ...m.files.map(fileChip)) : null;
+      return el("div", { className: "msg user" + ((images || files) && !m.text ? " only-images" : "") }, images, files, m.text || null);
     }
     const body = el("div", { className: "body" });
     if (m.tools?.length) {
@@ -862,10 +946,7 @@
   function renderControls() {
     const field = $("form").elements.message;
     field.disabled = !!busy || !!setup?.problem;
-    // The AIs on the server take a message as text only.
-    const attach = $("attach");
-    attach.hidden = !!setup && onServer();
-    attach.disabled = field.disabled;
+    $("attach").disabled = field.disabled;
     $("send").hidden = !!busy;
     $("stop").hidden = !busy;
     if (setup) showStatus();
@@ -1090,36 +1171,39 @@
       const field = event.target.elements.message;
       const question = field.value.trim();
       if ((!question && !attached.length) || busy || !setup || setup.problem) return;
-      if (attached.length && onServer()) return toast(`${shortNames[setup.provider]} can't see images: pick Claude API or a local model`, { bad: true });
-      const images = attached;
+      // The AI may have changed since they were added.
+      const problem = attached.map(whyNot).find(Boolean);
+      if (problem) return toast(problem, { bad: true });
+      if (onServer()) {
+        const size = attached.reduce((sum, f) => sum + f.text.length, 0);
+        if (size > SERVER_FILE_TEXT) return toast(`${shortNames[setup.provider]} takes up to ${Math.round(SERVER_FILE_TEXT / 1024)}K characters of files a message: send fewer or smaller files`, { bad: true });
+      }
+      const items = attached;
       field.value = "";
       attached = [];
       renderAttached();
-      answering = answer(question, images).finally(() => { answering = null; });
+      answering = answer(question, items).finally(() => { answering = null; });
     });
-    // Images come from the button, a paste or a drop.
+    // Images and files come from the button, a paste or a drop.
     const files = $("files");
     $("attach").onclick = () => files.click();
-    files.onchange = () => { addImages([...files.files]); files.value = ""; };
-    const canAttach = () => setup && !onServer();
-    const imagesIn = list => [...list || []].filter(f => (!f.kind || f.kind === "file") && f.type.startsWith("image/"));
+    files.onchange = () => { addAttachments([...files.files]); files.value = ""; };
+    const filesIn = list => [...list || []].filter(f => !f.kind || f.kind === "file");
     const hasFiles = event => [...event.dataTransfer?.types || []].includes("Files");
     const form = $("form");
     form.addEventListener("paste", event => {
-      const found = imagesIn(event.clipboardData?.items).map(i => i.getAsFile()).filter(Boolean);
-      if (!found.length || !canAttach()) return;
+      const found = filesIn(event.clipboardData?.items).map(i => i.getAsFile()).filter(Boolean);
+      if (!found.length || !setup) return;
       event.preventDefault();
-      addImages(found);
+      addAttachments(found);
     });
     form.addEventListener("dragover", event => {
-      if (canAttach() && hasFiles(event)) event.preventDefault();
+      if (setup && hasFiles(event)) event.preventDefault();
     });
     form.addEventListener("drop", event => {
-      if (!canAttach() || !hasFiles(event)) return;
+      if (!setup || !hasFiles(event)) return;
       event.preventDefault(); // else the browser opens the file in place of the page
-      const found = imagesIn(event.dataTransfer.files);
-      if (found.length) addImages(found);
-      else toast("Only images can go with a message", { bad: true });
+      addAttachments([...event.dataTransfer.files]);
     });
     renderAttached(); // the ones added before the tab was opened again
     $("stop").onclick = () => busy?.abort();
