@@ -21,8 +21,8 @@ import (
 // nothing is downloaded or installed, and no package cache is shared between users.
 type Programs struct {
 	Dir         string // site/data/tools
-	MFPPackage  string // pip requirement for the released MyFitnessPal MCP ("mfp-mcp==0.4.1")
-	MFPCheckout string // a local checkout to install instead ("" = the released package)
+	MFPPackage  string // pip requirement for the MyFitnessPal MCP ("mfp-mcp @ <tarball URL>")
+	MFPCheckout string // a local checkout to install instead ("" = MFPPackage)
 	MFPLibPath  string // LD_LIBRARY_PATH for its curl_cffi wheel (libstdc++), from MFP_LIBRARY_PATH
 	AnkiPackage string // npm package for the Anki MCP ("@ankimcp/anki-mcp-server@0.27.0")
 

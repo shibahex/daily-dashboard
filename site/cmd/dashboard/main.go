@@ -100,7 +100,7 @@ func main() {
 	jsonAPI.Routes(mux)
 	pages := &web.UI{Auth: account, Paths: paths, Workspaces: workspaces, HTTPS: network.HTTPS(),
 		Sandbox: tools, SandboxErr: sandboxErr, Egress: egress.New(),
-		Programs: &sandbox.Programs{Dir: filepath.Join(paths.ServerData, "tools"), MFPPackage: "mfp-mcp==" + myfitnesspal.Version,
+		Programs: &sandbox.Programs{Dir: filepath.Join(paths.ServerData, "tools"), MFPPackage: myfitnesspal.SandboxPackage,
 			MFPCheckout: mfp.Checkout(), MFPLibPath: os.Getenv("MFP_LIBRARY_PATH"), AnkiPackage: anki.MCPPackage}}
 	pages.Routes(mux)
 

@@ -23,14 +23,20 @@ import (
 )
 
 const (
-	Version = "0.4.1" // pinned, like the Anki MCP: a new release runs only after review
-	Package = "mfp-mcp[autorefresh]==" + Version
-	RepoURL = "https://github.com/Mason-Levyy/myfitnesspal-mcp"
+	RepoURL = "https://github.com/shibahex/myfitnesspal-mcp"
+	// Commit is pinned, like the Anki MCP: new code runs only after review. It's GitHub's
+	// tarball of the commit, so uv needs no git.
+	Commit  = "986929b0868ae4908cf846b2211258bd6cc83248" // log-exercise: saved meals
+	Source  = RepoURL + "/archive/" + Commit + ".tar.gz"
+	Package = "mfp-mcp[autorefresh] @ " + Source
+	// SandboxPackage is what the AI's sandbox installs: no headless browser, since only the
+	// dashboard renews logins.
+	SandboxPackage = "mfp-mcp @ " + Source
 )
 
-// Client is one user's MyFitnessPal. The MCP comes from a local checkout or the released package.
+// Client is one user's MyFitnessPal. The MCP comes from a local checkout or the pinned commit.
 type Client struct {
-	CheckoutDir string // MFP_MCP_DIR: a local checkout; empty uses the released package
+	CheckoutDir string // MFP_MCP_DIR: a local checkout; empty uses the pinned commit
 	BrowserPath string // MFP_BROWSER_PATH: the browser the MCP renews the login with
 
 	// A user's own folders for the MCP's saved login (config) and browser profile (data).
