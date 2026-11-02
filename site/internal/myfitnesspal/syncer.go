@@ -84,6 +84,14 @@ func (s *Syncer) Status() (cache Cache, stale bool) {
 	return cache, synced.Day != today() || age > StaleAfter
 }
 
+// SyncAfterOutsideChange syncs after something other than the dashboard (the AI's tools)
+// changed MyFitnessPal, and reads saved meals and recent foods again next time they're shown.
+func (s *Syncer) SyncAfterOutsideChange() Cache {
+	s.meals.forget()
+	s.recent.forget()
+	return s.Sync()
+}
+
 // Sync fetches today's food, goals and weigh-ins. If a sync is already running, it waits for
 // that one instead of starting another.
 func (s *Syncer) Sync() Cache {

@@ -268,7 +268,7 @@ func (ui *UI) assistantTool(w http.ResponseWriter, r *http.Request) {
 		result = mcp.Result{Text: problem.Public(err), IsError: true}
 	}
 	if assistant.ChangesDiary(server + toolSep + tool) {
-		go ws.MyFitnessPal.Sync() // so the Today tab shows the change
+		go ws.MyFitnessPal.SyncAfterOutsideChange() // so the Today tab shows the change
 	}
 	writeNoStoreJSON(w, result)
 }

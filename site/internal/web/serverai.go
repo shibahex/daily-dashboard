@@ -214,7 +214,7 @@ func (ui *UI) assistantRun(w http.ResponseWriter, r *http.Request) {
 		send(map[string]any{"type": "notes", "notes": changed})
 	}
 	if outcome.ChangedDiary {
-		go ws.MyFitnessPal.Sync() // so the Today tab shows the change
+		go ws.MyFitnessPal.SyncAfterOutsideChange() // so the Today tab shows the change
 	}
 	send(map[string]any{"type": "done"})
 }
