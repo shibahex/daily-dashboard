@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"dashboard/internal/jsonfile"
+	"dashboard/internal/problem"
 )
 
 // Status says whether AnkiConnect answers, and if not, what's missing.
@@ -16,12 +17,18 @@ type Status struct {
 	Connected bool
 	Addon     string
 	NotSetUp  bool // its address isn't set yet
+	Server    bool // the user's Anki on the dashboard's server
+	Problem   string
 }
 
 func (c Client) Status() Status {
 	var version int
-	if err := c.callInto("version", nil, &version); err == nil {
-		return Status{Connected: true}
+	err := c.callInto("version", nil, &version)
+	if err == nil {
+		return Status{Connected: true, Server: c.Server}
+	}
+	if c.Server {
+		return Status{Server: true, Problem: problem.Public(err)}
 	}
 	return Status{NotSetUp: c.URL == "", Addon: AnkiConnectAddon}
 }

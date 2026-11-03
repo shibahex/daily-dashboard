@@ -69,7 +69,7 @@ type User struct {
 	// PlainStorage: the user chose not to keep their data (plan, tasks, food…) encrypted on the
 	// server's disk. Their notes, chat and keys stay end to end either way.
 	PlainStorage bool `json:"plain_storage,omitempty"`
-	// ServerAI: the user chose to let the server run an AI for them (Claude Code, Codex, Gemini
+	// ServerAI: the user chose to let the server run an AI for them (Claude Code, Codex, Antigravity
 	// CLI), which means the server sees their messages and notes while it answers.
 	ServerAI bool `json:"server_ai,omitempty"`
 }

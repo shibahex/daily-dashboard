@@ -160,6 +160,10 @@ func (c Client) OpenNoteInBrowser(id int64) error {
 
 // Sync syncs the collection with AnkiWeb.
 func (c Client) Sync() error {
+	if c.Server {
+		_, err := c.SyncServer()
+		return err
+	}
 	_, err := c.Call("sync", nil)
 	return describe(err)
 }

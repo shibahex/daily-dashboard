@@ -294,6 +294,9 @@ type connectionsView struct {
 	MFPAskName    bool     // the cookie worked but MyFitnessPal needs the username too
 	MFPToken      string   // ...and the cookie they pasted, so they don't paste it again
 	Anki          anki.Status
+	AnkiWeb       anki.ServerStatus // the Anki on the server's AnkiWeb sign-in
+	AnkiOnServer  bool              // Anki can run on this server (for people without their own)
+	AnkiUser      string            // the AnkiWeb email from a failed sign-in, so it isn't typed again
 	AnkiURL       string
 	AnkiTyped     string // the address and key from a failed Connect, so they don't type them again
 	AnkiKey       string
@@ -314,8 +317,15 @@ func (ui *UI) connectionsView(r *http.Request) connectionsView {
 	user, ws := ui.user(r), ui.ws(r)
 	ankiClient := ws.Anki()
 	view := connectionsView{Tab: accountTab(r), Admin: user.IsAdmin(), MyFitnessPal: ws.MyFitnessPal.Client().Setup().SignedIn,
-		Anki: ankiClient.Status(), AnkiURL: ankiClient.URL, ServerAI: user.ServerAI, ServerAIs: serverAILabels(user),
-		ModelServers: ui.Auth.ModelServers(), Relayed: ui.Auth.RelayedModelServers()}
+		Anki: ankiClient.Status(), ServerAI: user.ServerAI, ServerAIs: serverAILabels(user),
+		AnkiOnServer: ui.Workspaces.Anki.Available(), ModelServers: ui.Auth.ModelServers(), Relayed: ui.Auth.RelayedModelServers()}
+	if ankiClient.Server {
+		if view.Anki.Connected {
+			view.AnkiWeb, _ = ankiClient.ServerStatus()
+		}
+	} else {
+		view.AnkiURL = ankiClient.URL
+	}
 	for _, id := range auth.ServerProviders {
 		view.ServerAllowed = view.ServerAllowed || user.Policy.AllowsProvider(id)
 	}
@@ -393,6 +403,48 @@ func (ui *UI) connectAnki(w http.ResponseWriter, r *http.Request) {
 
 func (ui *UI) disconnectAnki(w http.ResponseWriter, r *http.Request) {
 	ui.renderConnections(w, r, "Anki disconnected", ui.Workspaces.DisconnectAnki(ui.user(r)))
+}
+
+// signInAnkiWeb signs the user's Anki on the server in to AnkiWeb and syncs (the first time,
+// their cards come down). The password goes to AnkiWeb and isn't kept: Anki keeps only the
+// sync key AnkiWeb gives it, in the user's folder.
+func (ui *UI) signInAnkiWeb(w http.ResponseWriter, r *http.Request) {
+	username, password := formText(r, "username"), r.FormValue("password")
+	client := ui.ws(r).Anki()
+	var err error
+	var result anki.SyncResult
+	switch {
+	case !client.Server:
+		err = problem.Invalidf("Your own Anki is connected: sign in to AnkiWeb in it instead")
+	case username == "" || password == "" || len(username) > 200 || len(password) > 500:
+		err = problem.Invalidf("Enter your AnkiWeb email and password")
+	default:
+		result, err = client.SignIn(username, password)
+	}
+	if err == nil {
+		saved := "Signed in to AnkiWeb"
+		switch result.Result {
+		case "downloaded":
+			saved = "Signed in to AnkiWeb: your cards are here"
+		case "uploaded":
+			saved = "Signed in to AnkiWeb: your cards were sent there"
+		}
+		ui.renderConnections(w, r, saved, nil)
+		return
+	}
+	view := ui.connectionsView(r)
+	view.Error, view.AnkiUser = problem.Public(err), username
+	w.Header().Set("Cache-Control", "no-store")
+	ui.render(w, "connections-card", view)
+}
+
+func (ui *UI) signOutAnkiWeb(w http.ResponseWriter, r *http.Request) {
+	client := ui.ws(r).Anki()
+	err := problem.Invalidf("Your own Anki is connected")
+	if client.Server {
+		err = client.SignOut()
+	}
+	ui.renderConnections(w, r, "Signed out of AnkiWeb (your cards stay here)", err)
 }
 
 func (ui *UI) accountPage(w http.ResponseWriter, r *http.Request) {

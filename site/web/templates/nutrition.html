@@ -85,7 +85,7 @@
 
 {{/* The list under the search box reloads as it's typed in and when Recent or Meals is picked.
      It carries those buttons, so they always say what's showing (neither, for a search). */}}
-{{define "food-list-attrs"}}hx-post="/food/list" hx-include="previous form, find .fp-tabs" hx-trigger="{{.}}input from:previous form delay:150ms, change" hx-sync="this:replace" hx-swap="outerHTML"{{end}}
+{{define "food-list-attrs"}}hx-post="/food/list" hx-include="previous form, find .fp-tabs, find .fp-sort" hx-trigger="{{.}}input from:previous form delay:150ms, change" hx-sync="this:replace" hx-swap="outerHTML"{{end}}
 
 {{define "food-tabs"}}
 <div class="seg fp-tabs" role="radiogroup" aria-label="Your foods">
@@ -98,18 +98,23 @@
 {{define "food-choice"}}{{$r := .R}}
 <button type="button" class="fp-choice" hx-post="/food/pick" hx-vals="{{vals "food" $r.Encoded "meal" .Meal "query" .Query "serving" $r.Index "quantity" $r.Quantity}}" hx-target="closest .food-panel" hx-swap="outerHTML">
   <span class="n">{{$r.Food.Name}}{{if $r.Food.Verified}} ✓{{end}}{{if $r.Food.SavedMeal}}{{if not $r.Food.Items}}<small>Saved meal</small>{{end}}{{else}}<small>{{$r.Food.Brand}}{{if and $r.Food.Brand $r.Serving}} · {{end}}{{if ne $r.Quantity "1"}}{{$r.Quantity}} × {{end}}{{$r.Serving}}</small>{{end}}</span>
-  <span class="k">{{if $r.Food.NoNutrition}}{{else if or $r.Per.Calories (not $r.Food.SavedMeal)}}<b>{{number $r.Per.Calories}}</b> kcal<small>{{number $r.Per.Protein}}p {{number $r.Per.Carbs}}c {{number $r.Per.Fat}}f</small>{{end}}</span>
-  {{if $r.Food.SavedMeal}}{{with $r.Food.Items}}<span class="fp-items">{{range .}}<span>{{.}}</span>{{end}}</span>{{end}}{{end}}</button>
+  <span class="k">{{if $r.Food.NoNutrition}}{{else if or $r.Per.Calories (not $r.Food.SavedMeal)}}<b>{{number $r.Per.Calories}}</b> kcal<small class="fp-macros"><span class="p">{{number $r.Per.Protein}}p</span> <span class="c">{{number $r.Per.Carbs}}c</span> <span class="f">{{number $r.Per.Fat}}f</span></small>
+    {{with $r.Split}}{{if or .Protein .Carbs .Fat}}<span class="fp-split" title="Calories from protein {{.Protein}}%, carbs {{.Carbs}}%, fat {{.Fat}}%"><i class="p" style="flex-grow:{{.Protein}}"></i><i class="c" style="flex-grow:{{.Carbs}}"></i><i class="f" style="flex-grow:{{.Fat}}"></i></span>{{end}}{{end}}{{end}}</span>
+  {{if $r.Food.SavedMeal}}{{with $r.Items}}<span class="fp-items">{{range .}}<span><span class="in">{{.Name}}</span>{{with .Amount}}<span class="amt">{{.}}</span>{{end}}</span>{{end}}</span>{{end}}{{end}}</button>
 {{end}}
 
 {{/* The recent foods or saved meals matching the search box. */}}
 {{define "food-list"}}
 <div class="fp-list" {{template "food-list-attrs" ""}}>
-  {{template "food-tabs" .List}}
+  <div class="fp-bar">
+    {{template "food-tabs" .List}}
+    <label class="fp-sort"{{if ne .List "meals"}} hidden{{end}}>{{if and (eq .List "meals") .Total}}<span class="fp-count">{{if eq (len .Foods) .Total}}{{.Total}}{{else}}{{len .Foods}} of {{.Total}}{{end}} {{if eq .Total 1}}meal{{else}}meals{{end}}</span>{{end}}
+      <select class="txt" name="sort" aria-label="Sort saved meals">{{range .Sorts}}<option value="{{.Value}}"{{if eq .Value $.Sort}} selected{{end}}>{{.Label}}</option>{{end}}</select></label>
+  </div>
   {{if .Error}}<p class="err small flush">{{.Error}}</p>
   {{else if .Foods}}<div class="fp-results">{{range .Foods}}{{if .Food.SavedMeal}}
     <div class="fp-row">{{template "food-choice" dict "R" . "Meal" $.Meal "Query" $.Query}}
-      <button type="button" class="icon del" hx-post="/food/meals/{{.Food.FoodID}}/delete" hx-vals="{{vals "list" "meals" "meal" $.Meal "query" $.Query "name" .Food.Name}}"
+      <button type="button" class="icon del" hx-post="/food/meals/{{.Food.FoodID}}/delete" hx-vals="{{vals "list" "meals" "meal" $.Meal "query" $.Query "sort" $.Sort "name" .Food.Name}}"
         hx-target="closest .fp-list" hx-swap="outerHTML" hx-confirm="Delete the saved meal {{.Food.Name}} from MyFitnessPal?" title="Delete this saved meal">✕</button></div>
     {{else}}{{template "food-choice" dict "R" . "Meal" $.Meal "Query" $.Query}}{{end}}{{end}}</div>
   {{else if .Query}}<p class="small muted flush">{{if eq .List "meals"}}None of your saved meals match.{{else}}None of your recent foods match.{{end}} Press Search to look in MyFitnessPal.</p>

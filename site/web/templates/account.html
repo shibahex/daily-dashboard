@@ -129,23 +129,29 @@
 
   <div class="card">
     <h2>Anki</h2>
+    {{if .Anki.Server}}
+    {{if .Anki.Connected}}<p>Your Anki runs on this server{{if .AnkiWeb.SignedIn}} and syncs with AnkiWeb as <b>{{.AnkiWeb.Username}}</b>{{end}}. Study on the <a class="link" href="/anki">Anki tab</a>.</p>
+    {{else}}<p class="err">{{.Anki.Problem}}</p>{{end}}
+    {{if .AnkiWeb.SignedIn}}
+    <div class="row"><button class="sm ghost" hx-post="/account/ankiweb/remove" hx-target="#connections-card" hx-swap="outerHTML" hx-confirm="Sign out of AnkiWeb? Your cards stay here, but stop syncing.">Sign out of AnkiWeb</button></div>
+    {{else if .Anki.Connected}}
+    <form class="anki-connect" hx-post="/account/ankiweb" hx-target="#connections-card" hx-swap="outerHTML" hx-disabled-elt="find button">
+      <p class="muted small">Sign in to AnkiWeb to bring your cards here and keep them in step with Anki on your phone and computer.</p>
+      <label>AnkiWeb email <input class="txt" name="username" value="{{.AnkiUser}}" required autocomplete="username" spellcheck="false"></label>
+      <label>AnkiWeb password <input class="txt" type="password" name="password" required autocomplete="current-password"></label>
+      <div class="row"><button class="sm primary">Sign in</button><span class="busy-note">Signing in and fetching your cards…</span></div>
+      <p class="muted small">The password goes to AnkiWeb only to sign in; the dashboard doesn't keep it. Anki keeps the sync key AnkiWeb gives it, in your folder on the server. If your cards here and on AnkiWeb ever can't be merged, AnkiWeb's copy wins.</p>
+    </form>
+    {{end}}
+    <details class="spaced-top"><summary class="small">Use the Anki on your own computer instead</summary>
+    {{template "anki-own" .}}
+    </details>
+    {{else}}
     {{if .Anki.Connected}}<p>Connected to <code>{{.AnkiURL}}</code>.</p>
     {{else if .AnkiURL}}<p>Set to <code>{{.AnkiURL}}</code>, but it isn't answering. Is Anki open on that computer?</p>{{end}}
-    <form class="anki-connect" hx-post="/account/anki" hx-target="#connections-card" hx-swap="outerHTML" hx-disabled-elt="find button">
-      <p class="muted small">Set up Anki on your computer first:</p>
-      <ol class="mfp-steps">
-        <li><b>Install AnkiConnect</b> in Anki: <b>Tools → Add-ons → Get Add-ons…</b>, code <code>{{or .Anki.Addon "2055492159"}}</code>.</li>
-        <li><b>Open its config</b> (Tools → Add-ons → AnkiConnect → Config) and set <code>"webBindAddress": "0.0.0.0"</code> and an <code>"apiKey"</code> of your own. The key is required: without it anyone on the network could use your Anki.</li>
-        <li><b>Restart Anki.</b></li>
-        <li><b>Firewall:</b> if that computer has one, let in TCP port 8765 (also when the dashboard runs in Docker on the same computer).</li>
-        <li><b>Enter the address and key below</b> and press Connect.</li>
-      </ol>
-      <label>AnkiConnect address <input class="txt" name="url" value="{{or .AnkiTyped .AnkiURL}}" placeholder="http://192.168.1.20:8765" required autocomplete="off" spellcheck="false"></label>
-      <label>AnkiConnect API key <input class="txt" type="password" name="key" value="{{.AnkiKey}}" required autocomplete="off" spellcheck="false"></label>
-      <div class="row"><button class="sm primary">{{if .AnkiURL}}Save{{else}}Connect{{end}}</button>
-      {{if .AnkiURL}}<button type="button" class="sm ghost" hx-post="/account/anki/remove" hx-target="#connections-card" hx-swap="outerHTML" hx-confirm="Disconnect your Anki?">Disconnect</button>{{end}}
-      <span class="busy-note">Checking with Anki…</span></div>
-    </form>
+    {{template "anki-own" .}}
+    {{if and .AnkiURL .AnkiOnServer}}<p class="muted small">Disconnect it to use Anki on this server instead.</p>{{end}}
+    {{end}}
   </div>
 
 </div>
@@ -182,7 +188,7 @@
 {{define "server-ai"}}
 <div class="card" id="server-ai">
   <h2>On the server {{if and .ServerAI .ServerAllowed}}<span class="badge on">on</span>{{end}}</h2>
-  <p class="muted">Claude Code, Codex and Gemini CLI can't run in a browser, so they run on the server. That's the way to use a Claude subscription. The catch: while one answers, the server sees your message, your notes and your key. It keeps none of them, but whoever runs the server could read them then.</p>
+  <p class="muted">Claude Code, Codex and Antigravity CLI can't run in a browser, so they run on the server. That's the way to use a Claude subscription. The catch: while one answers, the server sees your message, your notes and your key. It keeps none of them, but whoever runs the server could read them then.</p>
   {{if not .ServerAllowed}}
   <p class="notice warn">{{if .Admin}}You haven't allowed an AI on the server for your own account yet. Tick the ones you want under your name on the <a class="link" href="/admin">Admin page</a>.{{else}}Your admin hasn't allowed an AI on the server for you yet. Ask them if you'd like to use one.{{end}}</p>
   {{else if and .ServerAI (not .ServerAIs)}}
@@ -204,7 +210,7 @@
       <small class="muted">For Codex. <a class="link" href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer">Get a key</a></small>
       <input class="txt" type="password" name="openai_key" autocomplete="off" spellcheck="false" placeholder="Leave empty to keep it, or type - to remove it"></label>
     <label>Gemini API key <span class="ok small" data-browser-key-saved="geminiKey" hidden>· saved</span>
-      <small class="muted">For Gemini CLI. <a class="link" href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer">Get a key</a></small>
+      <small class="muted">For Antigravity CLI. <a class="link" href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer">Get a key</a></small>
       <input class="txt" type="password" name="gemini_key" autocomplete="off" spellcheck="false" placeholder="Leave empty to keep it, or type - to remove it"></label>
     <p class="sign-in-error" data-browser-key-error hidden></p>
     <div><button class="sm primary">Save</button></div>
@@ -322,4 +328,23 @@
   </div>
   {{end}}
 </div>
+{{end}}
+
+{{/* Connecting the Anki on the user's own computer (AnkiConnect). */}}
+{{define "anki-own"}}
+    <form class="anki-connect" hx-post="/account/anki" hx-target="#connections-card" hx-swap="outerHTML" hx-disabled-elt="find button">
+      <p class="muted small">Set up Anki on your computer first:</p>
+      <ol class="mfp-steps">
+        <li><b>Install AnkiConnect</b> in Anki: <b>Tools → Add-ons → Get Add-ons…</b>, code <code>{{or .Anki.Addon "2055492159"}}</code>.</li>
+        <li><b>Open its config</b> (Tools → Add-ons → AnkiConnect → Config) and set <code>"webBindAddress": "0.0.0.0"</code> and an <code>"apiKey"</code> of your own. The key is required: without it anyone on the network could use your Anki.</li>
+        <li><b>Restart Anki.</b></li>
+        <li><b>Firewall:</b> if that computer has one, let in TCP port 8765 (also when the dashboard runs in Docker on the same computer).</li>
+        <li><b>Enter the address and key below</b> and press Connect.</li>
+      </ol>
+      <label>AnkiConnect address <input class="txt" name="url" value="{{or .AnkiTyped .AnkiURL}}" placeholder="http://192.168.1.20:8765" required autocomplete="off" spellcheck="false"></label>
+      <label>AnkiConnect API key <input class="txt" type="password" name="key" value="{{.AnkiKey}}" required autocomplete="off" spellcheck="false"></label>
+      <div class="row"><button class="sm primary">{{if .AnkiURL}}Save{{else}}Connect{{end}}</button>
+      {{if .AnkiURL}}<button type="button" class="sm ghost" hx-post="/account/anki/remove" hx-target="#connections-card" hx-swap="outerHTML" hx-confirm="Disconnect your Anki?">Disconnect</button>{{end}}
+      <span class="busy-note">Checking with Anki…</span></div>
+    </form>
 {{end}}

@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -25,6 +26,10 @@ type Mirror struct {
 	dir   string // the encrypted copy: manifest + blobs/
 	plain string // the plain folder
 	key   *Key
+
+	// Held names folders (relative to plain) that are in use and can't be copied whole right
+	// now (a running Anki's database): Save keeps their last saved copy. nil = none.
+	Held func() []string
 
 	mu     sync.Mutex
 	files  map[string]entry // the last saved manifest, by path relative to plain
@@ -159,6 +164,10 @@ func (m *Mirror) Save() error {
 	}
 	now := map[string]entry{}
 	changed := false
+	var held []string
+	if m.Held != nil {
+		held = m.Held()
+	}
 	err := filepath.WalkDir(m.plain, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			if os.IsNotExist(err) {
@@ -172,6 +181,14 @@ func (m *Mirror) Save() error {
 		}
 		rel = filepath.ToSlash(rel)
 		if d.IsDir() && (slices.Contains(skipped, d.Name()) || rel == "mfp/data/uv" || rel == "agent-workspace" || rel == "agent-tools") {
+			return filepath.SkipDir
+		}
+		if d.IsDir() && slices.Contains(held, rel) {
+			for path, e := range m.files {
+				if path == rel || strings.HasPrefix(path, rel+"/") {
+					now[path] = e
+				}
+			}
 			return filepath.SkipDir
 		}
 		info, err := d.Info()

@@ -7,7 +7,7 @@
 // Notes are read and saved here (notes.js). The chat, the keys and the local model's address are
 // kept sealed like the notes (/assistant/chat, /assistant/keys): the server has none of them.
 //
-// The exception, for people who turn it on (Account page): Claude Code, Codex and Gemini CLI,
+// The exception, for people who turn it on (Account page): Claude Code, Codex and Antigravity CLI,
 // which can't run in a browser, run on the server (/assistant/run). For those, each message goes
 // to the server with the notes and the key, and the server sees them while the AI answers.
 
@@ -964,8 +964,8 @@
     if (setup) showStatus();
   }
 
-  const providerNames = { claude: "Claude API", local: "Local model", "claude-code": "Claude Code (server)", codex: "Codex (server)", gemini: "Gemini CLI (server)" };
-  const shortNames = { claude: "Claude API", local: "Local model", "claude-code": "Claude Code", codex: "Codex", gemini: "Gemini CLI" };
+  const providerNames = { claude: "Claude API", local: "Local model", "claude-code": "Claude Code (server)", codex: "Codex (server)", gemini: "Antigravity CLI (server)" };
+  const shortNames = { claude: "Claude API", local: "Local model", "claude-code": "Claude Code", codex: "Codex", gemini: "Antigravity CLI" };
 
   // showStatus is the line under the title: which AI, where it runs and, for a local model whose
   // server says, whether it's in memory (with a button to load it).

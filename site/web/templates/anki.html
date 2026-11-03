@@ -3,7 +3,7 @@
 {{define "anki"}}
 <div class="anki-top">
   <div class="chat-badge">{{template "icon-cards"}}</div>
-  <div class="chat-title"><b>Anki</b><span class="chat-status{{if not .Status.Connected}} off{{end}}"><i></i>{{if .Status.Connected}}Connected{{else if .Status.NotSetUp}}Not set up{{else}}Not answering{{end}}</span></div>
+  <div class="chat-title"><b>Anki</b><span class="chat-status{{if not .Status.Connected}} off{{end}}"><i></i>{{if and .Status.Server .Status.Connected}}On the server{{else if .Status.Server}}Couldn't start{{else if .Status.Connected}}Connected{{else if .Status.NotSetUp}}Not set up{{else}}Not answering{{end}}</span></div>
   <span class="chat-tools">
     <button class="pill" hx-post="/anki/sync" hx-swap="none" hx-disabled-elt="this" title="Sync with AnkiWeb"{{if not .Status.Connected}} disabled{{end}}>↻ Sync</button></span>
 </div>
@@ -12,8 +12,9 @@
 
 {{/* Until Anki answers, the setup steps check back every few seconds. */}}
 {{define "anki-body"}}
-<div hx-disinherit="*" id="anki-body"{{if not .Status.Connected}} hx-get="/anki/body" hx-trigger="every 8s" hx-swap="outerHTML"{{end}}>
-  {{if not .Status.Connected}}{{template "anki-setup" .Status}}
+<div hx-disinherit="*" id="anki-body"{{if .Status.Server}} class="anki-server"{{end}}{{if and (not .Status.Connected) (not .Status.Server)}} hx-get="/anki/body" hx-trigger="every 8s" hx-swap="outerHTML"{{end}}>
+  {{if and .Status.Server (not .Status.Connected)}}<p class="err">{{.Status.Problem}}</p>
+  {{else if not .Status.Connected}}{{template "anki-setup" .Status}}
   {{else if .Problem}}<p class="err">{{.Problem}}</p>
   {{else}}
   <div class="anki-grid">
@@ -54,8 +55,9 @@
   {{range .Overview.Decks}}
   <div class="deck" style="padding-left:{{multiply .Depth 16}}px"><span class="name">{{.ShortName}}<small>{{number (float ($view.Overview.CardsIn .))}} cards</small></span>
     {{template "deck-counts" .}}
-    <button class="sm" hx-post="/anki/study" hx-vals="{{vals "deck" .Name}}" hx-swap="none" title="Open this deck in Anki">Study</button></div>
-  {{else}}<p class="muted small">No decks yet. Add a card to create one.</p>{{end}}
+    {{if $view.Server}}<a class="btn sm" href="/anki/review?deck={{query .Name}}">Study</a>
+    {{else}}<button class="sm" hx-post="/anki/study" hx-vals="{{vals "deck" .Name}}" hx-swap="none" title="Open this deck in Anki">Study</button>{{end}}</div>
+  {{else}}<p class="muted small">No decks yet. Add a card to create one{{if $view.Server}}, or sign in to AnkiWeb on the <a class="link" href="/account?tab=connections">Account page</a> to bring yours{{end}}.</p>{{end}}
 </div>
 {{end}}
 
@@ -91,7 +93,7 @@
   <span class="acts">
     <button class="icon" hx-get="/anki/notes/{{.ID}}/edit" hx-target="#note-{{.ID}}" hx-swap="outerHTML" title="Edit">✎</button>
     <button class="icon" hx-post="/anki/notes/{{.ID}}/suspend" hx-swap="none" title="{{if .Suspended}}Unsuspend{{else}}Suspend (hide from reviews){{end}}">{{if .Suspended}}▶{{else}}⏸{{end}}</button>
-    <button class="icon" hx-post="/anki/notes/{{.ID}}/browse" hx-swap="none" title="Open in Anki's browser">↗</button>
+    <button class="icon desktop-only" hx-post="/anki/notes/{{.ID}}/browse" hx-swap="none" title="Open in Anki's browser">↗</button>
     <button class="icon del" hx-post="/anki/notes/{{.ID}}/delete" hx-swap="none" hx-confirm="Delete “{{truncate .Question 60}}” and its cards from Anki?" title="Delete">✕</button></span>
 </div>
 {{end}}
@@ -109,15 +111,50 @@
 <div class="card" hx-disinherit="*" id="card-anki" hx-get="/cards/anki" hx-trigger="anki-changed from:body, tick-300 from:body" hx-swap="outerHTML">
   <div class="card-head"><h2>Anki</h2><a class="edit-btn" href="/anki">Open tab →</a></div>
   {{if not .Status.Connected}}
-  <p class="small muted flush-top">{{if .Status.NotSetUp}}Connect your Anki on the <a class="link" href="/account?tab=connections">Account page</a>.{{else}}Your Anki isn't answering. Is it open?{{end}}</p>
+  <p class="small muted flush-top">{{if .Status.Server}}{{.Status.Problem}}{{else if .Status.NotSetUp}}Connect your Anki on the <a class="link" href="/account?tab=connections">Account page</a>.{{else}}Your Anki isn't answering. Is it open?{{end}}</p>
   {{else}}
+  {{if .Asleep}}<p class="small muted flush-top">{{if .At.IsZero}}Open the Anki tab to see what's due.{{else}}As of {{clock .At}}.{{end}}</p>{{end}}
   <div class="anki-today"><div><span class="big">{{.Due}}</span> <span class="muted">due</span></div>
     <div class="deck">{{template "deck-counts" .}}</div></div>
   <div class="anki-stats"><div><b>{{.ReviewedToday}}</b> <span class="lbl">today</span><br><b>{{.Streak}}</b> <span class="lbl">day streak</span></div>{{template "review-chart" .LastDays}}</div>
   {{range .Busiest}}
   <div class="deck"><span class="name">{{.Name}}</span><span class="counts"><span class="c-due">{{.Due}}</span></span>
-    <button class="sm" hx-post="/anki/study" hx-vals="{{vals "deck" .Name}}" hx-swap="none" title="Open this deck in Anki">Study</button></div>
-  {{else}}<p class="small muted spaced-top">All done for today. 🎉</p>{{end}}
+    {{if $.Status.Server}}<a class="btn sm" href="/anki/review?deck={{query .Name}}">Study</a>
+    {{else}}<button class="sm" hx-post="/anki/study" hx-vals="{{vals "deck" .Name}}" hx-swap="none" title="Open this deck in Anki">Study</button>{{end}}</div>
+  {{else}}{{if not (and .Asleep .At.IsZero)}}<p class="small muted spaced-top">All done for today. 🎉</p>{{end}}{{end}}
+  {{end}}
+</div>
+{{end}}
+
+{{/* ---------- studying in the browser (web/ankistudy.go) ---------- */}}
+{{define "anki-review"}}
+<div class="anki-top">
+  <div class="chat-badge">{{template "icon-cards"}}</div>
+  <div class="chat-title"><b>{{or .Deck "Study"}}</b><span class="small muted">Space shows the answer · 1–4 answer</span></div>
+  <span class="chat-tools"><a class="pill" href="/anki">← Decks</a></span>
+</div>
+{{template "anki-review-panel" .}}
+{{end}}
+
+{{define "anki-review-panel"}}
+<div class="card anki-review" id="anki-review" hx-target="this" hx-swap="outerHTML">
+  {{if .Problem}}<p class="err">{{.Problem}}</p>
+  {{else if .Study.Done}}
+  <div class="review-done"><p class="big">🎉</p><p>Nothing left to study in <b>{{.Deck}}</b> for now.</p><p><a class="btn sm" href="/anki">Back to decks</a></p></div>
+  {{else}}
+  {{$card := .Study.Card}}{{$at := vals "deck" .Deck "id" $card.ID "reps" $card.Reps}}
+  <div class="review-head"><span class="counts"><span class="c-new" title="New">{{index .Study.Counts 0}}</span><span class="c-learn" title="Learning">{{index .Study.Counts 1}}</span><span class="c-due" title="Due">{{index .Study.Counts 2}}</span></span>
+    <button class="sm ghost" hx-post="/anki/review/undo" hx-vals="{{vals "deck" .Deck}}" title="Undo the last answer">↶ Undo</button></div>
+  <iframe class="review-card" sandbox src="{{.CardURL}}" title="Card"></iframe>
+  {{if eq .Side "q"}}
+  <div class="review-actions"><button class="primary" hx-get="/anki/review/panel" hx-vals="{{vals "deck" .Deck "id" $card.ID "reps" $card.Reps "side" "a"}}" hx-trigger="click, keyup[key==' '] from:body">Show answer</button></div>
+  {{else}}
+  <div class="review-actions answers">
+    {{range $i, $label := $card.Buttons}}{{$ease := add $i 1}}
+    <button class="ease-{{$ease}}" hx-post="/anki/review/answer" hx-vals="{{vals "deck" $.Deck "id" $card.ID "reps" $card.Reps "ease" $ease}}" hx-trigger="click, keyup[key=='{{$ease}}'] from:body" hx-disabled-elt="closest .answers">
+      <small>{{$label}}</small>{{index (easeNames) $i}}</button>{{end}}
+  </div>
+  {{end}}
   {{end}}
 </div>
 {{end}}

@@ -17,26 +17,18 @@ import (
 	"time"
 
 	"dashboard/internal/config"
-	"dashboard/internal/mcp"
 	"dashboard/internal/problem"
 	"dashboard/internal/text"
 )
 
-const (
-	RepoURL = "https://github.com/shibahex/myfitnesspal-mcp"
-	// Commit is pinned, like the Anki MCP: new code runs only after review. It's GitHub's
-	// tarball of the commit, so uv needs no git.
-	Commit  = "986929b0868ae4908cf846b2211258bd6cc83248" // log-exercise: saved meals
-	Source  = RepoURL + "/archive/" + Commit + ".tar.gz"
-	Package = "mfp-mcp[autorefresh] @ " + Source
-	// SandboxPackage is what the AI's sandbox installs: no headless browser, since only the
-	// dashboard renews logins.
-	SandboxPackage = "mfp-mcp @ " + Source
-)
+// RepoURL is where the MCP comes from. Nix builds it from a pinned commit (site/nix/mfp-mcp.nix):
+// new code runs only after review.
+const RepoURL = "https://github.com/shibahex/myfitnesspal-mcp"
 
-// Client is one user's MyFitnessPal. The MCP comes from a local checkout or the pinned commit.
+// Client is one user's MyFitnessPal. The MCP comes from a local checkout or Nix's build.
 type Client struct {
-	CheckoutDir string // MFP_MCP_DIR: a local checkout; empty uses the pinned commit
+	EnvDir      string // MFP_MCP_ENV: the Nix-built Python environment with the MCP and its browser
+	CheckoutDir string // MFP_MCP_DIR: a local checkout, run with uv; empty uses EnvDir
 	BrowserPath string // MFP_BROWSER_PATH: the browser the MCP renews the login with
 
 	// A user's own folders for the MCP's saved login (config) and browser profile (data).
@@ -55,6 +47,8 @@ func (c Client) env() map[string]string {
 	env := map[string]string{}
 	if c.ConfigHome != "" {
 		env["XDG_CONFIG_HOME"], env["XDG_DATA_HOME"] = c.ConfigHome, c.DataHome
+	}
+	if c.ConfigHome != "" && c.usesCheckout() {
 		// uv reads XDG_DATA_HOME too, for its Pythons. Left to follow it, uv installs another
 		// Python per user, and since every run shares the checkout's one .venv, each run with a
 		// different Python rebuilds it under the others ("No such file or directory").
@@ -79,9 +73,10 @@ func (c Client) CookiePath() string {
 	return filepath.Join(configHome, "myfitnesspal-mcp", "cookies.json")
 }
 
-// NewClientFromEnv reads MFP_MCP_DIR and MFP_BROWSER_PATH.
+// NewClientFromEnv reads MFP_MCP_ENV, MFP_MCP_DIR and MFP_BROWSER_PATH.
 func NewClientFromEnv() Client {
 	return Client{
+		EnvDir:      os.Getenv("MFP_MCP_ENV"),
 		CheckoutDir: config.ExpandHome(os.Getenv("MFP_MCP_DIR")),
 		BrowserPath: os.Getenv("MFP_BROWSER_PATH"),
 	}
@@ -124,22 +119,6 @@ func (c Client) Setup() Setup {
 	return setup
 }
 
-// MCPServer is how an AI agent starts the MyFitnessPal MCP server.
-func (c Client) MCPServer() mcp.Server {
-	uv := uvCommand()
-	var args []string
-	if c.usesCheckout() {
-		args = []string{"run", "--python", "3.12", "--managed-python", "--directory", c.CheckoutDir, "--extra", "autorefresh", "mfp-mcp"}
-	} else {
-		args = []string{"tool", "run", "--python", "3.12", "--managed-python", "--from", Package, "mfp-mcp"}
-	}
-	server := mcp.Server{Command: uv[0], Args: append(uv[1:], args...)}
-	if env := c.env(); len(env) > 0 {
-		server.Env = env
-	}
-	return server
-}
-
 // call runs op signed in. When MyFitnessPal no longer accepts the login, the MCP's headless
 // browser renews it (when set up) and op runs once more: an auth failure means nothing was done.
 func (c Client) call(timeout time.Duration, op func(ctx context.Context) error) error {
@@ -159,7 +138,11 @@ func (c Client) call(timeout time.Duration, op func(ctx context.Context) error) 
 // It reports whether the saved login changed.
 func (c Client) renewLogin(ctx context.Context) bool {
 	before, _ := os.Stat(c.CookiePath())
-	cmd := c.command(ctx, "python", "-c", "from myfitnesspal_mcp import refresh; refresh.refresh_session()")
+	cmd, err := c.command(ctx, "python", "-c", "from myfitnesspal_mcp import refresh; refresh.refresh_session()")
+	if err != nil {
+		log.Printf("renewing the MyFitnessPal login: %v", err)
+		return false
+	}
 	if output, err := cmd.CombinedOutput(); err != nil {
 		log.Printf("renewing the MyFitnessPal login: %s", text.LastLine(string(output), err.Error()))
 		return false
@@ -168,20 +151,25 @@ func (c Client) renewLogin(ctx context.Context) bool {
 	return err == nil && (before == nil || !after.ModTime().Equal(before.ModTime()))
 }
 
-// command runs program inside the MCP package's environment (uv run), with the user's own
-// login folders.
-func (c Client) command(ctx context.Context, program ...string) *exec.Cmd {
-	where := []string{"--no-project", "--with", Package}
-	if c.usesCheckout() {
-		where = []string{"--directory", c.CheckoutDir, "--extra", "autorefresh"}
-	}
-	uv := uvCommand()
-	args := append(uv[1:], "run", "--quiet")
-	args = append(append(append(args, pythonArgs()...), where...), program...)
-	cmd := exec.CommandContext(ctx, uv[0], args...)
-	cmd.Env = os.Environ()
-	if lib := os.Getenv("MFP_LIBRARY_PATH"); lib != "" {
-		cmd.Env = append(cmd.Env, "LD_LIBRARY_PATH="+lib)
+// command runs program ("python" or "mfp-mcp") from the MCP's environment: Nix's build, or a
+// local checkout's (uv run), with the user's own login folders.
+func (c Client) command(ctx context.Context, program ...string) (*exec.Cmd, error) {
+	var cmd *exec.Cmd
+	switch {
+	case c.usesCheckout():
+		uv := uvCommand()
+		args := append(uv[1:], "run", "--quiet")
+		args = append(append(append(args, pythonArgs()...), "--directory", c.CheckoutDir, "--extra", "autorefresh"), program...)
+		cmd = exec.CommandContext(ctx, uv[0], args...)
+		cmd.Env = os.Environ()
+		if lib := os.Getenv("MFP_LIBRARY_PATH"); lib != "" {
+			cmd.Env = append(cmd.Env, "LD_LIBRARY_PATH="+lib)
+		}
+	case c.EnvDir != "":
+		cmd = exec.CommandContext(ctx, filepath.Join(c.EnvDir, "bin", program[0]), program[1:]...)
+		cmd.Env = os.Environ()
+	default:
+		return nil, problem.Unavailablef("The MyFitnessPal MCP comes with the dashboard's Nix build: start it with nix run.")
 	}
 	if c.ConfigHome != "" {
 		// Another user's MFP_COOKIE from the server's environment mustn't sign this one in.
@@ -190,7 +178,7 @@ func (c Client) command(ctx context.Context, program ...string) *exec.Cmd {
 	for key, value := range c.env() {
 		cmd.Env = append(cmd.Env, key+"="+value)
 	}
-	return cmd
+	return cmd, nil
 }
 
 // ErrNeedsUsername is Connect's answer when the cookie works but MyFitnessPal won't say whose
@@ -217,7 +205,10 @@ func (c Client) Connect(token, username string) error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
-	cmd := c.command(ctx, "mfp-mcp", "auth")
+	cmd, err := c.command(ctx, "mfp-mcp", "auth")
+	if err != nil {
+		return err
+	}
 	cmd.Stdin = strings.NewReader(token + "\n")
 	// Unbuffered, so the output keeps its order: buffered stdout ("Validating…") would
 	// otherwise land after the reason on stderr and hide it.
@@ -262,7 +253,7 @@ func (c Client) Disconnect() error {
 	return nil
 }
 
-// uvPythonDir is where uv keeps its Pythons for the server's own account: UV_PYTHON_INSTALL_DIR,
+// uvPythonDir is where uv keeps its Pythons (for a checkout) for the server's own account: UV_PYTHON_INSTALL_DIR,
 // or $XDG_DATA_HOME/uv/python, or ~/.local/share/uv/python.
 func uvPythonDir() string {
 	if dir := os.Getenv("UV_PYTHON_INSTALL_DIR"); dir != "" {

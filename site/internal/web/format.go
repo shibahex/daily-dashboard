@@ -44,6 +44,7 @@ var templateFuncs = template.FuncMap{
 	"monthDay":  func(t time.Time) string { return t.Format("Jan 2") },
 	"longDay":   func(t time.Time) string { return t.Format("Monday, January 2, 2006") },
 	"isoDay":    func(t time.Time) string { return t.Format("2006-01-02") },
+	"clock":     func(t time.Time) string { return t.Format("Jan 2, 15:04") },
 	"timeRange": timeRange,
 
 	// building attributes and passing values
@@ -57,6 +58,7 @@ var templateFuncs = template.FuncMap{
 	"priorities":  func() []choice { return priorityChoices },
 	"repeatTypes": func() []choice { return repeatTypes },
 	"reasonFor":   reasonFor,
+	"easeNames":   func() []string { return []string{"Again", "Hard", "Good", "Easy"} },
 	"toggleDay":   toggleDay,
 }
 

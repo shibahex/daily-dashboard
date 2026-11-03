@@ -1,0 +1,171 @@
+{
+  "name": "@ankimcp/anki-mcp-server",
+  "mcpName": "ai.ankimcp/anki-mcp-server",
+  "version": "0.27.0",
+  "description": "Model Context Protocol server for Anki - enables AI assistants to interact with your Anki flashcards",
+  "author": "Anatoly Tarnavsky",
+  "private": false,
+  "license": "MIT",
+  "main": "dist/main-http.js",
+  "bin": {
+    "ankimcp": "bin/ankimcp.js",
+    "anki-mcp-server": "bin/ankimcp.js"
+  },
+  "scripts": {
+    "build": "nest build",
+    "generate:icon": "node scripts/generate-icon.mjs",
+    "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
+    "start:dev:stdio": "nest start --watch --entryFile main-stdio",
+    "start:dev:http": "nest start --watch --entryFile main-http",
+    "start:dev:tunnel": "nest start --watch --entryFile main-tunnel -- --tunnel --debug",
+    "start:debug:stdio": "nest start --debug --watch --entryFile main-stdio",
+    "start:debug:http": "nest start --debug --watch --entryFile main-http",
+    "start:prod:stdio": "node dist/main-stdio",
+    "start:prod:http": "node dist/main-http",
+    "lint": "eslint \"{src,test}/**/*.ts\" --fix",
+    "test": "NODE_OPTIONS=--experimental-vm-modules jest",
+    "test:watch": "NODE_OPTIONS=--experimental-vm-modules jest --watch",
+    "test:cov": "NODE_OPTIONS=--experimental-vm-modules jest --coverage",
+    "test:unit": "NODE_OPTIONS=--experimental-vm-modules jest --testPathPatterns='spec\\.ts$' --silent",
+    "test:tools": "NODE_OPTIONS=--experimental-vm-modules jest src/mcp/primitives/essential/tools/__tests__ --silent",
+    "test:workflows": "NODE_OPTIONS=--experimental-vm-modules jest test/workflows --silent",
+    "test:debug": "node --experimental-vm-modules --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
+    "test:ci": "NODE_OPTIONS=--experimental-vm-modules jest --coverage --silent --maxWorkers=2",
+    "test:single": "npm test -- src/mcp/primitives/essential/tools/__tests__/delete-notes.tool.spec.ts",
+    "e2e:up": "cd .docker && docker compose up -d",
+    "e2e:down": "cd .docker && docker compose down",
+    "e2e:logs": "cd .docker && docker compose logs -f",
+    "e2e:test": "NODE_OPTIONS=--experimental-vm-modules jest --config test/e2e/jest-e2e.config.js",
+    "e2e:test:http": "NODE_OPTIONS=--experimental-vm-modules jest --config test/e2e/jest-e2e.config.js --testPathPatterns='http\\.e2e-spec'",
+    "e2e:test:stdio": "NODE_OPTIONS=--experimental-vm-modules jest --config test/e2e/jest-e2e.config.js --testPathPatterns='stdio\\.e2e-spec'",
+    "e2e:full:local": "./scripts/e2e-full.sh",
+    "smoke:pack": "npm run build && bash scripts/smoke-test-pack.sh",
+    "type-check": "tsc --noEmit",
+    "clean": "rm -rf dist dist-stdio dist-http node_modules",
+    "inspector:stdio": "./node_modules/.bin/mcp-inspector --config mcp-inspector-config.json --server stdio-server",
+    "inspector:stdio:debug": "./node_modules/.bin/mcp-inspector --config mcp-inspector-config.json --server stdio-server-debug",
+    "inspector:http": "./node_modules/.bin/mcp-inspector --config mcp-inspector-config.json --server http-server",
+    "sync-version": "node scripts/sync-version.js",
+    "mcpb:clean": "rm -f *.mcpb",
+    "mcpb:bundle": "npm run sync-version && npm run mcpb:clean && npm run build && mcpb pack . \"anki-mcp-server-$npm_package_version.mcpb\" && mcpb clean \"anki-mcp-server-$npm_package_version.mcpb\"",
+    "pack:local": "rm -f *.tgz && npm run build && npm pack",
+    "install:local": "npm install -g ./ankimcp-anki-mcp-server-*.tgz",
+    "install:npm": "npm install -g @ankimcp/anki-mcp-server@tunnel",
+    "uninstall:local": "npm uninstall -g @ankimcp/anki-mcp-server",
+    "upgrade:interactive": "npx npm-check-updates -i"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/core": "2.4.0",
+    "@modelcontextprotocol/node": "2.1.2",
+    "@modelcontextprotocol/server": "2.4.0",
+    "@nestjs/common": "^12.0.3",
+    "@nestjs/config": "^12.0.0",
+    "@nestjs/core": "^12.0.3",
+    "@nestjs/microservices": "^12.0.3",
+    "@nestjs/platform-express": "^12.0.3",
+    "@rekog/mcp-nest": "^2.0.6",
+    "async-mutex": "^0.5.0",
+    "commander": "^15.0.0",
+    "ipaddr.js": "^2.5.0",
+    "ky": "^2.1.0",
+    "mime": "^4.1.0",
+    "pino": "^10.3.1",
+    "pino-pretty": "^13.1.3",
+    "reflect-metadata": "^0.2.2",
+    "remark-parse": "^11.0.0",
+    "rxjs": "^7.8.2",
+    "unified": "^11.0.5",
+    "update-notifier": "^7.3.1",
+    "ws": "^8.21.3",
+    "zod": "^4.6.5",
+    "zod-to-json-schema": "^3.25.2"
+  },
+  "jest": {
+    "moduleFileExtensions": [
+      "js",
+      "json",
+      "ts"
+    ],
+    "rootDir": ".",
+    "roots": [
+      "<rootDir>/src",
+      "<rootDir>/test"
+    ],
+    "testRegex": ".*\\.(spec|test)\\.ts$",
+    "transform": {
+      "^.+\\.(t|j)s$": "ts-jest"
+    },
+    "collectCoverageFrom": [
+      "src/**/*.(t|j)s",
+      "!src/**/*.spec.ts",
+      "!src/**/*.test.ts",
+      "!src/**/__tests__/**",
+      "!src/**/__mocks__/**",
+      "!src/test-fixtures/**",
+      "!src/main.ts",
+      "!src/main-stdio.ts",
+      "!src/main-http.ts",
+      "!src/**/index.ts"
+    ],
+    "coverageDirectory": "coverage",
+    "testEnvironment": "node",
+    "coverageThreshold": {
+      "global": {
+        "branches": 70,
+        "functions": 70,
+        "lines": 70,
+        "statements": 70
+      }
+    },
+    "moduleNameMapper": {
+      "^@/(.*)$": "<rootDir>/src/$1",
+      "^@test/(.*)$": "<rootDir>/test/$1"
+    },
+    "transformIgnorePatterns": [
+      "node_modules/"
+    ],
+    "modulePathIgnorePatterns": [
+      "<rootDir>/dist",
+      "<rootDir>/dist-stdio",
+      "<rootDir>/dist-http"
+    ],
+    "forceExit": true
+  },
+  "packageManager": "npm@12.0.2",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ankimcp/anki-mcp-server.git"
+  },
+  "bugs": {
+    "url": "https://github.com/ankimcp/anki-mcp-server/issues"
+  },
+  "homepage": "https://ankimcp.ai",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "anki",
+    "flashcards",
+    "spaced-repetition",
+    "ai",
+    "claude",
+    "chatgpt",
+    "ankiconnect"
+  ],
+  "files": [
+    "dist",
+    "bin",
+    "README.md",
+    "LICENSE",
+    "package.json"
+  ],
+  "allowScripts": {
+    "fsevents@2.3.3": true,
+    "unrs-resolver@1.12.2": true
+  },
+  "overrides": {
+    "@hono/node-server": "2.1.5"
+  }
+}

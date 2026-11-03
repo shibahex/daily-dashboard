@@ -14,8 +14,9 @@ import (
 )
 
 // ListModels asks the AI's maker which models the user's key can use: Anthropic for Claude Code
-// (an API key, or a subscription token), OpenAI for Codex, Google for Gemini CLI. Only models
-// that chat are listed, newest first where the maker says.
+// (an API key, or a subscription token), OpenAI for Codex. Only models that chat are listed,
+// newest first where the maker says. Antigravity CLI takes only its own model names, so for it
+// Google is only asked whether the key works.
 func ListModels(ctx context.Context, provider, key string) ([]Model, error) {
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
@@ -25,7 +26,7 @@ func ListModels(ctx context.Context, provider, key string) ([]Model, error) {
 	case "codex":
 		return openAIModels(ctx, key)
 	case "gemini":
-		return geminiModels(ctx, key)
+		return geminiKeyWorks(ctx, key)
 	}
 	return nil, problem.Invalidf(fmt.Sprintf("unknown AI %q", provider))
 }
@@ -126,24 +127,9 @@ func openAIModels(ctx context.Context, key string) ([]Model, error) {
 	return models, nil
 }
 
-func geminiModels(ctx context.Context, key string) ([]Model, error) {
-	var answer struct {
-		Models []struct {
-			Name        string   `json:"name"`
-			DisplayName string   `json:"displayName"`
-			Methods     []string `json:"supportedGenerationMethods"`
-		} `json:"models"`
-	}
-	if err := getJSON(ctx, geminiAPI+"/v1beta/models?pageSize=1000", map[string]string{"x-goog-api-key": key}, &answer); err != nil {
-		return nil, err
-	}
-	var models []Model
-	for _, m := range answer.Models {
-		id := strings.TrimPrefix(m.Name, "models/")
-		if strings.HasPrefix(id, "gemini") && slices.Contains(m.Methods, "generateContent") &&
-			!strings.Contains(id, "embedding") && !strings.Contains(id, "image") && !strings.Contains(id, "tts") {
-			models = append(models, Model{ID: id, Label: cmp.Or(m.DisplayName, id)})
-		}
-	}
-	return models, nil
+// geminiKeyWorks asks Google whether the key works. It lists no models: agy's names for them
+// (gemini-3.1-pro-high…) aren't the API's, and agy refuses the API's.
+func geminiKeyWorks(ctx context.Context, key string) ([]Model, error) {
+	var answer struct{}
+	return nil, getJSON(ctx, geminiAPI+"/v1beta/models?pageSize=1", map[string]string{"x-goog-api-key": key}, &answer)
 }

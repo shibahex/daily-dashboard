@@ -11,10 +11,10 @@
       system = "x86_64-linux";
       pkgs = nixpkgs.legacyPackages.${system};
       n2c = nix2container.packages.${system}.nix2container;
-      # Claude Code is unfree; allow just that one package.
+      # Claude Code and Antigravity CLI are unfree; allow just those.
       unfreePkgs = import nixpkgs {
         inherit system;
-        config.allowUnfreePredicate = p: pkgs.lib.getName p == "claude-code";
+        config.allowUnfreePredicate = p: builtins.elem (pkgs.lib.getName p) [ "claude-code" "antigravity-cli" ];
       };
 
       # Taskwarrior hook: `task start` starts a Timewarrior timer, `stop`/`done` stops it.
@@ -24,8 +24,30 @@
         exec python3 ${pkgs.timewarrior}/share/doc/timew/ext/on-modify.timewarrior "$@"
       '';
 
-      # The Go server (cmd/dashboard). Its one dependency is goldmark, for Markdown. Built from the
-      # Go files only, so a change to the pages doesn't build it again.
+      # The MCP servers the AI's tools run (internal/sandbox), with every dependency pinned here
+      # rather than downloaded when they run. The server's own MyFitnessPal environment has the
+      # headless browser that renews logins; the sandbox's doesn't.
+      mfpMcp = withAutorefresh: pkgs.callPackage ./nix/mfp-mcp.nix {
+        python3Packages = pkgs.python312Packages;
+        inherit withAutorefresh;
+      };
+      mfpEnv = pkgs.python312.withPackages (_: [ (mfpMcp true) ]);
+      mfpSandboxEnv = pkgs.python312.withPackages (_: [ (mfpMcp false) ]);
+      ankiMcp = pkgs.callPackage ./nix/anki-mcp.nix { };
+      playwrightBrowsers = pkgs.playwright-driver.browsers.override {
+        withChromium = false; withFirefox = false; withWebkit = false; # the headless shell is enough
+      };
+      # Each user's Anki on the server (internal/ankiserver): Anki without a screen, AnkiConnect
+      # and the dashboard's add-on.
+      ankiServer = pkgs.callPackage ./nix/anki-server.nix { };
+      mcpEnv = ''
+        export MFP_MCP_ENV=${mfpEnv} MFP_MCP_SANDBOX_ENV=${mfpSandboxEnv} ANKI_MCP=${ankiMcp}/bin/ankimcp
+        export DASHBOARD_ANKI=${ankiServer}/bin/dashboard-anki
+        export PLAYWRIGHT_BROWSERS_PATH=${playwrightBrowsers} PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=true
+      '';
+
+      # The Go server (cmd/dashboard). Its dependencies are goldmark, for Markdown, and x/net's
+      # HTML parser. Built from the Go files only, so a change to the pages doesn't build it again.
       server = pkgs.buildGoModule {
         pname = "health-dashboard-server";
         version = "0.1.0";
@@ -33,16 +55,16 @@
           root = ./.;
           fileset = pkgs.lib.fileset.unions [ ./go.mod ./go.sum ./cmd ./internal ];
         };
-        vendorHash = "sha256-ZAeN2uupjG5trOKZs69/FazUXWYSLq7I7vFTl1uGcJM=";
+        vendorHash = "sha256-pIm6EluA9EioqsIzzXSM/4XkLTvspSwAP/GeQb9kRXo=";
         subPackages = [ "cmd/dashboard" ];
       };
 
       dashboard = pkgs.writeShellApplication {
         name = "health-dashboard";
-        # uv runs the MyFitnessPal MCP (connecting, renewing its login, and the AI's tools).
+        # uv and python3.12 run a local checkout of the MyFitnessPal MCP (MFP_MCP_DIR).
         # bubblewrap, socat, bash and coreutils make the AI agents' sandbox (internal/sandbox).
-        runtimeInputs = [ pkgs.timewarrior pkgs.uv pkgs.bubblewrap pkgs.socat pkgs.bash pkgs.coreutils pkgs.nodejs_22 pkgs.python312 ];
-        text = ''
+        runtimeInputs = [ pkgs.timewarrior pkgs.uv pkgs.bubblewrap pkgs.socat pkgs.bash pkgs.coreutils pkgs.python312 ];
+        text = mcpEnv + ''
           # Run from the site folder so the server uses the live files, not a store copy.
           if [ ! -f web/templates/page.html ]; then
             echo "Run this from the site/ folder (cd there, then: nix run)" >&2
@@ -50,7 +72,7 @@
           fi
           site="$PWD"
 
-          # The MyFitnessPal MCP's prebuilt curl_cffi wheel needs libstdc++, which Nix's Python lacks.
+          # A checkout's prebuilt curl_cffi wheel needs libstdc++, which Nix's Python lacks.
           export MFP_LIBRARY_PATH=${pkgs.stdenv.cc.cc.lib}/lib
 
           # Timewarrior asks to create its database on first use; create it up front.
@@ -74,10 +96,9 @@
       container = pkgs.writeShellApplication {
         name = "health-dashboard-container";
         # The image has no Nix to fetch the AIs on the server later, so they come built in.
-        runtimeInputs = [ pkgs.taskwarrior3 pkgs.timewarrior pkgs.uv pkgs.bubblewrap pkgs.socat pkgs.bash pkgs.coreutils pkgs.nodejs_22 pkgs.python312
-          unfreePkgs.claude-code pkgs.codex pkgs.gemini-cli ];
-        text = ''
-          export MFP_LIBRARY_PATH=${pkgs.stdenv.cc.cc.lib}/lib
+        runtimeInputs = [ pkgs.taskwarrior3 pkgs.timewarrior pkgs.bubblewrap pkgs.socat pkgs.bash pkgs.coreutils
+          unfreePkgs.claude-code pkgs.codex unfreePkgs.antigravity-cli ];
+        text = mcpEnv + ''
           export SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt
           export TZDIR=${pkgs.tzdata}/share/zoneinfo ZONEINFO=${pkgs.tzdata}/share/zoneinfo
           mkdir -p "$HOME" /tmp
@@ -141,6 +162,9 @@
         default = dashboard;
         server = server;
         timew-hook = timewHook;
+        mfp-mcp = mfpEnv;
+        anki-mcp = ankiMcp;
+        anki-server = ankiServer;
         container = container;
         image = image;
       };
@@ -154,6 +178,7 @@
       devShells.${system}.default = pkgs.mkShell {
         packages = [ pkgs.go pkgs.gopls pkgs.timewarrior pkgs.uv pkgs.bubblewrap pkgs.socat pkgs.bash pkgs.coreutils pkgs.nodejs_22 pkgs.python312 ];
         MFP_LIBRARY_PATH = "${pkgs.stdenv.cc.cc.lib}/lib";
+        shellHook = mcpEnv;
       };
     };
 }

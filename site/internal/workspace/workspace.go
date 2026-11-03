@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"dashboard/internal/anki"
+	"dashboard/internal/ankiserver"
 	"dashboard/internal/assistant"
 	"dashboard/internal/auth"
 	"dashboard/internal/config"
@@ -80,6 +81,10 @@ type Manager struct {
 	mfp     myfitnesspal.Client // where the MCP comes from; each user gets their own login folder
 	gateway *anki.Gateway
 	box     *secrets.Box
+
+	// Anki runs each user's Anki on the server, for users who haven't connected their own
+	// (nil = it can't run here).
+	Anki *ankiserver.Runner
 
 	mu       sync.Mutex
 	open     map[string]*Workspace
@@ -165,6 +170,7 @@ func (m *Manager) Remove(userID string) error {
 	if ok {
 		ws.close()
 	}
+	m.Anki.Stop(userID)
 	m.gateway.Unregister(userID)
 	if m.memory != "" {
 		os.Remove(m.unlockedMarker(userID))
@@ -191,13 +197,13 @@ func (m *Manager) ConnectAnki(user auth.User, url, apiKey string) error {
 	return nil
 }
 
-// DisconnectAnki forgets the user's AnkiConnect.
+// DisconnectAnki forgets the user's AnkiConnect: their Anki on the server takes over.
 func (m *Manager) DisconnectAnki(user auth.User) error {
 	ws := m.For(user)
 	if err := os.Remove(filepath.Join(filepath.Dir(ws.Paths.Plan()), "anki.json")); err != nil && !os.IsNotExist(err) {
 		return err
 	}
-	m.useAnki(ws, anki.NewClient("", ""))
+	m.useAnki(ws, m.loadAnki(ws.UserID, filepath.Dir(ws.Paths.Plan())))
 	return nil
 }
 
@@ -236,7 +242,7 @@ func (m *Manager) openWorkspace(user auth.User, dir string) *Workspace {
 	env := prepareTaskwarrior(dir, filepath.Join(m.paths.Site, ".timew-hook"))
 	taskClient := taskwarrior.NewClientWithEnv(env)
 	ws.Time = timewarrior.NewClientWithEnv(env)
-	m.useAnki(ws, loadAnki(dir))
+	m.useAnki(ws, m.loadAnki(user.ID, dir))
 	ws.Secrets = secrets.NewStore(m.box, dir, user.ID)
 	ws.Tasks = tasks.NewService(taskClient, ws.Time)
 	ws.Lifting = lifting.New(paths.DataFile("lifting.json"))

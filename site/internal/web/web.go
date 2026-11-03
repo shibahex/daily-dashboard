@@ -69,6 +69,8 @@ func (ui *UI) Routes(mux *http.ServeMux) {
 	change("/account/myfitnesspal/remove", ui.disconnectMyFitnessPal)
 	change("/account/anki", ui.connectAnki)
 	change("/account/anki/remove", ui.disconnectAnki)
+	change("/account/ankiweb", ui.signInAnkiWeb)
+	change("/account/ankiweb/remove", ui.signOutAnkiWeb)
 	page("/account/export", ui.exportData)
 	change("/account/import", ui.importData)
 
@@ -212,6 +214,11 @@ func (ui *UI) Routes(mux *http.ServeMux) {
 	change("/anki/notes/{id}/suspend", ui.toggleAnkiSuspended)
 	change("/anki/notes/{id}/delete", ui.deleteAnkiNote)
 	change("/anki/notes/{id}/browse", ui.browseAnkiNote)
+	page("/anki/review", ui.ankiReviewPage)
+	page("/anki/review/panel", ui.ankiReviewPanel)
+	page("/anki/review/card", ui.ankiReviewCard)
+	change("/anki/review/answer", ui.ankiReviewAnswer)
+	change("/anki/review/undo", ui.ankiReviewUndo)
 
 	// MCPs: the AI runs in the browser (browserai.go)
 	page("/mcps", ui.chatPage)

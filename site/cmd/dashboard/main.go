@@ -22,7 +22,9 @@ import (
 	_ "time/tzdata"
 
 	"dashboard/internal/anki"
+	"dashboard/internal/ankiserver"
 	"dashboard/internal/api"
+	"dashboard/internal/assistant"
 	"dashboard/internal/auth"
 	"dashboard/internal/config"
 	"dashboard/internal/dashmcp"
@@ -53,6 +55,11 @@ func main() {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
+		return
+	}
+	if len(os.Args) == 3 && os.Args[1] == assistant.AgyGateCommand {
+		// Antigravity CLI's tool gate, run by its hook inside the sandbox before each tool call.
+		assistant.AgyGate(os.Args[2], os.Stdin, os.Stdout)
 		return
 	}
 	if len(os.Args) == 3 && os.Args[1] == "reset-password" {
@@ -89,19 +96,27 @@ func main() {
 	workspaces.Credentials = account.Credentials
 	tools, sandboxErr := sandbox.Find()
 	if sandboxErr != nil {
-		log.Printf("The AI's MyFitnessPal, Anki and Taskwarrior tools won't run: %v", sandboxErr)
+		log.Printf("The AI's MyFitnessPal, Anki and Taskwarrior tools won't run, nor Anki on the server: %v", sandboxErr)
+	}
+	proxy := egress.New()
+	if sandboxErr == nil && os.Getenv("DASHBOARD_ANKI") != "" {
+		workspaces.Anki = ankiserver.New(os.Getenv("DASHBOARD_ANKI"), tools, proxy)
+		workspaces.Anki.SyncURL = os.Getenv("DASHBOARD_ANKI_SYNC_URL")
 	}
 	workspaces.OpenAll(account.Users())
 	stopSaving := make(chan struct{})
 	go workspaces.RunUntil(stopSaving)
+	if workspaces.Anki != nil {
+		go workspaces.Anki.RunUntil(stopSaving)
+	}
 
 	mux := http.NewServeMux()
 	jsonAPI := &api.API{Workspaces: workspaces}
 	jsonAPI.Routes(mux)
 	pages := &web.UI{Auth: account, Paths: paths, Workspaces: workspaces, HTTPS: network.HTTPS(),
-		Sandbox: tools, SandboxErr: sandboxErr, Egress: egress.New(),
-		Programs: &sandbox.Programs{Dir: filepath.Join(paths.ServerData, "tools"), MFPPackage: myfitnesspal.SandboxPackage,
-			MFPCheckout: mfp.Checkout(), MFPLibPath: os.Getenv("MFP_LIBRARY_PATH"), AnkiPackage: anki.MCPPackage}}
+		Sandbox: tools, SandboxErr: sandboxErr, Egress: proxy,
+		Programs: &sandbox.Programs{Dir: filepath.Join(paths.ServerData, "tools"), MFPEnv: os.Getenv("MFP_MCP_SANDBOX_ENV"),
+			MFPCheckout: mfp.Checkout(), MFPLibPath: os.Getenv("MFP_LIBRARY_PATH"), AnkiProgram: os.Getenv("ANKI_MCP")}}
 	pages.Routes(mux)
 
 	listener := listen(network.Listen)
@@ -126,6 +141,7 @@ func main() {
 		log.Print(err)
 	}
 	close(stopSaving)
+	workspaces.Anki.StopAll() // synced and closed, so everyone's Anki folder is saved whole
 	workspaces.LockAll()
 }
 

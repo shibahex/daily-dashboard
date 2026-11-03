@@ -12,11 +12,12 @@ import (
 	"time"
 
 	"dashboard/internal/anki"
+	"dashboard/internal/jsonfile"
 	"dashboard/internal/problem"
 )
 
-// The Anki tab talks to Anki through AnkiConnect, so Anki has to be open. Reviewing happens in
-// Anki itself: Study opens the deck there.
+// The Anki tab talks to Anki through AnkiConnect: the user's Anki on the server (studied here,
+// web/ankistudy.go), or their own, which has to be open (Study opens the deck there).
 
 type ankiPageView struct {
 	Status anki.Status
@@ -56,7 +57,7 @@ func (ui *UI) ankiBody(r *http.Request) ankiBodyView {
 		body.Problem = problem.Public(err)
 		return body
 	}
-	body.Decks = decksView(overview)
+	body.Decks = decksView(overview, body.Status.Server)
 	body.AddForm = ui.ankiAddFormFor(r, overview, rememberedChoice(r, deckCookie), rememberedChoice(r, modelCookie))
 	body.Browse = ui.ankiNotesFor(r, defaultAnkiSearch)
 	return body
@@ -71,13 +72,14 @@ type reviewBar struct {
 }
 
 type ankiDecksView struct {
+	Server   bool // the user's Anki on the server: Study opens here
 	Overview anki.Overview
 	DueToday int
 	LastDays []reviewBar
 }
 
-func decksView(overview anki.Overview) ankiDecksView {
-	view := ankiDecksView{Overview: overview, LastDays: reviewBars(overview.Reviews, 30)}
+func decksView(overview anki.Overview, server bool) ankiDecksView {
+	view := ankiDecksView{Server: server, Overview: overview, LastDays: reviewBars(overview.Reviews, 30)}
 	for _, deck := range overview.TopLevelDecks() {
 		view.DueToday += deck.Due()
 	}
@@ -124,7 +126,7 @@ func (ui *UI) ankiDecks(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
-	ui.render(w, "anki-decks", decksView(overview))
+	ui.render(w, "anki-decks", decksView(overview, ui.ws(r).Anki().Server))
 }
 
 // ---------- adding cards ----------
@@ -434,6 +436,8 @@ func textToField(text string) string {
 
 type ankiTodayView struct {
 	Status        anki.Status
+	Asleep        bool      // the user's Anki on the server isn't running: these are the last counts
+	At            time.Time // when these counts were taken
 	Due           int
 	New, Learn    int
 	Review        int
@@ -447,15 +451,34 @@ func (ui *UI) renderAnkiTodayCard(r *http.Request) (template.HTML, error) {
 	return ui.renderToHTML("card-anki", ui.ankiTodayView(r))
 }
 
+// ankiSnapshot is where the Today card keeps the last counts of a user's Anki on the server,
+// shown while it's stopped (refreshing them would start it, and keep it running all day).
+const ankiSnapshot = "anki-today.json"
+
 func (ui *UI) ankiTodayView(r *http.Request) ankiTodayView {
-	view := ankiTodayView{Status: ui.ws(r).Anki().Status()}
+	ws := ui.ws(r)
+	client := ws.Anki()
+	if client.Server {
+		live, awake := client.Awake()
+		if !awake {
+			view := ankiTodayView{}
+			jsonfile.Read(ws.Paths.DataFile(ankiSnapshot), &view)
+			view.Status, view.Asleep = anki.Status{Connected: true, Server: true}, true
+			return view
+		}
+		client = live
+	}
+	view := ankiTodayView{Status: client.Status(), At: time.Now()}
 	if !view.Status.Connected {
 		return view
 	}
-	overview, err := ui.ws(r).Anki().Overview()
+	overview, err := client.Overview()
 	if err != nil {
 		view.Status.Connected = false
 		return view
+	}
+	if client.Server {
+		defer func() { jsonfile.Write(ws.Paths.DataFile(ankiSnapshot), view) }()
 	}
 	top := overview.TopLevelDecks()
 	for _, deck := range top {

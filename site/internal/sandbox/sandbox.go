@@ -94,7 +94,16 @@ type Spec struct {
 	Data      string   // the user's dashboard tools' gateway socket ("" = none)
 	Path      []string // extra folders for PATH (the CLI's and MCPs' programs)
 	Env       []string // KEY=value for inside, on top of the basics
+
+	// Expose offers a port inside (127.0.0.1:Expose) to the dashboard as the unix socket
+	// ExposedSocket in the host folder ExposeDir: for a service that runs in the sandbox (the
+	// user's Anki) rather than a CLI that calls out. 0 = none.
+	Expose    int
+	ExposeDir string
 }
+
+// ExposedSocket is the socket's name in Spec.ExposeDir.
+const ExposedSocket = "service.sock"
 
 // Command is the full command line that runs args inside the sandbox.
 func (t Tools) Command(spec Spec, args []string) ([]string, error) {
@@ -134,6 +143,9 @@ func (t Tools) Command(spec Spec, args []string) ([]string, error) {
 		cmd = append(cmd, "--ro-bind", spec.Data, DataSocket)
 	}
 	for _, m := range spec.Mounts {
+		if m.Source == "" { // a program under /nix/store, which is already there
+			continue
+		}
 		flag := "--ro-bind"
 		if m.Writable {
 			flag = "--bind"
@@ -152,15 +164,21 @@ func (t Tools) Command(spec Spec, args []string) ([]string, error) {
 		}
 		cmd = append(cmd, "--setenv", key, value)
 	}
-	cmd = append(cmd, "--chdir", WorkspaceDir, "--", t.Shell, "-c", t.startScript(spec.Anki != ""), "sandbox")
+	if spec.Expose != 0 {
+		cmd = append(cmd, "--bind", spec.ExposeDir, socketDir+"/out")
+	}
+	cmd = append(cmd, "--chdir", WorkspaceDir, "--", t.Shell, "-c", t.startScript(spec), "sandbox")
 	return append(cmd, args...), nil
 }
 
-// startScript starts the socats that offer the dashboard's sockets on 127.0.0.1, waits until
-// they listen, then becomes the CLI.
-func (t Tools) startScript(anki bool) string {
+// startScript starts the socats that offer the dashboard's sockets on 127.0.0.1 (and the
+// exposed port to the dashboard), waits until they listen, then becomes the CLI.
+func (t Tools) startScript(spec Spec) string {
 	script := t.Socat + " TCP-LISTEN:3128,bind=127.0.0.1,fork,reuseaddr UNIX-CONNECT:" + socketDir + "/egress.sock 2>/dev/null &\n"
-	if anki {
+	if spec.Expose != 0 {
+		script += fmt.Sprintf("%s UNIX-LISTEN:%s/out/%s,fork,mode=600 TCP:127.0.0.1:%d 2>/dev/null &\n", t.Socat, socketDir, ExposedSocket, spec.Expose)
+	}
+	if spec.Anki != "" {
 		script += t.Socat + " TCP-LISTEN:8765,bind=127.0.0.1,fork,reuseaddr UNIX-CONNECT:" + socketDir + "/anki.sock 2>/dev/null &\n"
 	}
 	// bash's /dev/tcp tells when socat listens; give up after ~2s and let the CLI report it.

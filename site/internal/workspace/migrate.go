@@ -57,10 +57,14 @@ type ankiSettings struct {
 	APIKey string `json:"api_key"`
 }
 
-// loadAnki is the user's AnkiConnect from anki.json (not set up: an empty URL).
-func loadAnki(dir string) anki.Client {
+// loadAnki is the user's own AnkiConnect from anki.json, or else their Anki on the server
+// (not set up: an empty URL, when neither is there).
+func (m *Manager) loadAnki(userID, dir string) anki.Client {
 	var settings ankiSettings
 	jsonfile.Read(filepath.Join(dir, "anki.json"), &settings)
+	if settings.URL == "" && m.Anki.Available() {
+		return m.Anki.Client(userID, dir)
+	}
 	return anki.NewClient(settings.URL, settings.APIKey)
 }
 

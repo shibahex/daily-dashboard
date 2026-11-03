@@ -22,7 +22,7 @@ import (
 	"dashboard/internal/workspace"
 )
 
-// The AI on the server, for people who turn it on (User.ServerAI): Claude Code, Codex or Gemini
+// The AI on the server, for people who turn it on (User.ServerAI): Claude Code, Codex or Antigravity
 // CLI, which can't run in a browser. The browser still keeps the chat, the notes and the keys
 // sealed; for each message it sends this server what the AI needs (the message, the notes, the
 // key), the CLI answers in the user's sandbox, and the answer streams back. The server keeps
@@ -272,10 +272,21 @@ func (run *serverRun) prepare(provider assistant.Provider, message, session, mod
 		// can follow on.
 		message = "Earlier in this chat (for context):\n<history>\n" + truncateStart(history, 48<<10) + "\n</history>\n\n" + message
 	}
-	configDir := filepath.Join(run.box.homeDir(), "run-config")
+	// The CLI's config and attachments go in this run's private folder, shown read-only inside:
+	// the server never writes where the sandbox can, so a symlink left there can't redirect it.
+	// (Older versions kept them in the sandbox's home.)
+	os.RemoveAll(filepath.Join(run.box.homeDir(), "run-config"))
+	configDir := filepath.Join(run.box.sockets, "run-config")
 	if err := os.MkdirAll(configDir, 0o700); err != nil {
 		return assistant.Request{}, err
 	}
+	spec.Mounts = append(spec.Mounts, sandbox.Mount{Source: configDir, Target: sandbox.HomeDir + "/run-config"})
+	// The dashboard's own program, for Antigravity CLI's tool gate (`dashboard agy-gate`).
+	self, err := ui.Programs.Self()
+	if err != nil {
+		return assistant.Request{}, err
+	}
+	spec.Mounts = append(spec.Mounts, self.Mount)
 	return assistant.Request{
 		Message:      message,
 		SessionID:    session,
@@ -286,9 +297,15 @@ func (run *serverRun) prepare(provider assistant.Provider, message, session, mod
 		WorkDir:      configDir,
 		InnerWorkDir: sandbox.HomeDir + "/run-config",
 		Workspace:    sandbox.WorkspaceDir,
+		Home:         sandbox.HomeDir,
+		Self:         self.Command,
 		Env:          assistant.KeyEnv(provider.ID(), strings.TrimSpace(key)),
 		Wrap: func(inv assistant.Invocation) (assistant.Invocation, error) {
 			inner := spec
+			inner.Mounts = slices.Clone(spec.Mounts)
+			for _, m := range inv.Mounts {
+				inner.Mounts = append(inner.Mounts, sandbox.Mount{Source: m.Host, Target: m.Inner})
+			}
 			inner.Env = inv.Env
 			inner.Path = append(slices.Clone(spec.Path), filepath.Dir(inv.Args[0]))
 			args, err := ui.Sandbox.Command(inner, inv.Args)
@@ -358,20 +375,47 @@ func truncateRunes(s string, max int) string {
 	return s
 }
 
-// writeNotes puts the notes in dir (the AI's workspace's notes folder) for it to change.
+// writeNotes puts the notes in dir (the AI's workspace's notes folder) for it to change. The
+// sandbox can write there, so the notes are written through an os.Root: a symlink it left can't
+// lead outside the folder.
 func (run *serverRun) writeNotes(dir string, notes []sealedNote) error {
-	if err := os.MkdirAll(dir, 0o700); err != nil {
+	workspace, err := os.OpenRoot(filepath.Dir(dir))
+	if err != nil {
 		return err
 	}
+	defer workspace.Close()
+	name := filepath.Base(dir)
+	if err := workspace.RemoveAll(name); err != nil {
+		return err
+	}
+	if err := workspace.Mkdir(name, 0o700); err != nil {
+		return err
+	}
+	root, err := workspace.OpenRoot(name)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
 	run.notes, run.notesDir = map[string]sealedNote{}, dir
 	for _, note := range notes {
 		name := noteFile(note.Title, run.notes)
 		run.notes[name] = note
-		if err := os.WriteFile(filepath.Join(dir, name), []byte(note.Text), 0o600); err != nil {
+		if err := root.WriteFile(name, []byte(note.Text), 0o600); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// openNotes opens the notes folder in the workspace (which the sandbox can't replace) without
+// following a symlink out of it.
+func openNotes(dir string) (*os.Root, error) {
+	workspace, err := os.OpenRoot(filepath.Dir(dir))
+	if err != nil {
+		return nil, err
+	}
+	defer workspace.Close()
+	return workspace.OpenRoot(filepath.Base(dir))
 }
 
 // changedNotes are the notes the AI changed or added in the workspace.
@@ -380,7 +424,17 @@ func (run *serverRun) changedNotes() []sealedNote {
 	if dir == "" {
 		return nil
 	}
-	entries, _ := os.ReadDir(dir)
+	root, err := openNotes(dir)
+	if err != nil {
+		return nil
+	}
+	defer root.Close()
+	folder, err := root.Open(".")
+	if err != nil {
+		return nil
+	}
+	entries, _ := folder.ReadDir(-1)
+	folder.Close()
 	var changed []sealedNote
 	for _, entry := range entries {
 		name := entry.Name()
@@ -391,7 +445,7 @@ func (run *serverRun) changedNotes() []sealedNote {
 		if err != nil || info.Size() > 1<<20 {
 			continue
 		}
-		data, err := os.ReadFile(filepath.Join(dir, name))
+		data, err := root.ReadFile(name)
 		if err != nil {
 			continue
 		}

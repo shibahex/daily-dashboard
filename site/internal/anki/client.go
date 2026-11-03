@@ -1,4 +1,5 @@
-// Package anki talks to Anki through the AnkiConnect add-on (Anki has to be open).
+// Package anki talks to Anki through the AnkiConnect add-on: the user's own Anki (which has to
+// be open), or their Anki on the dashboard's server (NewServerClient, internal/ankiserver).
 package anki
 
 import (
@@ -9,18 +10,15 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
-	"os/exec"
 	"syscall"
 	"time"
 
-	"dashboard/internal/mcp"
 	"dashboard/internal/problem"
 )
 
-const (
-	AnkiConnectAddon = "2055492159"                      // AnkiConnect's add-on code
-	MCPPackage       = "@ankimcp/anki-mcp-server@0.27.0" // pinned Anki MCP server
-)
+// AnkiConnectAddon is AnkiConnect's add-on code. The Anki MCP the AI uses is built by Nix
+// (site/nix/anki-mcp.nix).
+const AnkiConnectAddon = "2055492159"
 
 // ErrUnreachable means AnkiConnect didn't answer (Anki closed, or the add-on missing).
 var ErrUnreachable error = problem.Error{Kind: problem.Unavailable, Message: "Anki isn't reachable"}
@@ -37,7 +35,11 @@ func (e ActionError) Unwrap() error { return problem.Failedf(e.Message) }
 type Client struct {
 	URL    string
 	APIKey string // only if one is set in AnkiConnect's config
-	http   *http.Client
+	Server bool   // the user's Anki on the dashboard's server (NewServerClient)
+	// Awake is, for a server Anki, a client for it while it's running that doesn't keep it
+	// running (false when it's stopped), for things that only show what's there.
+	Awake func() (Client, bool)
+	http  *http.Client
 
 	// Gateway is what the agents' Anki MCP talks to instead of AnkiConnect (see Gateway), and
 	// GatewayKey the key that sends this user's requests to this AnkiConnect.
@@ -114,22 +116,4 @@ func (c Client) callInto(action string, params any, v any) error {
 		return err
 	}
 	return json.Unmarshal(result, v)
-}
-
-// MCPServer is how an AI agent starts the Anki MCP server. It reaches Anki only through the
-// Gateway, so there's none (false) without one. It needs Node 22.12+, so it runs on Nix's
-// Node 22 when Nix is there.
-func (c Client) MCPServer() (mcp.Server, bool) {
-	if c.Gateway == nil || c.GatewayKey == "" {
-		return mcp.Server{}, false
-	}
-	npx := []string{"npx"}
-	if _, err := exec.LookPath("nix"); err == nil {
-		npx = []string{"nix", "shell", "nixpkgs#nodejs_22", "--command", "npx"}
-	}
-	return mcp.Server{
-		Command: npx[0],
-		Args:    append(npx[1:], "-y", MCPPackage, "--stdio"),
-		Env:     map[string]string{"ANKI_CONNECT_URL": c.Gateway.URL, "ANKI_CONNECT_API_KEY": c.GatewayKey},
-	}, true
 }

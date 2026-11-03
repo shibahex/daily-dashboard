@@ -66,8 +66,22 @@
 .fp-choice small { color: var(--muted); display: block; font-size: 12px; margin-top: 2px; }
 .fp-choice .k { flex: none; color: var(--muted); white-space: nowrap; text-align: right; font-size: 13px; font-variant-numeric: tabular-nums; }
 .fp-choice .k b { color: var(--ink); font-weight: 600; font-size: 14px; }
-.fp-items { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 2px; margin-top: 6px; padding-left: 9px; border-left: 2px solid var(--line);
+.fp-macros { white-space: nowrap; }
+.fp-macros .p { color: var(--protein); }
+.fp-macros .c { color: var(--carbs); }
+.fp-macros .f { color: var(--fat); }
+.fp-split { display: flex; gap: 2px; width: 72px; height: 4px; margin: 5px 0 0 auto; border-radius: 2px; overflow: hidden; }
+.fp-split i { min-width: 0; }
+.fp-split i[style="flex-grow:0"] { display: none; }
+.fp-split .p { background: var(--protein); }
+.fp-split .c { background: var(--carbs); }
+.fp-split .f { background: var(--fat); }
+.fp-items { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 3px; margin-top: 8px; padding: 6px 9px; border-radius: 6px; background: var(--chip);
   font-size: 12px; line-height: 1.35; color: var(--muted); }
+.fp-items > span { display: flex; gap: 10px; justify-content: space-between; align-items: baseline; }
+.fp-items .in { min-width: 0; overflow-wrap: anywhere; }
+.fp-items .amt { flex: none; white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--ink); opacity: .75; }
+.fp-choice:hover .fp-items { background: var(--panel); }
 .fp-row .fp-choice { padding-right: 36px; }
 .fp-row .icon { position: absolute; right: 4px; bottom: 7px; width: 26px; height: 26px; font-size: 12px; border-color: transparent; background: none;
   opacity: 0; transition: opacity .15s; }
@@ -76,6 +90,10 @@
 @media (hover: none) { .fp-row .icon { opacity: .6; } }
 .fp-list { display: flex; flex-direction: column; gap: 8px; }
 .fp-tabs { align-self: flex-start; }
+.fp-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.fp-sort { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.fp-sort select.txt { font-size: 13px; padding: 4px 8px; border-radius: 7px; }
+.fp-count { font-size: 12px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .meal-add { display: flex; gap: 14px; flex-wrap: wrap; }
 .fp-preview { font-size: 13px; color: var(--muted); }
 @media (max-width: 700px) { .limits { grid-template-columns: repeat(2, 1fr); } }

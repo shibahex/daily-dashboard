@@ -1,7 +1,7 @@
 package assistant
 
 // The AIs that run on the server, for people who turn that on (see web/serverai.go): an AI
-// coding agent's CLI (Claude Code, Codex, Gemini CLI) run headless in the user's sandbox, with
+// coding agent's CLI (Claude Code, Codex, Antigravity CLI) run headless in the user's sandbox, with
 // only the MCP servers turned on and nothing that reaches other accounts.
 
 import (
@@ -43,6 +43,8 @@ type Request struct {
 	Workspace    string       // the folder the CLI works in, as it sees it
 	Env          []string     // extra environment for the CLI: the user's API key (see KeyEnv)
 	Attachments  []Attachment // images and PDFs sent with the message (see AttachmentKinds)
+	Home         string       // the CLI's home folder as it sees it
+	Self         string       // the dashboard's own program as the CLI sees it (for agy's tool gate)
 
 	// Wrap puts the CLI in the user's sandbox. The Runner refuses to run without it.
 	Wrap func(Invocation) (Invocation, error)
@@ -76,8 +78,8 @@ type Attachment struct {
 }
 
 // AttachmentKinds are what each CLI can take with a message: Claude Code reads images and PDFs
-// in its input, Codex images given as files. Gemini CLI has no way in without its file tools,
-// which stay off. web/js/assistant.js keeps the same list.
+// in its input, Codex images given as files. Antigravity CLI has no way in without its file
+// tools, which stay off. web/js/assistant.js keeps the same list.
 var AttachmentKinds = map[string][]string{"claude-code": {"image", "pdf"}, "codex": {"image"}}
 
 // attachmentExtensions name the files a CLI is given.
@@ -116,11 +118,15 @@ type NamedServer struct {
 
 // Invocation is the command to run for a Request.
 type Invocation struct {
-	Args  []string // Args[0] is the program
-	Dir   string
-	Env   []string // nil = the server's own environment
-	Stdin string   // sent on standard input ("" = none)
+	Args   []string // Args[0] is the program
+	Dir    string
+	Env    []string    // nil = the server's own environment
+	Stdin  string      // sent on standard input ("" = none)
+	Mounts []FileMount // files to show the CLI read-only, where it looks for them
 }
+
+// FileMount is a file the dashboard wrote (Host) that the CLI sees, read-only, at Inner.
+type FileMount struct{ Host, Inner string }
 
 // ---------- events ----------
 
@@ -151,6 +157,7 @@ type cli struct {
 	id, label, signIn string
 	program           string // name on the PATH
 	nixPackage        string // run through `nix run` when not installed; "" = no fallback
+	unfree            bool   // nixPackage is unfree, so building it needs Nix's permission
 	models            []Model
 }
 
@@ -179,7 +186,7 @@ func (c cli) command() []string {
 		}
 		return []string{path}
 	}
-	if path := nixProgram(c.nixPackage, c.program); path != "" {
+	if path := nixProgram(c.nixPackage, c.program, c.unfree); path != "" {
 		return []string{path}
 	}
 	return nil
@@ -191,8 +198,9 @@ var (
 )
 
 // nixProgram builds a Nix package (once) and returns its program's path in the store, which is
-// what a sandbox can run ("" when there's no Nix or the build fails).
-func nixProgram(pkg, program string) string {
+// what a sandbox can run ("" when there's no Nix or the build fails). An unfree package is
+// allowed for this one build.
+func nixProgram(pkg, program string, unfree bool) string {
 	if pkg == "" {
 		return ""
 	}
@@ -203,7 +211,13 @@ func nixProgram(pkg, program string) string {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
-	out, err := exec.CommandContext(ctx, "nix", "build", "--no-link", "--print-out-paths", pkg).Output()
+	args := []string{"build", "--no-link", "--print-out-paths", pkg}
+	cmd := exec.CommandContext(ctx, "nix", args...)
+	if unfree {
+		cmd = exec.CommandContext(ctx, "nix", append(args, "--impure")...)
+		cmd.Env = append(os.Environ(), "NIXPKGS_ALLOW_UNFREE=1")
+	}
+	out, err := cmd.Output()
 	if err != nil {
 		return ""
 	}
@@ -217,7 +231,7 @@ func nixProgram(pkg, program string) string {
 // Providers are the agent CLIs, in menu order.
 type Providers []Provider
 
-func NewProviders() Providers { return Providers{newClaude(), newCodex(), newGemini()} }
+func NewProviders() Providers { return Providers{newClaude(), newCodex(), newAntigravity()} }
 
 // Get returns the provider with this id.
 func (ps Providers) Get(id string) (Provider, bool) {

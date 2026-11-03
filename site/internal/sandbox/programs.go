@@ -16,17 +16,23 @@ import (
 	"time"
 )
 
-// Programs are the MCP servers agents use, installed once by the dashboard itself (outside any
-// sandbox, where downloading is allowed) into a folder that sandboxes only get to read. Inside,
-// nothing is downloaded or installed, and no package cache is shared between users.
+// Programs are the MCP servers agents use. Nix builds them (site/nix/), with every dependency
+// pinned, and the sandbox sees them read-only under /nix/store. Only a local checkout of the
+// MyFitnessPal MCP is installed by the dashboard itself, into a folder sandboxes only get to read.
+// Inside, nothing is downloaded or installed, and no package cache is shared between users.
 type Programs struct {
-	Dir         string // site/data/tools
-	MFPPackage  string // pip requirement for the MyFitnessPal MCP ("mfp-mcp @ <tarball URL>")
-	MFPCheckout string // a local checkout to install instead ("" = MFPPackage)
-	MFPLibPath  string // LD_LIBRARY_PATH for its curl_cffi wheel (libstdc++), from MFP_LIBRARY_PATH
-	AnkiPackage string // npm package for the Anki MCP ("@ankimcp/anki-mcp-server@0.27.0")
+	Dir         string // site/data/tools, for a local checkout's install
+	MFPEnv      string // MFP_MCP_SANDBOX_ENV: the Nix-built Python environment with the MyFitnessPal MCP
+	MFPCheckout string // a local checkout to install instead ("" = MFPEnv)
+	MFPLibPath  string // LD_LIBRARY_PATH for a checkout's curl_cffi wheel (libstdc++), from MFP_LIBRARY_PATH
+	AnkiProgram string // ANKI_MCP: the Nix-built Anki MCP's program
 
 	mu sync.Mutex // one install at a time
+}
+
+// errNotBuilt is the answer when the dashboard wasn't started with Nix, which builds the MCPs.
+func errNotBuilt(mcp string) error {
+	return fmt.Errorf("the %s MCP comes with the dashboard's Nix build: start it with nix run", mcp)
 }
 
 // Program is how to start an installed MCP server.
@@ -38,19 +44,24 @@ type Program struct {
 	Path    string
 }
 
-// MyFitnessPal is the MyFitnessPal MCP, installing it first if needed.
+// MyFitnessPal is the MyFitnessPal MCP: Nix's build, or a local checkout, installed first if needed.
 func (p *Programs) MyFitnessPal() (Program, error) {
+	// Args must be [] rather than nil: Claude Code silently drops a server whose args are null.
+	if p.MFPCheckout == "" {
+		if p.MFPEnv == "" {
+			return Program{}, errNotBuilt("MyFitnessPal")
+		}
+		bin := filepath.Join(p.MFPEnv, "bin")
+		return Program{Command: filepath.Join(bin, "mfp-mcp"), Args: []string{}, Path: bin}, nil
+	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	python, err := realPath("python3.12")
 	if err != nil {
 		return Program{}, errors.New("the MyFitnessPal MCP needs python3.12 (start the dashboard with nix run)")
 	}
-	source, name := p.MFPPackage, "mfp-"+safeName(p.MFPPackage)
-	if p.MFPCheckout != "" {
-		source, name = p.MFPCheckout, "mfp-local-"+treeStamp(p.MFPCheckout)
-	}
-	dir := filepath.Join(p.Dir, name)
+	source := p.MFPCheckout
+	dir := filepath.Join(p.Dir, "mfp-local-"+treeStamp(p.MFPCheckout))
 	bin := filepath.Join(dir, "bin", "mfp-mcp")
 	if _, err := os.Stat(bin); err != nil {
 		os.RemoveAll(dir)
@@ -66,32 +77,15 @@ func (p *Programs) MyFitnessPal() (Program, error) {
 	if p.MFPLibPath != "" {
 		env = map[string]string{"LD_LIBRARY_PATH": p.MFPLibPath}
 	}
-	// Args must be [] rather than nil: Claude Code silently drops a server whose args are null.
 	return Program{Command: bin, Args: []string{}, Env: env, Mount: Mount{Source: dir, Target: dir}, Path: filepath.Dir(bin)}, nil
 }
 
-// Anki is the Anki MCP, installing it first if needed.
+// Anki is the Anki MCP, from Nix's build.
 func (p *Programs) Anki() (Program, error) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	node, err := realPath("node")
-	if err != nil {
-		return Program{}, errors.New("the Anki MCP needs Node.js (start the dashboard with nix run)")
+	if p.AnkiProgram == "" {
+		return Program{}, errNotBuilt("Anki")
 	}
-	dir := filepath.Join(p.Dir, "anki-"+safeName(p.AnkiPackage))
-	pkg := strings.TrimSuffix(p.AnkiPackage, "@"+lastVersion(p.AnkiPackage))
-	script := filepath.Join(dir, "node_modules", filepath.FromSlash(pkg), "bin", "ankimcp.js")
-	if _, err := os.Stat(script); err != nil {
-		os.RemoveAll(dir)
-		os.MkdirAll(dir, 0o700)
-		// --ignore-scripts: nothing the package or its dependencies ship runs at install time.
-		if err := run(10*time.Minute, "npm", "install", "--prefix", dir, "--no-audit", "--no-fund", "--ignore-scripts",
-			"--omit=dev", p.AnkiPackage); err != nil {
-			os.RemoveAll(dir)
-			return Program{}, err
-		}
-	}
-	return Program{Command: node, Args: []string{script, "--stdio"}, Mount: Mount{Source: dir, Target: dir}, Path: filepath.Dir(node)}, nil
+	return Program{Command: p.AnkiProgram, Args: []string{"--stdio"}, Path: filepath.Dir(p.AnkiProgram)}, nil
 }
 
 // Self is the dashboard program itself, for the MCP servers built into it (`dashboard task-mcp`).
@@ -110,26 +104,6 @@ func (p *Programs) Self() (Program, error) {
 		program.Mount = Mount{Source: exe, Target: exe}
 	}
 	return program, nil
-}
-
-// lastVersion is "0.27.0" for "@scope/name@0.27.0".
-func lastVersion(spec string) string {
-	if i := strings.LastIndex(spec, "@"); i > 0 {
-		return spec[i+1:]
-	}
-	return ""
-}
-
-func safeName(s string) string {
-	var b strings.Builder
-	for _, r := range s {
-		if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '.' || r == '-' {
-			b.WriteRune(r)
-		} else {
-			b.WriteRune('_')
-		}
-	}
-	return b.String()
 }
 
 // treeStamp changes whenever a file in the checkout's source changes, so edits get reinstalled.

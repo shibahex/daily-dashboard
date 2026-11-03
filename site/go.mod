@@ -2,6 +2,6 @@ module dashboard
 
 go 1.26.0
 
-require github.com/yuin/goldmark v1.7.13
+require github.com/yuin/goldmark v1.7.17
 
-require golang.org/x/net v0.61.0 // indirect
+require golang.org/x/net v0.62.0

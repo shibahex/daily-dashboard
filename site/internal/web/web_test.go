@@ -130,7 +130,7 @@ func TestFoodPanelTemplatesRender(t *testing.T) {
 		{"food-search", foodSearchView{Meal: "Lunch", Query: "bread", Searched: true, Results: []foodResult{foodResultFor(bread, 0, 1)}}, "Whole wheat bread"},
 		{"food-list", foodListView{Meal: "Lunch", List: "recent", Foods: []foodResult{foodResultFor(bread, 0, 2)}}, `&#34;quantity&#34;:&#34;2&#34;`},
 		{"food-list", foodListView{Meal: "Lunch", List: "meals", Foods: []foodResult{foodResultFor(meal, 0, 1)}}, `value="meals" checked`},
-		{"food-list", foodListView{Meal: "Lunch", List: "meals", Foods: []foodResult{foodResultFor(meal, 0, 1)}}, `<span class="fp-items"><span>Bread</span><span>Turkey</span></span>`},
+		{"food-list", foodListView{Meal: "Lunch", List: "meals", Foods: []foodResult{foodResultFor(meal, 0, 1)}}, `<span class="fp-items"><span><span class="in">Bread</span></span><span><span class="in">Turkey</span></span></span>`},
 		{"food-list", foodListView{Meal: "Lunch", List: "meals", Foods: []foodResult{foodResultFor(meal, 0, 1)}}, `hx-post="/food/meals/22/delete"`},
 		{"food-list", foodListView{Query: "zzz", List: "recent"}, "Press Search"},
 		{"meal-save", mealSaveView{Meal: "Lunch"}, `name="meal" value="Lunch"`},
@@ -167,5 +167,28 @@ func TestMyFitnessPalConnectSteps(t *testing.T) {
 		if !strings.Contains(string(html), c.want) || c.avoid != "" && strings.Contains(string(html), c.avoid) {
 			t.Errorf("%+v: want %q, not %q, in\n%s", c.view, c.want, c.avoid, html)
 		}
+	}
+}
+
+func TestSortMeals(t *testing.T) {
+	meal := func(name string, kcal, protein float64) foodResult {
+		return foodResult{Food: myfitnesspal.Food{Name: name}, Per: myfitnesspal.FoodNutrition{Calories: kcal, Protein: protein}}
+	}
+	names := func(meals []foodResult) string {
+		var out []string
+		for _, m := range meals {
+			out = append(out, m.Food.Name)
+		}
+		return strings.Join(out, ",")
+	}
+	for by, want := range map[string]string{"": "b,a,c", "name": "a,b,c", "protein": "c,a,b", "lean": "a,c,b", "kcal": "b,a,c", "kcal-desc": "c,a,b"} {
+		meals := []foodResult{meal("b", 300, 10), meal("a", 400, 40), meal("c", 800, 50)}
+		if sortMeals(meals, by); names(meals) != want {
+			t.Errorf("sort %q: got %s, want %s", by, names(meals), want)
+		}
+	}
+	if got := mealItemsOf([]string{"Black beans, canned, 50 gram", "Olive oil, 0.2 tbsp", "Salt"}); got[0] != (mealItem{"Black beans, canned", "50 gram"}) ||
+		got[1] != (mealItem{"Olive oil", "0.2 tbsp"}) || got[2] != (mealItem{Name: "Salt"}) {
+		t.Errorf("mealItemsOf: %+v", got)
 	}
 }

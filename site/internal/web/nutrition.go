@@ -1,11 +1,14 @@
 package web
 
 import (
+	"cmp"
 	"encoding/json"
 	"errors"
 	"html/template"
 	"math"
 	"net/http"
+	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -213,8 +216,38 @@ type foodResult struct {
 	Encoded  string // the food as JSON, carried to the next step
 	Serving  string // the first serving's label
 	Per      myfitnesspal.FoodNutrition
-	Index    int    // the serving to start with
-	Quantity string // the amount to start with
+	Split    calorieSplit
+	Items    []mealItem // a saved meal's foods
+	Index    int        // the serving to start with
+	Quantity string     // the amount to start with
+}
+
+// calorieSplit is how much of the calories come from protein, carbs and fat, in percent.
+type calorieSplit struct{ Protein, Carbs, Fat int }
+
+func splitOf(n myfitnesspal.FoodNutrition) calorieSplit {
+	p, c, f := n.Protein*4, n.Carbs*4, n.Fat*9
+	total := p + c + f
+	if total <= 0 {
+		return calorieSplit{}
+	}
+	return calorieSplit{int(math.Round(p / total * 100)), int(math.Round(c / total * 100)), int(math.Round(f / total * 100))}
+}
+
+// mealItem is one food in a saved meal: "Black beans, canned, 50 gram" is the name and amount.
+type mealItem struct{ Name, Amount string }
+
+var amountPattern = regexp.MustCompile(`^(.+), ([0-9][0-9./]*\s*\S.*)$`)
+
+func mealItemsOf(items []string) []mealItem {
+	out := make([]mealItem, len(items))
+	for i, item := range items {
+		out[i] = mealItem{Name: item}
+		if m := amountPattern.FindStringSubmatch(item); m != nil {
+			out[i] = mealItem{Name: m[1], Amount: m[2]}
+		}
+	}
+	return out
 }
 
 func foodResultFor(food myfitnesspal.Food, serving int, quantity float64) foodResult {
@@ -226,8 +259,9 @@ func foodResultFor(food myfitnesspal.Food, serving int, quantity float64) foodRe
 	if quantity <= 0 {
 		quantity = 1
 	}
+	per := food.Nutrition.Scaled(options[serving].Multiplier * quantity)
 	return foodResult{Food: food, Encoded: string(encoded), Index: serving, Quantity: strconv.FormatFloat(quantity, 'f', -1, 64),
-		Serving: options[serving].Label, Per: food.Nutrition.Scaled(options[serving].Multiplier * quantity)}
+		Serving: options[serving].Label, Per: per, Split: splitOf(per), Items: mealItemsOf(food.Items)}
 }
 
 func (ui *UI) foodSearchForm(w http.ResponseWriter, r *http.Request) {
@@ -254,25 +288,71 @@ func (ui *UI) searchFood(w http.ResponseWriter, r *http.Request) {
 type foodListView struct {
 	Meal, Query string
 	List        string // "recent" or "meals"
+	Sort        string // the saved meals' order, one of mealSorts
+	Total       int    // saved meals before narrowing
 	Foods       []foodResult
 	Error       string
+}
+
+// mealSorts are the orders the Meals list offers; "" is MyFitnessPal's own.
+var mealSorts = []struct{ Value, Label string }{
+	{"", "MyFitnessPal order"}, {"name", "Name A–Z"}, {"protein", "Most protein"},
+	{"lean", "Most protein per kcal"}, {"kcal", "Fewest kcal"}, {"kcal-desc", "Most kcal"},
+}
+
+// Sorts are the Meals list's orders, for its menu.
+func (foodListView) Sorts() []struct{ Value, Label string } { return mealSorts }
+
+// sortMeals orders saved meals; ties keep MyFitnessPal's order.
+func sortMeals(meals []foodResult, by string) {
+	lean := func(r foodResult) float64 {
+		if r.Per.Calories <= 0 {
+			return -1
+		}
+		return r.Per.Protein / r.Per.Calories
+	}
+	var less func(a, b foodResult) int
+	switch by {
+	case "name":
+		less = func(a, b foodResult) int {
+			return strings.Compare(strings.ToLower(a.Food.Name), strings.ToLower(b.Food.Name))
+		}
+	case "protein":
+		less = func(a, b foodResult) int { return cmp.Compare(b.Per.Protein, a.Per.Protein) }
+	case "lean":
+		less = func(a, b foodResult) int { return cmp.Compare(lean(b), lean(a)) }
+	case "kcal":
+		less = func(a, b foodResult) int { return cmp.Compare(a.Per.Calories, b.Per.Calories) }
+	case "kcal-desc":
+		less = func(a, b foodResult) int { return cmp.Compare(b.Per.Calories, a.Per.Calories) }
+	default:
+		return
+	}
+	slices.SortStableFunc(meals, less)
 }
 
 // foodList is the recent foods or the saved meals matching what's typed so far.
 func (ui *UI) foodList(w http.ResponseWriter, r *http.Request) {
 	mfp := ui.ws(r).MyFitnessPal
 	view := foodListView{Meal: r.FormValue("meal"), Query: formText(r, "query"), List: "recent"}
+	for _, option := range mealSorts {
+		if option.Value == r.FormValue("sort") {
+			view.Sort = option.Value
+		}
+	}
 	words := strings.Fields(strings.ToLower(view.Query))
 	var err error
 	if r.FormValue("list") == "meals" {
 		view.List = "meals"
 		var meals []myfitnesspal.Food
 		meals, err = mfp.SavedMeals()
+		view.Total = len(meals)
 		for _, meal := range meals {
 			if myfitnesspal.MatchesWords(meal.Name+" "+strings.Join(meal.Items, " "), words) {
 				view.Foods = append(view.Foods, foodResultFor(meal, 0, 1))
 			}
 		}
+		sortMeals(view.Foods, view.Sort)
 	} else {
 		var recent []myfitnesspal.Recent
 		recent, err = mfp.RecentFoods()

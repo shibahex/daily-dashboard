@@ -45,3 +45,21 @@ a.edit-btn { text-decoration: none; }
 /* The new deck box shows when "+ New deck…" is picked. */
 .anki-form:not(:has(option[value="__new"]:checked)) .new-deck { display: none; }
 .notes-count { margin-bottom: 4px; }
+
+/* Anki on the server: what only the user's own Anki can do. */
+.anki-server .desktop-only { display: none; }
+
+/* Studying in the browser (anki-review). The card is its own sandboxed page, with its own
+   colours from the note type. */
+.anki-review { display: flex; flex-direction: column; gap: 12px; max-width: 760px; margin: 0 auto; }
+.review-head { display: flex; align-items: center; justify-content: space-between; }
+.review-head .counts { gap: 14px; font-weight: 600; }
+.review-card { width: 100%; height: 55vh; min-height: 260px; border: 1px solid var(--line); border-radius: 10px; background: #fff; }
+.review-actions { display: flex; justify-content: center; }
+.review-actions .primary { min-width: 200px; }
+.review-actions.answers { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.review-actions.answers button { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 4px; }
+.review-actions.answers small { font-size: 11px; color: var(--muted); font-weight: 400; }
+.review-actions .ease-1 { border-color: var(--warn); color: var(--warn); }
+.review-actions .ease-3 { border-color: var(--good); color: var(--good); }
+.review-done { text-align: center; padding: 24px 8px; }

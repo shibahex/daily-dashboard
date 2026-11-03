@@ -53,9 +53,10 @@ func TestListModelsAsksEachMaker(t *testing.T) {
 	if len(models) != 2 || models[0].ID != "gpt-new" {
 		t.Errorf("openai: newest chat models only: %v", models)
 	}
-	models, _ = ListModels(context.Background(), "gemini", "AIza")
-	if len(models) != 1 || models[0].ID != "gemini-3-pro" || headers.Get("x-goog-api-key") != "AIza" {
-		t.Errorf("gemini: %v", models)
+	// Antigravity CLI only takes its own model names: Google is only asked whether the key works.
+	models, err = ListModels(context.Background(), "gemini", "AIza")
+	if err != nil || len(models) != 0 || headers.Get("x-goog-api-key") != "AIza" {
+		t.Errorf("gemini: %v %v", models, err)
 	}
 }
 

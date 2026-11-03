@@ -153,3 +153,46 @@ func TestMirror(t *testing.T) {
 		t.Error("not wiped")
 	}
 }
+
+// A held folder (a running Anki) keeps its last saved copy until it's let go.
+func TestMirrorKeepsHeldFoldersAsSaved(t *testing.T) {
+	keys := NewKeys(t.TempDir(), "user1")
+	key, _ := keys.Create("pw", "rc")
+	encrypted, plain := filepath.Join(t.TempDir(), "vault"), filepath.Join(t.TempDir(), "plain")
+	os.MkdirAll(filepath.Join(plain, "anki", "base"), 0o700)
+	os.WriteFile(filepath.Join(plain, "anki", "base", "collection.anki2"), []byte("v1"), 0o600)
+	m := NewMirror(encrypted, plain, key)
+	if err := m.Load(); err != nil {
+		t.Fatal(err)
+	}
+	m.Save()
+
+	var held []string
+	m.Held = func() []string { return held }
+	held = []string{"anki"}
+	os.WriteFile(filepath.Join(plain, "anki", "base", "collection.anki2"), []byte("half-written"), 0o600)
+	os.WriteFile(filepath.Join(plain, "plan.json"), []byte("{}"), 0o600)
+	if err := m.Save(); err != nil {
+		t.Fatal(err)
+	}
+	restore := func() string {
+		dir := filepath.Join(t.TempDir(), "restored")
+		if err := NewMirror(encrypted, dir, key).Restore(); err != nil {
+			t.Fatal(err)
+		}
+		data, _ := os.ReadFile(filepath.Join(dir, "anki", "base", "collection.anki2"))
+		if _, err := os.Stat(filepath.Join(dir, "plan.json")); err != nil {
+			t.Error("the rest of the folder wasn't saved")
+		}
+		return string(data)
+	}
+	if got := restore(); got != "v1" {
+		t.Errorf("held folder saved mid-write: %q", got)
+	}
+	held = nil
+	os.WriteFile(filepath.Join(plain, "anki", "base", "collection.anki2"), []byte("v2"), 0o600)
+	m.Save()
+	if got := restore(); got != "v2" {
+		t.Errorf("released folder not saved: %q", got)
+	}
+}

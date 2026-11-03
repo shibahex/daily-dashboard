@@ -7,6 +7,7 @@ import (
 	"slices"
 	"time"
 
+	"dashboard/internal/ankiserver"
 	"dashboard/internal/auth"
 	"dashboard/internal/problem"
 	"dashboard/internal/vault"
@@ -44,7 +45,15 @@ func (m *Manager) unlockedMarker(id string) string { return filepath.Join(m.memo
 func (m *Manager) plainDir(id string) string       { return filepath.Join(m.paths.UsersDir(), id) }
 func (m *Manager) encrypted(user auth.User) bool   { return m.keys(user.ID).Exists() }
 func (m *Manager) mirror(id string, key *vault.Key) *vault.Mirror {
-	return vault.NewMirror(filepath.Join(m.vaultDir(id), "data"), m.memoryDir(id), key)
+	mirror := vault.NewMirror(filepath.Join(m.vaultDir(id), "data"), m.memoryDir(id), key)
+	// A running Anki's database can't be copied whole: it's saved once Anki has stopped.
+	mirror.Held = func() []string {
+		if m.Anki.Running(id) {
+			return []string{ankiserver.Folder}
+		}
+		return nil
+	}
+	return mirror
 }
 
 // slotName is where a session's or token's key copy is kept: under its fingerprint.
@@ -308,6 +317,7 @@ func (m *Manager) Lock(userID string) error {
 	if m.OnLock != nil {
 		m.OnLock(userID)
 	}
+	m.Anki.Stop(userID) // syncs, and leaves its folder whole for the last save
 	if ws != nil {
 		ws.close()
 	}
@@ -384,6 +394,7 @@ func (m *Manager) Decrypt(user auth.User) error {
 	if m.OnLock != nil {
 		m.OnLock(user.ID)
 	}
+	m.Anki.Stop(user.ID)
 	if ws != nil {
 		ws.close()
 	}
@@ -404,6 +415,7 @@ func (m *Manager) Decrypt(user auth.User) error {
 // EncryptNow encrypts the user's plain folder again (they chose to), with their password's
 // proof, a new recovery code's proof, and a key copy for their session, and opens it.
 func (m *Manager) EncryptNow(user auth.User, password, recovery, session string) error {
+	m.Anki.Stop(user.ID) // its folder is copied
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	keys := m.keys(user.ID)
