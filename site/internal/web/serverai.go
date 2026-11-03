@@ -264,6 +264,9 @@ func (run *serverRun) prepare(provider assistant.Provider, message, session, mod
 	web := webOn(user, conversation)
 	instructions := assistant.Instructions(now, assistant.Context(ws.Paths.Plan(), ws.Paths.Data), ready, !conversation.NoInstructions, web) +
 		notesForPrompt(notes, edit)
+	if stamp := assistant.Stamp(now); stamp != "" {
+		message = stamp + "\n" + message
+	}
 	if session == "" && strings.TrimSpace(history) != "" {
 		// A new conversation for this AI in a chat that already had some: what was said, so it
 		// can follow on.

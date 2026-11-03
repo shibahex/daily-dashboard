@@ -111,6 +111,18 @@ func Now(t time.Time) string {
 		"\"today\", \"now\" and the dates you write.", t.Format("Monday, January 2, 2006, 3:04 PM"), t.Format("MST, UTC-07:00"), t.Format("2006-01-02"))
 }
 
+// Stamp is the short date line that goes in front of each message to an AI on the server, made
+// from Now's text: the date in the system prompt can be missed under a long context, and a chat
+// can go on for days.
+func Stamp(now string) string {
+	when, _, _ := strings.Cut(strings.TrimSpace(now), "; today's date")
+	when = strings.Replace(strings.TrimPrefix(when, "It's "), " for the user (", " (", 1)
+	if when == "" {
+		return ""
+	}
+	return "[Sent " + when + "]"
+}
+
 // Instructions is the system prompt: the user's local time (now, from Now; "" leaves it to the
 // browser, which adds it to each message) and the context (the user's plan and data); with
 // guidance, also how to answer and how to use the turned-on MCP servers (mcps).

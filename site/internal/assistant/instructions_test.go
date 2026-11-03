@@ -19,4 +19,10 @@ func TestInstructionsTime(t *testing.T) {
 	if prompt := Instructions("", "", nil, false, false); strings.HasPrefix(prompt, "\n") || strings.Contains(prompt, "It's ") {
 		t.Errorf("without a time, the prompt should leave it out: %q", prompt[:80])
 	}
+	if got, want := Stamp(now), "[Sent Tuesday, October 27, 2026, 7:42 PM (EDT, UTC-04:00)]"; got != want {
+		t.Errorf("Stamp: %q, want %q", got, want)
+	}
+	if got := Stamp(""); got != "" {
+		t.Errorf("Stamp without a time: %q", got)
+	}
 }
