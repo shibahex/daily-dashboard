@@ -129,7 +129,8 @@ type workoutView struct {
 	Title     string
 	Task      string
 	Started   time.Time
-	Elapsed   string // the clock as first shown; app.js keeps it going
+	Now       time.Time // the server's time, which app.js counts the clocks by
+	Elapsed   string    // the clock as first shown; app.js keeps it going
 	RestUntil time.Time
 	RestFor   int
 	RestLeft  string
@@ -212,7 +213,7 @@ func workoutViewOf(data lifting.Data, now time.Time) workoutView {
 	if w == nil {
 		return workoutView{Unit: data.Unit}
 	}
-	view := workoutView{Going: true, ID: w.ID, Title: w.Title, Task: w.Task, Started: w.Started,
+	view := workoutView{Going: true, ID: w.ID, Title: w.Title, Task: w.Task, Started: w.Started, Now: now,
 		Elapsed: clockText(now.Sub(w.Started)), Unit: data.Unit, Names: data.ExerciseNames(),
 		Sets: w.DoneSets(), Volume: formatNumber(lifting.Shown(w.Volume(), data.Unit)),
 		Plate: strconv.FormatFloat(lifting.PlateStep(data.Unit), 'f', -1, 64), Note: w.Note}

@@ -128,6 +128,41 @@ document.body.addEventListener("htmx:sseMessage", () => scrollToEnd(document, "s
 // (data-rest-until, out of data-rest-for seconds). The server keeps the times; this only counts,
 // chimes (and buzzes, on a phone) when one is over, and for a hold (data-auto-done) presses its
 // Done button, which logs the time held.
+//
+// They count by the server's clock, not this device's, which may be off or be changed while a
+// timer runs: the workout card brings the server's time (data-server-now) and skew is the
+// difference. When this device's clock jumps against the steady performance clock (it was
+// changed, the phone slept, the page came back from the back button), the card is fetched in
+// the background for a fresh server time, leaving the one on the page (and what's typed in it)
+// alone. Until that answers, a timer that seems over waits.
+
+let skew = 0, needSync = false, syncing = false;
+let lastWall = Date.now(), lastSteady = performance.now();
+const serverNow = () => Date.now() + skew;
+function setSkew(value) {
+  if (Math.abs(value - skew) > 250) planChime(null, 0); // the chime planned was for the old clock
+  skew = value;
+}
+htmx.onLoad(root => {
+  const card = root.matches?.("[data-server-now]") ? root : root.querySelector?.("[data-server-now]");
+  if (card) setSkew(Date.parse(card.dataset.serverNow) - Date.now());
+});
+async function syncClock() {
+  const wall = Date.now(), steady = performance.now();
+  if (Math.abs((wall - lastWall) - (steady - lastSteady)) > 1500) needSync = true;
+  lastWall = wall;
+  lastSteady = steady;
+  if (!needSync || syncing || !document.querySelector("[data-server-now]")) return;
+  needSync = false;
+  syncing = true;
+  try {
+    const sent = Date.now();
+    const card = await (await fetch("/lifting/workout", { cache: "no-store", headers: { "HX-Request": "true" } })).text();
+    const at = /data-server-now="([^"]+)"/.exec(card)?.[1];
+    if (at) setSkew(Date.parse(at) - (sent + Date.now()) / 2);
+  } catch {} finally { syncing = false; }
+}
+window.addEventListener("pageshow", event => { if (event.persisted) needSync = true; });
 
 function clock(seconds) {
   const s = Math.max(0, Math.round(seconds));
@@ -185,7 +220,8 @@ function planChime(until, left) {
 }
 
 function tickClocks() {
-  const now = Date.now();
+  syncClock();
+  const now = serverNow();
   document.querySelectorAll("[data-since]").forEach(el => { el.textContent = clock((now - Date.parse(el.dataset.since)) / 1000); });
   const boxes = document.querySelectorAll("[data-rest-until]");
   if (!boxes.length) planChime(null, 0);
@@ -194,7 +230,7 @@ function tickClocks() {
     box.querySelector(".rest-left").textContent = left > 0 ? clock(left) : "over";
     box.style.setProperty("--left", Math.max(0, Math.min(1, left / total)));
     if (left > 0) planChime(box.dataset.restUntil, left);
-    if (left <= 0 && !box.classList.contains("over")) {
+    if (left <= 0 && !syncing && !box.classList.contains("over")) {
       box.classList.add("over");
       try { navigator.vibrate?.([120, 80, 120]); } catch {}
       // Rung now only if it wasn't planned (the sound wasn't ready) and it just ended.
@@ -213,7 +249,7 @@ document.addEventListener("click", event => {
   const button = event.target.closest("[data-bump]");
   const box = button?.closest("[data-rest-until]");
   if (!box) return;
-  const seconds = Number(button.dataset.bump), now = Date.now();
+  const seconds = Number(button.dataset.bump), now = serverNow();
   const until = Math.max(Date.parse(box.dataset.restUntil), now) + seconds * 1000;
   const left = Math.max(0, (until - now) / 1000);
   box.dataset.restUntil = new Date(until).toISOString();

@@ -1,5 +1,5 @@
 {{/* The Lifting tab: the workout in progress (sets, rest timer), routines, progress and past
-     workouts. The clocks (data-since, data-rest-until) tick in app.js; the times are the server's. */}}
+     workouts. The clocks (data-since, data-rest-until) tick in app.js by the server's clock (data-server-now). */}}
 {{define "lifting"}}
 <div class="lift-top">
   <a class="edit-btn" href="/lifting/export.csv" download hx-boost="false" title="Every finished set, one row each">Export (CSV)</a>
@@ -17,7 +17,7 @@
 {{end}}
 
 {{define "lift-workout"}}
-<div class="card lift-workout" hx-disinherit="*" id="card-workout" hx-get="/lifting/workout" hx-trigger="lifting-changed from:body" hx-swap="outerHTML">
+<div class="card lift-workout" hx-disinherit="*" id="card-workout" hx-get="/lifting/workout" hx-trigger="lifting-changed from:body" hx-swap="outerHTML"{{if .Going}} data-server-now="{{.Now.Format "2006-01-02T15:04:05.000Z07:00"}}"{{end}}>
 {{if .Going}}
   <div class="card-head"><h2>Workout</h2><span class="lift-clock" title="Time so far"><span data-since="{{.Started.Format "2006-01-02T15:04:05Z07:00"}}">{{.Elapsed}}</span></span></div>
   <h3>{{.Title}}</h3>
