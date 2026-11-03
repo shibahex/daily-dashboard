@@ -256,7 +256,7 @@ Your notes are only as private as the scripts that handle them, and those come f
 
 | Script | Hash |
 |---|---|
-| `app.js` | `sha384-IJWjgHd3lhv2QYw0VgBPBGzsubgQQhMO0AFaYd3UOEdeBiN1AmNbXrIQrOKf/t+h` |
+| `app.js` | `sha384-UsbxVZpVY8XkxIoXZkVaaJeY2zCDaSLt5GI7GvevBaGosQ7qrC5crm8l1wbq85Ej` |
 | `keys.js` | `sha384-nwe1d2+ABaJt3Q/12zr1QRW8BolKLItadMXGeqOorCsyP4qfCfXFCb1JdeSaVU2g` |
 | `notes.js` | `sha384-UWscNZxtDd4IRrRR+hHR+DwTyw0BV5aks0lQnveKJvaDyoGVsPnEFe03oV5wCQ4c` |
 | `backup.js` | `sha384-Y/pu3exPYWdYgVyNW/qbSljWfBE5nxJTGCj/X/XM4YXwnnbu3HvijZaMlMKshMIJ` |
